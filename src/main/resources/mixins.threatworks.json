@@ -3,5 +3,9 @@
   "minVersion": "0.8.5",
   "package": "com.mahghuuuls.threatworks.mixin",
   "compatibilityLevel": "JAVA_8",
-  "mixins": []
+  "refmap": "mixins.threatworks.refmap.json",
+  "mixins": [
+    "EntityLivingBaseMixin",
+    "EntityLivingMixin"
+  ]
 }
