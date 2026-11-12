@@ -1,12 +1,14 @@
 package com.mahghuuuls.threatworksfixture;
 
 import com.mahghuuuls.threatworks.ThreatworksMod;
+import com.mahghuuuls.threatworks.api.SummonThreatCreditEvent;
 import net.minecraft.entity.EntityLiving;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.monster.EntityIronGolem;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.entity.projectile.EntityArrow;
 import net.minecraft.init.Items;
+import net.minecraftforge.common.ForgeChunkManager;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.entity.living.LivingDamageEvent;
 import net.minecraftforge.event.entity.living.LivingDeathEvent;
@@ -39,17 +41,23 @@ public final class ThreatworksFixture {
                     return 100;
                 }));
         MinecraftForge.EVENT_BUS.register(this);
+        ForgeChunkManager.setForcedChunkLoadingCallback(this,
+                (tickets, world) -> tickets.forEach(ForgeChunkManager::releaseTicket));
     }
 
     @Mod.EventHandler
     public void serverStarting(FMLServerStartingEvent event) {
         event.registerServerCommand(new ThreatActionsCommand());
         event.registerServerCommand(new ArrowFixtureCommand());
+        event.registerServerCommand(new SummonFixtureCommand(this));
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public void onLivingDamage(LivingDamageEvent event) {
         EntityLivingBase victim = event.getEntityLiving();
+        if (!victim.world.isRemote && victim.getTags().contains("tw_summon_probe")) {
+            SummonFixtureCommand.reportImpact(victim, event.getSource(), event.getAmount());
+        }
         if (!victim.world.isRemote && victim.getTags().contains("tw_arrow_probe")
                 && event.getSource().getImmediateSource() instanceof EntityArrow) {
             EntityArrow arrow = (EntityArrow) event.getSource().getImmediateSource();
@@ -62,6 +70,16 @@ public final class ThreatworksFixture {
                 && "player".equals(event.getSource().getDamageType()) && victim.removeTag(CANCEL_NEXT)) {
             event.setCanceled(true);
             LOGGER.info("canceled_player_damage victim={} amount={}", victim.getUniqueID(), event.getAmount());
+        }
+    }
+
+    @SubscribeEvent
+    public void onSummonCredit(SummonThreatCreditEvent event) {
+        if (event.getTarget().removeTag("tw_redirect_next")) {
+            event.creditOwner();
+            LOGGER.info("summon_redirect target={} summon={} owner={} tick={}", event.getTarget().getUniqueID(),
+                    event.getSummon().getUniqueID(), event.getOwner().getUniqueID(),
+                    event.getTarget().world.getTotalWorldTime());
         }
     }
 

@@ -34,6 +34,14 @@ configurations {
 }
 
 dependencies {
+    // Qualification pin for the optional summon adapter. Keep it off the game's default runtime classpath.
+    def wizardry = rfg.deobf('curse.maven:electroblobs-wizardry-265642:8320066')
+    compileOnly wizardry
+    testImplementation wizardry
+    if (providers.gradleProperty('withWizardry').isPresent()) {
+        runtimeOnly wizardry
+    }
+
     // Include StripLatestForgeRequirements by default for the dev env, saves everyone a hassle
     runtimeOnly 'com.cleanroommc:strip-latest-forge-requirements:1.0'
     // Include OSXNarratorBlocker by default for the dev env, for M1+ Macs

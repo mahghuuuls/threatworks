@@ -24,19 +24,24 @@ final class WorldEncounters implements IWorldEventListener {
     // A snapshot can compare world sessions without retaining a world or its encounter table.
     final Object launchSession = new Object();
 
-    void recordHit(UUID mob, UUID attacker, int mobTick, boolean mayOpen, float before, float after, Rules rules,
+    void recordHit(UUID mob, Supplier<UUID> recipient, int mobTick, boolean mayOpen, float before, float after, Rules rules,
                    DoubleSupplier points, Supplier<UUID> openingTarget) {
         double lost = Encounter.healthLost(before, after);
         if (!(lost > 0.0) || !Double.isFinite(lost)) {
             return;
         }
+        Encounter beforeCredit = encounters.get(mob);
+        if (!mayOpen && beforeCredit == null) {
+            return;
+        }
         double gain = ThreatPoints.damageThreat(lost, points.getAsDouble());
+        UUID credit = recipient.get();
         Encounter previous = encounters.get(mob);
-        if (!mayOpen && previous == null) {
+        if (!mayOpen && previous != beforeCredit) {
             return;
         }
         UUID incumbent = previous == null ? openingTarget.get() : null;
-        Encounter updated = Encounter.recordHit(previous, attacker, incumbent, mobTick, gain, rules);
+        Encounter updated = Encounter.recordHit(previous, credit, incumbent, mobTick, gain, rules);
         if (updated != null) {
             encounters.put(mob, updated);
         }

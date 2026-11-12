@@ -1,6 +1,7 @@
 package com.mahghuuuls.threatworks.server;
 
 import com.mahghuuuls.threatworks.api.ThreatActions;
+import com.mahghuuuls.threatworks.api.SummonThreatCreditEvent;
 import com.mahghuuuls.threatworks.config.ServerTuning;
 import com.mahghuuuls.threatworks.config.ServerTuning.MobType;
 import com.mahghuuuls.threatworks.points.ThreatPoints;
@@ -17,6 +18,7 @@ import net.minecraft.util.DamageSource;
 import net.minecraft.world.World;
 import net.minecraft.world.WorldServer;
 import net.minecraftforge.event.world.WorldEvent;
+import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.entity.living.LivingDeathEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.fml.common.eventhandler.EventPriority;
@@ -39,6 +41,7 @@ public final class EncounterCoordinator implements ThreatActions {
     private final Map<EntityPlayerMP, Integer> pendingPlayerDeaths = new IdentityHashMap<>();
     private ServerTuning tuning;
     private ThreatPoints points;
+    private DamageAttribution.SummonSource summons;
     private TargetWrite targetWrite;
 
     private EncounterCoordinator() {
@@ -56,6 +59,10 @@ public final class EncounterCoordinator implements ThreatActions {
     public void startServer(ServerTuning tuning, ThreatPoints points) {
         this.tuning = tuning;
         this.points = points;
+    }
+
+    public void setSummonSource(DamageAttribution.SummonSource summons) {
+        this.summons = summons;
     }
 
     @SubscribeEvent
@@ -157,16 +164,33 @@ public final class EncounterCoordinator implements ThreatActions {
             return;
         }
 
-        DamageAttribution hit = DamageAttribution.resolve(source, state.launchSession);
+        DamageAttribution hit = DamageAttribution.resolve(source, state.launchSession, summons);
         if (hit == null || world.getEntityFromUuid(hit.attacker.getUniqueID()) != hit.attacker
                 || !MobTargets.isAttackable(mob, hit.attacker)) {
             return;
         }
-        state.recordHit(mobId, hit.attacker.getUniqueID(), mob.ticksExisted, hit.attacker instanceof EntityPlayerMP,
+        state.recordHit(mobId, () -> creditRecipient(world, mob, hit, source), mob.ticksExisted, hit.mayOpenEncounter(),
                 before, after, tuning.rulesFor(type), () -> hit.points(() -> points.total(hit.attacker, tuning)),
                 () -> incumbent != null && world.getEntityFromUuid(incumbent.getUniqueID()) == incumbent
                         && MobTargets.observe(world, mob, incumbent).isEligible()
                         ? incumbent.getUniqueID() : null);
+    }
+
+    private static UUID creditRecipient(WorldServer world, EntityCreature victim, DamageAttribution hit,
+                                        DamageSource source) {
+        EntityLivingBase owner = hit.summonOwner;
+        if (owner != null && validOwner(world, victim, owner)) {
+            SummonThreatCreditEvent decision = new SummonThreatCreditEvent(victim, hit.attacker, owner, source);
+            MinecraftForge.EVENT_BUS.post(decision);
+            if (decision.isOwnerCreditRequested() && validOwner(world, victim, owner)) {
+                return owner.getUniqueID();
+            }
+        }
+        return hit.attacker.getUniqueID();
+    }
+
+    private static boolean validOwner(WorldServer world, EntityCreature victim, EntityLivingBase owner) {
+        return world.getEntityFromUuid(owner.getUniqueID()) == owner && MobTargets.isAttackable(victim, owner);
     }
 
     public boolean blocksTargetWrite(EntityLiving mob, EntityLivingBase requestedTarget) {

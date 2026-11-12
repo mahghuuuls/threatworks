@@ -9,24 +9,33 @@ import net.minecraft.util.DamageSource;
 import java.util.function.DoubleSupplier;
 
 /** Identifies the actual attacker and determines which points may be used for a hit. */
-final class DamageAttribution {
+public final class DamageAttribution {
     final EntityLivingBase attacker;
+    final EntityLivingBase summonOwner;
     // Only direct hits read equipment at impact. An arrow without a snapshot uses an explicit zero.
     private final Double launchPoints;
 
-    private DamageAttribution(EntityLivingBase attacker, Double launchPoints) {
+    private DamageAttribution(EntityLivingBase attacker, EntityLivingBase summonOwner, Double launchPoints) {
         this.attacker = attacker;
+        this.summonOwner = summonOwner;
         this.launchPoints = launchPoints;
     }
 
     static DamageAttribution resolve(DamageSource source, Object worldSession) {
+        return resolve(source, worldSession, null);
+    }
+
+    static DamageAttribution resolve(DamageSource source, Object worldSession, SummonSource summons) {
         if (source == null) {
             return null;
+        }
+        if (summons != null && summons.handles(source)) {
+            return summons.resolve(source, worldSession);
         }
         if ("player".equals(source.getDamageType())) {
             Entity actor = source.getTrueSource();
             return actor instanceof EntityPlayerMP && actor == source.getImmediateSource()
-                    ? new DamageAttribution((EntityPlayerMP) actor, null) : null;
+                    ? new DamageAttribution((EntityPlayerMP) actor, null, null) : null;
         }
         if (!"arrow".equals(source.getDamageType()) || !source.isProjectile()) {
             return null;
@@ -36,16 +45,38 @@ final class DamageAttribution {
         if (!(immediate instanceof EntityArrow) || !(actor instanceof EntityLivingBase)) {
             return null;
         }
-        EntityArrow arrow = (EntityArrow) immediate;
+        return arrow((EntityArrow) immediate, (EntityLivingBase) actor, null, worldSession);
+    }
+
+    public interface SummonSource {
+        boolean handles(DamageSource source);
+        DamageAttribution resolve(DamageSource source, Object worldSession);
+    }
+
+    public static DamageAttribution summonMelee(EntityLivingBase summon, EntityLivingBase owner) {
+        return new DamageAttribution(summon, owner, null);
+    }
+
+    public static DamageAttribution summonArrow(EntityLivingBase summon, EntityLivingBase owner, EntityArrow arrow,
+                                                Object worldSession) {
+        return arrow(arrow, summon, owner, worldSession);
+    }
+
+    private static DamageAttribution arrow(EntityArrow arrow, EntityLivingBase actor, EntityLivingBase owner,
+                                           Object worldSession) {
         if (arrow.shootingEntity != actor || arrow.world != actor.world) {
             return null;
         }
         ArrowLaunch.Snapshot snapshot = ((ArrowLaunch) arrow).threatworks$getLaunch();
         if (snapshot == null || snapshot.worldSession != worldSession) {
-            return new DamageAttribution((EntityLivingBase) actor, 0.0);
+            return new DamageAttribution(actor, owner, 0.0);
         }
         return snapshot.shooter.equals(actor.getUniqueID())
-                ? new DamageAttribution((EntityLivingBase) actor, snapshot.points) : null;
+                ? new DamageAttribution(actor, owner, snapshot.points) : null;
+    }
+
+    boolean mayOpenEncounter() {
+        return summonOwner == null && attacker instanceof EntityPlayerMP;
     }
 
     double points(DoubleSupplier currentPoints) {

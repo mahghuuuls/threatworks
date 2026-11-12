@@ -3,6 +3,7 @@ package com.mahghuuuls.threatworks;
 import com.mahghuuuls.threatworks.api.ItemThreatPointProvider;
 import com.mahghuuuls.threatworks.api.ThreatActions;
 import com.mahghuuuls.threatworks.command.ThreatworksCommand;
+import com.mahghuuuls.threatworks.compat.WizardryCompatibility;
 import com.mahghuuuls.threatworks.config.ServerTuning;
 import com.mahghuuuls.threatworks.points.ThreatPoints;
 import com.mahghuuuls.threatworks.server.EncounterCoordinator;
@@ -62,6 +63,7 @@ public final class ThreatworksMod {
     @Mod.EventHandler
     public void loadComplete(FMLLoadCompleteEvent event) {
         POINTS.freezeRegistrations();
+        EncounterCoordinator.INSTANCE.setSummonSource(WizardryCompatibility.load(LOGGER));
     }
 
     @Mod.EventHandler
