@@ -12,9 +12,6 @@ import net.minecraft.util.text.TextComponentString;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.util.Map;
-import java.util.UUID;
-
 public final class ThreatworksCommand extends CommandBase {
     private static final Logger LOGGER = LogManager.getLogger("Threatworks");
     private static final int MAX_SHOWN_SCORES = 16;
@@ -49,18 +46,19 @@ public final class ThreatworksCommand extends CommandBase {
         if (!EncounterCoordinator.supports(mob)) {
             throw new CommandException(SELECT_ONE_MOB);
         }
-        EncounterCoordinator.Inspection inspection = EncounterCoordinator.INSTANCE.inspect(mob);
+        EncounterCoordinator.Inspection inspection = EncounterCoordinator.INSTANCE.inspect(mob, MAX_SHOWN_SCORES);
         report(sender, "mob=" + mob.getUniqueID()
                 + " tracked=" + inspection.tracked + " target="
-                + (inspection.target == null ? "none" : inspection.target) + " taunt=none");
-        int shown = 0;
-        for (Map.Entry<UUID, Double> entry : inspection.scores.entrySet()) {
-            if (shown == MAX_SHOWN_SCORES) {
-                report(sender, "omitted=" + (inspection.scores.size() - shown));
-                break;
-            }
-            report(sender, "participant=" + entry.getKey() + " threat=" + entry.getValue());
-            shown++;
+                + (inspection.target == null ? "none" : inspection.target)
+                + " taunt=" + (inspection.taunter == null ? "none" : inspection.taunter)
+                + " tauntTicks=" + inspection.tauntTicks
+                + " resetTicks=" + (inspection.resetTicks == null ? "none" : inspection.resetTicks));
+        for (EncounterCoordinator.Participant participant : inspection.participants) {
+            report(sender, "participant=" + participant.id + " threat=" + participant.score
+                    + " eligibility=" + participant.eligibility);
+        }
+        if (inspection.omitted > 0) {
+            report(sender, "omitted=" + inspection.omitted);
         }
     }
 

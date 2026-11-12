@@ -37,11 +37,28 @@ final class WorldEncounters implements IWorldEventListener {
 
     @Override
     public void onEntityRemoved(Entity entity) {
-        encounters.remove(entity.getUniqueID());
+        if (entity instanceof EntityPlayer) {
+            playerAvailabilityChanged(entity.getUniqueID());
+        } else {
+            encounters.remove(entity.getUniqueID());
+        }
     }
 
     @Override
     public void onEntityAdded(Entity entity) {
+        if (entity instanceof EntityPlayer) {
+            playerAvailabilityChanged(entity.getUniqueID());
+        }
+    }
+
+    private void playerAvailabilityChanged(UUID player) {
+        encounters.values().forEach(encounter -> encounter.participantChanged(player));
+    }
+
+    static void removePlayerScores(Iterable<WorldEncounters> partitions, UUID player) {
+        for (WorldEncounters partition : partitions) {
+            partition.encounters.values().forEach(encounter -> encounter.removeParticipant(player));
+        }
     }
 
     @Override

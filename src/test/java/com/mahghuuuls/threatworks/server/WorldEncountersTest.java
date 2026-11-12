@@ -6,10 +6,12 @@ import net.minecraft.init.Bootstrap;
 import net.minecraft.nbt.NBTTagCompound;
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -48,7 +50,7 @@ class WorldEncountersTest {
 
     @Test
     void aCoordinatorClearIsAuthorizedOnceEvenForAnIdenticalNestedWrite() {
-        EncounterCoordinator.TargetWrite write = new EncounterCoordinator.TargetWrite(null, null);
+        EncounterCoordinator.TargetWrite write = new EncounterCoordinator.TargetWrite(null, null, null);
 
         assertTrue(write.consume(null));
         assertFalse(write.consume(null));
@@ -78,6 +80,26 @@ class WorldEncountersTest {
 
         assertFalse(world.encounters.containsKey(mob));
         assertFalse(world.blocksTargetWrite(mob, true, incumbent::equals));
+        world.onEntityAdded(entity);
+        assertFalse(world.encounters.containsKey(mob));
+        world.recordPlayerHit(mob, player, 99, 20.0F, 18.0F, () -> null);
+        assertEquals(2.0, world.encounters.get(mob).copyScores().get(player), 0.0);
+    }
+
+    @Test
+    void playerDeathRemovesTheirScoresAcrossWorldsAndKeepsNpcCombat() {
+        WorldEncounters otherWorld = new WorldEncounters();
+        world.recordPlayerHit(mob, player, 20, 20.0F, 3.0F, () -> incumbent);
+        otherWorld.recordPlayerHit(mob, player, 20, 20.0F, 3.0F, () -> null);
+        world.encounters.get(mob).selectTarget(25, id -> TargetObservation.IN_REACH);
+        otherWorld.encounters.get(mob).selectTarget(25, id -> TargetObservation.IN_REACH);
+
+        WorldEncounters.removePlayerScores(Arrays.asList(world, otherWorld), player);
+
+        assertEquals(1, world.encounters.get(mob).participantCount());
+        assertEquals(incumbent, world.encounters.get(mob).selectTarget(26, id -> TargetObservation.IN_REACH));
+        assertEquals(0, otherWorld.encounters.get(mob).participantCount());
+        assertNull(otherWorld.encounters.get(mob).selectTarget(26, id -> TargetObservation.IN_REACH));
     }
 
     private UUID unexpectedOpeningLookup() {

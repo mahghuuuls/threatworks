@@ -1,15 +1,21 @@
 package com.mahghuuuls.threatworks.server;
 
+import com.mahghuuuls.threatworks.api.ThreatActions;
 import com.mahghuuuls.threatworks.threat.Encounter;
+import com.mahghuuuls.threatworks.threat.Encounter.TargetObservation;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityCreature;
 import net.minecraft.entity.EntityLiving;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.player.EntityPlayerMP;
+import net.minecraft.stats.StatList;
 import net.minecraft.util.DamageSource;
 import net.minecraft.world.World;
 import net.minecraft.world.WorldServer;
 import net.minecraftforge.event.world.WorldEvent;
+import net.minecraftforge.event.entity.living.LivingDeathEvent;
+import net.minecraftforge.event.entity.player.PlayerEvent;
+import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 
@@ -22,10 +28,11 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
-public final class EncounterCoordinator {
+public final class EncounterCoordinator implements ThreatActions {
     public static final EncounterCoordinator INSTANCE = new EncounterCoordinator();
 
     private final Map<WorldServer, WorldEncounters> worlds = new IdentityHashMap<>();
+    private final Map<EntityPlayerMP, Integer> pendingPlayerDeaths = new IdentityHashMap<>();
     private TargetWrite targetWrite;
 
     private EncounterCoordinator() {
@@ -53,6 +60,47 @@ public final class EncounterCoordinator {
             if (state != null) {
                 world.removeEventListener(state);
             }
+        }
+    }
+
+    public void serverStopped() {
+        worlds.forEach(World::removeEventListener);
+        worlds.clear();
+        pendingPlayerDeaths.clear();
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOWEST, receiveCanceled = true)
+    public void onPlayerDeathAttempt(LivingDeathEvent event) {
+        if (event.getEntityLiving() instanceof EntityPlayerMP) {
+            EntityPlayerMP player = (EntityPlayerMP) event.getEntityLiving();
+            pendingPlayerDeaths.putIfAbsent(player, player.getStatFile().readStat(StatList.DEATHS));
+        }
+    }
+
+    @SubscribeEvent
+    public void onPlayerClone(PlayerEvent.Clone event) {
+        if (event.isWasDeath() && event.getOriginal() instanceof EntityPlayerMP) {
+            EntityPlayerMP original = (EntityPlayerMP) event.getOriginal();
+            Integer before = pendingPlayerDeaths.remove(original);
+            if (before != null) {
+                confirmPlayerDeath(original, before);
+            }
+        }
+    }
+
+    @SubscribeEvent
+    public void onServerTick(TickEvent.ServerTickEvent event) {
+        if (event.phase != TickEvent.Phase.END || pendingPlayerDeaths.isEmpty()) {
+            return;
+        }
+        pendingPlayerDeaths.forEach(this::confirmPlayerDeath);
+        pendingPlayerDeaths.clear();
+    }
+
+    private void confirmPlayerDeath(EntityPlayerMP player, int previousDeaths) {
+        // Vanilla increments the death statistic after Forge accepts the death event.
+        if (player.getStatFile().readStat(StatList.DEATHS) != previousDeaths) {
+            WorldEncounters.removePlayerScores(worlds.values(), player.getUniqueID());
         }
     }
 
@@ -88,8 +136,8 @@ public final class EncounterCoordinator {
         if (!(mob instanceof EntityCreature) || !(mob.world instanceof WorldServer)) {
             return false;
         }
-        TargetWrite write = targetWrite;
-        if (write != null && write.mob == mob) {
+        TargetWrite write = activeWrite(mob);
+        if (write != null) {
             return !write.consume(requestedTarget);
         }
         WorldServer world = (WorldServer) mob.world;
@@ -99,13 +147,125 @@ public final class EncounterCoordinator {
                 target -> MobTargets.resolve(world, (EntityCreature) mob, world.getEntityFromUuid(target)) != null);
     }
 
-    public Inspection inspect(EntityLivingBase victim) {
-        WorldEncounters state = worlds.get(victim.world);
-        Encounter encounter = state == null ? null : state.encounters.get(victim.getUniqueID());
-        EntityLivingBase actualTarget = ((EntityLiving) victim).getAttackTarget();
-        return new Inspection(encounter != null && victim.isEntityAlive(),
-                actualTarget == null ? null : actualTarget.getUniqueID(),
-                encounter == null || !victim.isEntityAlive() ? Collections.emptyMap() : encounter.copyScores());
+    @Override
+    public Result grant(EntityLivingBase victim, EntityLivingBase participant, double amount) {
+        Result rejected = checkAction(victim, participant);
+        if (rejected != null) {
+            return rejected;
+        }
+        Encounter encounter = worlds.get(victim.world).encounters.get(victim.getUniqueID());
+        if (encounter == null) {
+            return Result.UNTRACKED;
+        }
+        switch (encounter.grant(participant.getUniqueID(), amount)) {
+            case APPLIED:
+                return Result.APPLIED;
+            case INVALID_AMOUNT:
+                return Result.INVALID_AMOUNT;
+            case SCORE_LIMIT:
+                return Result.SCORE_LIMIT;
+            default:
+                throw new AssertionError("Unhandled threat grant outcome");
+        }
+    }
+
+    @Override
+    public Result taunt(EntityLivingBase victim, EntityLivingBase participant) {
+        Result rejected = checkAction(victim, participant);
+        if (rejected != null) {
+            return rejected;
+        }
+        EntityCreature mob = (EntityCreature) victim;
+        if (activeWrite(mob) != null) {
+            return Result.TARGET_WRITE_IN_PROGRESS;
+        }
+        WorldServer world = (WorldServer) mob.world;
+        WorldEncounters state = worlds.get(world);
+        UUID mobId = mob.getUniqueID();
+        Encounter encounter = state.encounters.get(mobId);
+        if (encounter == null && !(participant instanceof EntityPlayerMP)) {
+            return Result.UNTRACKED;
+        }
+        EntityLivingBase previous = mob.getAttackTarget();
+        UUID incumbent = previous == null || world.getEntityFromUuid(previous.getUniqueID()) != previous
+                ? null : previous.getUniqueID();
+        UUID taunter = participant.getUniqueID();
+        Encounter taunted = Encounter.tryTaunt(encounter, taunter, incumbent, world.getMinecraftServer().getTickCounter(),
+                id -> MobTargets.observe(world, mob, world.getEntityFromUuid(id)));
+        if (taunted == null) {
+            return Result.INELIGIBLE_TAUNTER;
+        }
+        state.encounters.put(mobId, taunted);
+        applyTarget(world, state, mob, taunted, taunter, participant, previous);
+        return Result.APPLIED;
+    }
+
+    private Result checkAction(EntityLivingBase mob, EntityLivingBase participant) {
+        if (mob == null) {
+            return Result.UNSUPPORTED_MOB;
+        }
+        if (!(mob.world instanceof WorldServer)) {
+            return Result.SERVER_WORLD_UNAVAILABLE;
+        }
+        WorldServer world = (WorldServer) mob.world;
+        if (!world.getMinecraftServer().isCallingFromMinecraftThread()) {
+            return Result.WRONG_THREAD;
+        }
+        if (!worlds.containsKey(world)) {
+            return Result.SERVER_WORLD_UNAVAILABLE;
+        }
+        if (!supports(mob)) {
+            return Result.UNSUPPORTED_MOB;
+        }
+        if (!mob.isEntityAlive() || world.getEntityFromUuid(mob.getUniqueID()) != mob) {
+            return Result.MOB_UNAVAILABLE;
+        }
+        if (participant == null || world.getEntityFromUuid(participant.getUniqueID()) != participant
+                || !MobTargets.isAttackable((EntityCreature) mob, participant)) {
+            return Result.INVALID_PARTICIPANT;
+        }
+        return null;
+    }
+
+    public Inspection inspect(EntityLivingBase victim, int limit) {
+        EntityCreature mob = (EntityCreature) victim;
+        WorldServer world = (WorldServer) mob.world;
+        WorldEncounters state = worlds.get(world);
+        Encounter encounter = state == null || !mob.isEntityAlive() ? null : state.encounters.get(mob.getUniqueID());
+        EntityLivingBase actualTarget = mob.getAttackTarget();
+        UUID target = actualTarget == null ? null : actualTarget.getUniqueID();
+        if (encounter == null) {
+            return new Inspection(false, target, null, 0, null, Collections.emptyList(), 0);
+        }
+
+        int tick = world.getMinecraftServer().getTickCounter();
+        List<Participant> participants = new ArrayList<>();
+        for (Map.Entry<UUID, Double> score : encounter.copyScores(limit).entrySet()) {
+            UUID id = score.getKey();
+            participants.add(new Participant(id, score.getValue(), eligibility(world, mob, encounter, id, tick)));
+        }
+        int remaining = encounter.remainingTauntTicks(tick);
+        UUID taunter = remaining == 0 ? null : encounter.getTaunter();
+        if (taunter != null && !encounter.isEligible(taunter, tick,
+                MobTargets.observe(world, mob, world.getEntityFromUuid(taunter)))) {
+            taunter = null;
+            remaining = 0;
+        }
+        return new Inspection(true, target, taunter, remaining, encounter.remainingResetTicks(tick),
+                Collections.unmodifiableList(participants),
+                encounter.participantCount() - participants.size());
+    }
+
+    private String eligibility(WorldServer world, EntityCreature mob, Encounter encounter, UUID participant, int tick) {
+        EntityLivingBase candidate = MobTargets.resolve(world, mob, world.getEntityFromUuid(participant));
+        if (candidate == null) {
+            return "unavailable_or_outside_engagement";
+        }
+        TargetObservation observation = MobTargets.observe(world, mob, candidate);
+        if (encounter.isEligible(participant, tick, observation)) {
+            return observation.hasLostSight() ? "sight_grace" : "eligible";
+        }
+        return observation.hasLostSight() ? "no_line_of_sight" : "cannot_attack_or_pursue";
     }
 
     @SubscribeEvent
@@ -119,6 +279,7 @@ public final class EncounterCoordinator {
             return;
         }
 
+        int serverTick = world.getMinecraftServer().getTickCounter();
         Iterator<Map.Entry<UUID, Encounter>> entries = state.encounters.entrySet().iterator();
         List<Runnable> targetUpdates = new ArrayList<>();
         while (entries.hasNext()) {
@@ -127,7 +288,11 @@ public final class EncounterCoordinator {
             if (!(entity instanceof EntityCreature) || !entity.isEntityAlive()) {
                 entries.remove();
             } else {
-                reconcileTarget(world, state, (EntityCreature) entity, entry.getValue(), targetUpdates);
+                Encounter encounter = entry.getValue();
+                reconcileTarget(world, state, (EntityCreature) entity, encounter, serverTick, targetUpdates);
+                if (encounter.resetDue(serverTick)) {
+                    entries.remove();
+                }
             }
         }
         // The vanilla setter notifies Forge listeners that can change encounter membership.
@@ -135,16 +300,16 @@ public final class EncounterCoordinator {
     }
 
     private void reconcileTarget(WorldServer world, WorldEncounters state, EntityCreature mob, Encounter encounter,
-                                 List<Runnable> updates) {
+                                 int serverTick, List<Runnable> updates) {
         UUID previous = encounter.getTarget();
         EntityLivingBase previousTarget = previous == null ? null
                 : MobTargets.resolve(world, mob, world.getEntityFromUuid(previous));
         boolean lostTarget = previous != null && previousTarget == null;
         if (!lostTarget && (encounter.holdsOpeningTarget(mob.ticksExisted)
-                || !encounter.shouldReevaluate(mob.ticksExisted, mob.getEntityId()))) {
+                || !encounter.shouldReevaluate(serverTick, mob.getEntityId()))) {
             return;
         }
-        UUID selected = encounter.selectTarget(mob.ticksExisted,
+        UUID selected = encounter.selectTarget(serverTick,
                 id -> MobTargets.observe(world, mob, world.getEntityFromUuid(id)));
         EntityLivingBase current = mob.getAttackTarget();
         if (selected == null && (current == null || !current.getUniqueID().equals(previous))) {
@@ -170,7 +335,7 @@ public final class EncounterCoordinator {
             return;
         }
         TargetWrite saved = targetWrite;
-        targetWrite = new TargetWrite(mob, target);
+        targetWrite = new TargetWrite(mob, target, saved);
         try {
             mob.setAttackTarget(target);
         } finally {
@@ -178,14 +343,25 @@ public final class EncounterCoordinator {
         }
     }
 
+    private TargetWrite activeWrite(EntityLiving mob) {
+        for (TargetWrite write = targetWrite; write != null; write = write.previous) {
+            if (write.mob == mob) {
+                return write;
+            }
+        }
+        return null;
+    }
+
     static final class TargetWrite {
         private final EntityLiving mob;
         private final EntityLivingBase target;
+        private final TargetWrite previous;
         private boolean consumed;
 
-        TargetWrite(EntityLiving mob, EntityLivingBase target) {
+        TargetWrite(EntityLiving mob, EntityLivingBase target, TargetWrite previous) {
             this.mob = mob;
             this.target = target;
+            this.previous = previous;
         }
 
         boolean consume(EntityLivingBase requested) {
@@ -200,12 +376,33 @@ public final class EncounterCoordinator {
     public static final class Inspection {
         public final boolean tracked;
         public final UUID target;
-        public final Map<UUID, Double> scores;
+        public final UUID taunter;
+        public final int tauntTicks;
+        public final Integer resetTicks;
+        public final List<Participant> participants;
+        public final int omitted;
 
-        private Inspection(boolean tracked, UUID target, Map<UUID, Double> scores) {
+        private Inspection(boolean tracked, UUID target, UUID taunter, int tauntTicks, Integer resetTicks,
+                           List<Participant> participants, int omitted) {
             this.tracked = tracked;
             this.target = target;
-            this.scores = scores;
+            this.taunter = taunter;
+            this.tauntTicks = tauntTicks;
+            this.resetTicks = resetTicks;
+            this.participants = participants;
+            this.omitted = omitted;
+        }
+    }
+
+    public static final class Participant {
+        public final UUID id;
+        public final double score;
+        public final String eligibility;
+
+        private Participant(UUID id, double score, String eligibility) {
+            this.id = id;
+            this.score = score;
+            this.eligibility = eligibility;
         }
     }
 }
