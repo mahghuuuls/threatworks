@@ -1,6 +1,9 @@
 package com.mahghuuuls.threatworks.server;
 
 import com.mahghuuuls.threatworks.api.ThreatActions;
+import com.mahghuuuls.threatworks.config.ServerTuning;
+import com.mahghuuuls.threatworks.config.ServerTuning.MobType;
+import com.mahghuuuls.threatworks.points.ThreatPoints;
 import com.mahghuuuls.threatworks.threat.Encounter;
 import com.mahghuuuls.threatworks.threat.Encounter.TargetObservation;
 import net.minecraft.entity.Entity;
@@ -8,6 +11,7 @@ import net.minecraft.entity.EntityCreature;
 import net.minecraft.entity.EntityLiving;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.player.EntityPlayerMP;
+import net.minecraft.entity.projectile.EntityArrow;
 import net.minecraft.stats.StatList;
 import net.minecraft.util.DamageSource;
 import net.minecraft.world.World;
@@ -33,13 +37,25 @@ public final class EncounterCoordinator implements ThreatActions {
 
     private final Map<WorldServer, WorldEncounters> worlds = new IdentityHashMap<>();
     private final Map<EntityPlayerMP, Integer> pendingPlayerDeaths = new IdentityHashMap<>();
+    private ServerTuning tuning;
+    private ThreatPoints points;
     private TargetWrite targetWrite;
 
     private EncounterCoordinator() {
     }
 
     public static boolean supports(EntityLivingBase mob) {
-        return MobTargets.supports(mob);
+        return INSTANCE.enabledType(mob) != null;
+    }
+
+    private MobType enabledType(EntityLivingBase mob) {
+        MobType type = MobTargets.supportedType(mob);
+        return type != null && tuning != null && tuning.isEnabled(type) ? type : null;
+    }
+
+    public void startServer(ServerTuning tuning, ThreatPoints points) {
+        this.tuning = tuning;
+        this.points = points;
     }
 
     @SubscribeEvent
@@ -67,6 +83,8 @@ public final class EncounterCoordinator implements ThreatActions {
         worlds.forEach(World::removeEventListener);
         worlds.clear();
         pendingPlayerDeaths.clear();
+        tuning = null;
+        points = null;
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST, receiveCanceled = true)
@@ -104,13 +122,30 @@ public final class EncounterCoordinator implements ThreatActions {
         }
     }
 
+    public ArrowLaunch.Snapshot observeArrowLaunch(EntityArrow arrow) {
+        if (!(arrow.world instanceof WorldServer) || arrow.isDead
+                || !Double.isFinite(arrow.motionX) || !Double.isFinite(arrow.motionY) || !Double.isFinite(arrow.motionZ)
+                || (arrow.motionX == 0 && arrow.motionY == 0 && arrow.motionZ == 0)) {
+            return null;
+        }
+        WorldServer world = (WorldServer) arrow.world;
+        if (!world.getMinecraftServer().isCallingFromMinecraftThread()) {
+            return null;
+        }
+        WorldEncounters state = worlds.get(world);
+        Entity shooter = arrow.shootingEntity;
+        if (state == null || !(shooter instanceof EntityLivingBase) || shooter.world != world
+                || !shooter.isEntityAlive() || world.getEntityFromUuid(shooter.getUniqueID()) != shooter) {
+            return null;
+        }
+        return new ArrowLaunch.Snapshot(shooter.getUniqueID(), state.launchSession,
+                points.total((EntityLivingBase) shooter, tuning));
+    }
+
     public void onHealthWritten(EntityLivingBase victim, DamageSource source, EntityLivingBase incumbent,
                                 float before, float after) {
-        if (source == null || !"player".equals(source.getDamageType())) {
-            return;
-        }
-        Entity actor = source.getTrueSource();
-        if (!(actor instanceof EntityPlayerMP) || source.getImmediateSource() != actor) {
+        MobType type = enabledType(victim);
+        if (type == null) {
             return;
         }
 
@@ -122,11 +157,13 @@ public final class EncounterCoordinator implements ThreatActions {
             return;
         }
 
-        UUID playerId = actor.getUniqueID();
-        if (world.getEntityFromUuid(playerId) != actor || !MobTargets.isAttackable(mob, (EntityPlayerMP) actor)) {
+        DamageAttribution hit = DamageAttribution.resolve(source, state.launchSession);
+        if (hit == null || world.getEntityFromUuid(hit.attacker.getUniqueID()) != hit.attacker
+                || !MobTargets.isAttackable(mob, hit.attacker)) {
             return;
         }
-        state.recordPlayerHit(mobId, playerId, mob.ticksExisted, before, after,
+        state.recordHit(mobId, hit.attacker.getUniqueID(), mob.ticksExisted, hit.attacker instanceof EntityPlayerMP,
+                before, after, tuning.rulesFor(type), () -> hit.points(() -> points.total(hit.attacker, tuning)),
                 () -> incumbent != null && world.getEntityFromUuid(incumbent.getUniqueID()) == incumbent
                         && MobTargets.observe(world, mob, incumbent).isEligible()
                         ? incumbent.getUniqueID() : null);
@@ -191,7 +228,8 @@ public final class EncounterCoordinator implements ThreatActions {
                 ? null : previous.getUniqueID();
         UUID taunter = participant.getUniqueID();
         Encounter taunted = Encounter.tryTaunt(encounter, taunter, incumbent, world.getMinecraftServer().getTickCounter(),
-                id -> MobTargets.observe(world, mob, world.getEntityFromUuid(id)));
+                id -> MobTargets.observe(world, mob, world.getEntityFromUuid(id)),
+                tuning.rulesFor(MobTargets.supportedType(mob)));
         if (taunted == null) {
             return Result.INELIGIBLE_TAUNTER;
         }

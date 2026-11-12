@@ -6,6 +6,7 @@ import net.minecraft.command.CommandBase;
 import net.minecraft.command.CommandException;
 import net.minecraft.command.ICommandSender;
 import net.minecraft.command.WrongUsageException;
+import net.minecraft.entity.EntityLiving;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.text.TextComponentString;
@@ -30,7 +31,7 @@ final class ThreatActionsCommand extends CommandBase {
     @Override
     public String getUsage(ICommandSender sender) {
         return "/twfixture <grant|taunt|offthread-grant|offthread-taunt> <mob> <participant> [amount]"
-                + " or /twfixture rewind-age <mob> <ticks>";
+                + " or /twfixture rewind-age <mob> <ticks> or /twfixture opening-target <mob> <participant>";
     }
 
     @Override
@@ -39,6 +40,17 @@ final class ThreatActionsCommand extends CommandBase {
             throw new WrongUsageException(getUsage(sender));
         }
         String action = args[0];
+        if ("opening-target".equals(action) && args.length == 3) {
+            EntityLiving mob = getEntity(server, sender, args[1], EntityLiving.class);
+            EntityLivingBase target = getEntity(server, sender, args[2], EntityLivingBase.class);
+            mob.setAttackTarget(target);
+            if (mob.getAttackTarget() != target) {
+                throw new CommandException("Opening target write was rejected.");
+            }
+            LOGGER.info("opening_target mob={} target={} worldTick={}", mob.getUniqueID(), target.getUniqueID(),
+                    mob.world.getTotalWorldTime());
+            return;
+        }
         if ("rewind-age".equals(action) && args.length == 3) {
             EntityLivingBase mob = getEntity(server, sender, args[1], EntityLivingBase.class);
             int before = mob.ticksExisted;

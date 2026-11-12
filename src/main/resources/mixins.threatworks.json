@@ -5,6 +5,7 @@
   "compatibilityLevel": "JAVA_8",
   "refmap": "mixins.threatworks.refmap.json",
   "mixins": [
+    "EntityArrowMixin",
     "EntityLivingBaseMixin",
     "EntityLivingMixin"
   ]

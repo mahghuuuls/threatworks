@@ -5,6 +5,8 @@ import net.minecraft.entity.EntityLiving;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.monster.EntityIronGolem;
 import net.minecraft.entity.player.EntityPlayerMP;
+import net.minecraft.entity.projectile.EntityArrow;
+import net.minecraft.init.Items;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.entity.living.LivingDamageEvent;
 import net.minecraftforge.event.entity.living.LivingDeathEvent;
@@ -31,17 +33,31 @@ public final class ThreatworksFixture {
 
     @Mod.EventHandler
     public void init(FMLInitializationEvent event) {
+        LOGGER.info("points_provider item=minecraft:stick registered={}",
+                ThreatworksMod.registerItemThreatPoints(Items.STICK, (stack, slot) -> {
+                    LOGGER.info("points_provider item=minecraft:stick slot={} count={} points=100", slot, stack.getCount());
+                    return 100;
+                }));
         MinecraftForge.EVENT_BUS.register(this);
     }
 
     @Mod.EventHandler
     public void serverStarting(FMLServerStartingEvent event) {
         event.registerServerCommand(new ThreatActionsCommand());
+        event.registerServerCommand(new ArrowFixtureCommand());
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public void onLivingDamage(LivingDamageEvent event) {
         EntityLivingBase victim = event.getEntityLiving();
+        if (!victim.world.isRemote && victim.getTags().contains("tw_arrow_probe")
+                && event.getSource().getImmediateSource() instanceof EntityArrow) {
+            EntityArrow arrow = (EntityArrow) event.getSource().getImmediateSource();
+            LOGGER.info("arrow_impact arrow={} victim={} shooter={} source={} amount={} worldTick={}",
+                    arrow.getUniqueID(), victim.getUniqueID(), ArrowFixtureCommand.identity(arrow.shootingEntity),
+                    ArrowFixtureCommand.identity(event.getSource().getTrueSource()), event.getAmount(),
+                    victim.world.getTotalWorldTime());
+        }
         if (!victim.world.isRemote && event.getAmount() > 0.0F
                 && "player".equals(event.getSource().getDamageType()) && victim.removeTag(CANCEL_NEXT)) {
             event.setCanceled(true);

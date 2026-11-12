@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.UUID;
 
+import static com.mahghuuuls.threatworks.TestRules.DEFAULT_RULES;
 import static com.mahghuuuls.threatworks.threat.Encounter.TargetObservation.INELIGIBLE;
 import static com.mahghuuuls.threatworks.threat.Encounter.TargetObservation.IN_REACH;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -17,7 +18,7 @@ class EncounterLifecycleTest {
 
     @Test
     void npcKeepsEncounterOpenWhenPlayerLeavesAndReturningPlayerUsesRetainedScore() {
-        Encounter encounter = Encounter.recordPlayerHit(null, player, npc, 10, 17);
+        Encounter encounter = Encounter.recordHit(null, player, npc, 10, 17, DEFAULT_RULES);
         assertEquals(player, encounter.selectTarget(20, id -> IN_REACH));
         encounter.participantChanged(player);
         assertTrue(encounter.shouldReevaluate(21, 0));
@@ -32,7 +33,7 @@ class EncounterLifecycleTest {
 
     @Test
     void continuouslyIneligibleFightReleasesTargetAndExpiresAtItsOriginalDeadline() {
-        Encounter encounter = Encounter.tryTaunt(null, player, null, 100, id -> IN_REACH);
+        Encounter encounter = Encounter.tryTaunt(null, player, null, 100, id -> IN_REACH, DEFAULT_RULES);
         encounter.grant(player, 12.0);
         assertNull(encounter.selectTarget(110, id -> INELIGIBLE));
         assertNull(encounter.getTaunter());
@@ -47,7 +48,7 @@ class EncounterLifecycleTest {
 
     @Test
     void returningBeforeDeadlineCancelsResetAndNextLossStartsANewWindow() {
-        Encounter encounter = Encounter.tryTaunt(null, player, null, 100, id -> IN_REACH);
+        Encounter encounter = Encounter.tryTaunt(null, player, null, 100, id -> IN_REACH, DEFAULT_RULES);
         encounter.grant(player, 12.0);
         assertNull(encounter.selectTarget(110, id -> INELIGIBLE));
         assertEquals(player, encounter.selectTarget(309, id -> IN_REACH));

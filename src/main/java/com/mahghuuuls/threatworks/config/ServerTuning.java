@@ -1,0 +1,240 @@
+package com.mahghuuuls.threatworks.config;
+
+import com.mahghuuuls.threatworks.threat.Encounter.Rules;
+import net.minecraftforge.common.config.Configuration;
+import net.minecraftforge.common.config.Property;
+
+import java.io.File;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.EnumMap;
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.Consumer;
+import java.util.function.Predicate;
+import java.util.regex.Pattern;
+
+/** Effective values for one server run. Loading never rewrites rejected input. */
+public final class ServerTuning {
+    public static final double BASE_THREAT_PER_HEALTH_LOST = 1.0;
+    public static final double POINT_SCALE = 100.0;
+    public static final int TICKS_PER_SECOND = 20;
+    // Six vanilla slots can all contribute at either extreme without overflowing the sum.
+    public static final double MAX_ITEM_POINTS = Double.MAX_VALUE / 8.0;
+
+    private static final String CATEGORY = "server";
+    private static final double ORDINARY_LEAD = 0.2;
+    private static final double MAXIMUM_LEAD = 0.4;
+    private static final double CHASE_START = 8.0;
+    private static final double CHASE_END = 16.0;
+    private static final double OPENING_THREAT = 10.0;
+    private static final double TAUNT_SECONDS = 3.0;
+    private static final double RESET_SECONDS = 10.0;
+    private static final double SIGHT_SECONDS = 2.0;
+    private static final double MAX_SECONDS = (double) Integer.MAX_VALUE / TICKS_PER_SECOND;
+    private static final Pattern ITEM_ID = Pattern.compile("[a-z0-9_.-]+:[a-z0-9_./-]+");
+
+    public enum MobType {
+        ZOMBIE("minecraft:zombie"), SKELETON("minecraft:skeleton");
+
+        public final String id;
+
+        MobType(String id) {
+            this.id = id;
+        }
+
+        private static MobType find(String id) {
+            for (MobType type : values()) {
+                if (type.id.equals(id)) {
+                    return type;
+                }
+            }
+            return null;
+        }
+    }
+
+    private final Set<MobType> enabled;
+    private final Map<MobType, Rules> rules;
+    private final Map<String, Map<Integer, Double>> assignments;
+
+    private ServerTuning(Set<MobType> enabled, Map<MobType, Rules> rules,
+                         Map<String, Map<Integer, Double>> assignments) {
+        // These collections are built exclusively by the loader and never escape.
+        this.enabled = enabled;
+        this.rules = rules;
+        this.assignments = assignments;
+    }
+
+    public boolean isEnabled(MobType type) {
+        return enabled.contains(type);
+    }
+
+    public Rules rulesFor(MobType type) {
+        return rules.get(type);
+    }
+
+    /** A null metadata key means item-wide; a null result means there is no such assignment. */
+    public Double assignedPoints(String itemId, Integer metadata) {
+        Map<Integer, Double> variants = assignments.get(itemId);
+        return variants == null ? null : variants.get(metadata);
+    }
+
+    public static ServerTuning load(File file, Predicate<String> registeredItem, Consumer<String> warn) {
+        Configuration fileConfig = new Configuration(file);
+        fileConfig.setCategoryComment(CATEGORY, "Server combat settings. Changes take effect on server restart.");
+        ServerTuning tuning = read(fileConfig, registeredItem, warn);
+        if (fileConfig.hasChanged()) {
+            fileConfig.save();
+        }
+        return tuning;
+    }
+
+    private static ServerTuning read(Configuration config, Predicate<String> registeredItem, Consumer<String> warn) {
+        double ordinary = number(config, "ordinarySwitchLead", ORDINARY_LEAD, 0, Double.MAX_VALUE, false,
+                "Fraction a challenger must exceed the current threat by (0.2 means 20%).", warn);
+        double maximum = number(config, "maximumChaseLead", MAXIMUM_LEAD, 0, Double.MAX_VALUE, false,
+                "Fraction required at the far end of a chase. At least ordinarySwitchLead.", warn);
+        if (maximum < ordinary) {
+            warn.accept("maximumChaseLead=" + maximum + " is below ordinarySwitchLead=" + ordinary
+                    + "; using ordinarySwitchLead=" + ORDINARY_LEAD + ", maximumChaseLead=" + MAXIMUM_LEAD);
+            ordinary = ORDINARY_LEAD;
+            maximum = MAXIMUM_LEAD;
+        }
+        double start = number(config, "chaseIncreaseStart", CHASE_START, 0, Double.MAX_VALUE, true,
+                "Distance in blocks where the extra chase lead begins. Positive.", warn);
+        double end = number(config, "chaseIncreaseEnd", CHASE_END, 0, Double.MAX_VALUE, true,
+                "Distance in blocks where the maximum chase lead applies. Greater than chaseIncreaseStart.", warn);
+        if (end <= start) {
+            warn.accept("chaseIncreaseEnd=" + end + " is not above chaseIncreaseStart=" + start
+                    + "; using chaseIncreaseStart=" + CHASE_START + ", chaseIncreaseEnd=" + CHASE_END);
+            start = CHASE_START;
+            end = CHASE_END;
+        }
+        double opening = number(config, "openingThreat", OPENING_THREAT, 0, Rules.MAX_SCORE, false,
+                "Threat seeded for a mob's eligible current target when tracking starts.", warn);
+        int taunt = duration(config, "tauntDuration", TAUNT_SECONDS, true, "How long a default taunt holds aggro.", warn);
+        int reset = duration(config, "noEligibleResetDelay", RESET_SECONDS, false,
+                "How long a mob keeps scores with no eligible target.", warn);
+        int sight = duration(config, "sightLossGrace", SIGHT_SECONDS, false,
+                "How long a mob retains its target after losing sight.", warn);
+
+        String[] mobIds = {MobType.ZOMBIE.id, MobType.SKELETON.id};
+        Set<MobType> enabled = EnumSet.noneOf(MobType.class);
+        for (String value : list(config, "enabledMobs", mobIds,
+                "List supported mob IDs to track. Omitted mobs keep normal targeting.", warn)) {
+            MobType type = MobType.find(value.trim());
+            if (type == null) {
+                warn.accept("enabledMobs entry '" + value + "' has no supported mob policy; ignoring it");
+            } else {
+                enabled.add(type);
+            }
+        }
+        Map<MobType, Double> seeds = new EnumMap<>(MobType.class);
+        for (String entry : list(config, "openingThreatOverrides", new String[0],
+                "Replace opening threat for one mob, e.g. minecraft:zombie=15.", warn)) {
+            String[] parts = entry.split("=", -1);
+            MobType type = MobType.find(parts[0].trim());
+            double amount = parts.length == 2 ? parse(parts[1]) : Double.NaN;
+            if (type == null || !inRange(amount, 0, Rules.MAX_SCORE, false)) {
+                warn.accept("openingThreatOverrides entry '" + entry + "' is invalid; "
+                        + (type == null ? "ignoring it" : "using " + seeds.getOrDefault(type, opening)));
+            } else if (seeds.putIfAbsent(type, amount) != null) {
+                warn.accept("Duplicate openingThreatOverrides entry '" + entry + "'; keeping " + seeds.get(type));
+            }
+        }
+        Map<MobType, Rules> rules = new EnumMap<>(MobType.class);
+        for (MobType type : MobType.values()) {
+            rules.put(type, new Rules(seeds.getOrDefault(type, opening), ordinary, maximum, start, end, taunt, reset, sight));
+        }
+        Map<String, Map<Integer, Double>> assignments = new HashMap<>();
+        List<Runnable> invalidValues = new ArrayList<>();
+        for (String entry : list(config, "itemThreatPointAssignments", new String[0],
+                "Signed points per equipped item: minecraft:stick=100 or minecraft:wool@14=-50. Zero overrides a provider.", warn)) {
+            String[] parts = entry.split("=", -1);
+            String[] selector = parts[0].trim().split("@", -1);
+            String item = selector[0];
+            Integer metadata = selector.length == 2 ? metadata(selector[1]) : null;
+            double points = parts.length == 2 ? parse(parts[1]) : Double.NaN;
+            if (selector.length > 2 || (selector.length == 2 && metadata == null)
+                    || !ITEM_ID.matcher(item).matches() || !registeredItem.test(item)) {
+                warn.accept("Invalid itemThreatPointAssignments selector in '" + entry + "'; ignoring it");
+                continue;
+            }
+            if (!validItemPoints(points)) {
+                // Resolve diagnostics after parsing so valid fallbacks can appear anywhere in the list.
+                invalidValues.add(() -> {
+                    Map<Integer, Double> variants = assignments.get(item);
+                    Double effective = variants == null ? null : variants.get(metadata);
+                    if (effective == null && variants != null) {
+                        effective = variants.get(null);
+                    }
+                    warn.accept("Invalid itemThreatPointAssignments points in '" + entry + "'; using "
+                            + (effective != null ? "pack value " + effective : "the item provider, or zero if absent"));
+                });
+                continue;
+            }
+            Map<Integer, Double> variants = assignments.computeIfAbsent(item, ignored -> new HashMap<>());
+            Double previous = variants.putIfAbsent(metadata, points);
+            if (previous != null) {
+                warn.accept("Duplicate itemThreatPointAssignments entry '" + entry + "'; keeping " + previous);
+            }
+        }
+        invalidValues.forEach(Runnable::run);
+        return new ServerTuning(enabled, rules, assignments);
+    }
+
+    public static boolean validItemPoints(double points) {
+        return Double.isFinite(points) && Math.abs(points) <= MAX_ITEM_POINTS;
+    }
+
+    private static Integer metadata(String value) {
+        try {
+            int number = Integer.parseInt(value);
+            return number >= 0 ? number : null;
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    private static int duration(Configuration config, String key, double fallback, boolean positive, String comment,
+                                Consumer<String> warn) {
+        return (int) Math.ceil(number(config, key, fallback, 0, MAX_SECONDS, positive,
+                comment + " Seconds, rounded up to a server tick.", warn) * TICKS_PER_SECOND);
+    }
+
+    private static double number(Configuration config, String key, double fallback, double min, double max,
+                                 boolean exclusive, String comment, Consumer<String> warn) {
+        Property property = config.get(CATEGORY, key, Double.toString(fallback), comment, Property.Type.DOUBLE);
+        double number = property.isList() ? Double.NaN : parse(property.getString());
+        if (inRange(number, min, max, exclusive)) {
+            return number;
+        }
+        warn.accept(key + "=" + (property.isList() ? "<list>" : property.getString()) + " is invalid; using " + fallback);
+        return fallback;
+    }
+
+    private static boolean inRange(double value, double min, double max, boolean exclusive) {
+        return Double.isFinite(value) && (exclusive ? value > min : value >= min) && value <= max;
+    }
+
+    private static double parse(String value) {
+        try {
+            return Double.parseDouble(value.trim());
+        } catch (NumberFormatException ignored) {
+            return Double.NaN;
+        }
+    }
+
+    private static String[] list(Configuration config, String key, String[] defaults, String comment,
+                                 Consumer<String> warn) {
+        Property property = config.get(CATEGORY, key, defaults, comment);
+        if (property.isList()) {
+            return property.getStringList();
+        }
+        warn.accept(key + " requires a list; using " + Arrays.toString(defaults));
+        return defaults;
+    }
+}

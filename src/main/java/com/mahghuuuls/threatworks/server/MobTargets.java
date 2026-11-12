@@ -1,5 +1,6 @@
 package com.mahghuuuls.threatworks.server;
 
+import com.mahghuuuls.threatworks.config.ServerTuning.MobType;
 import com.mahghuuuls.threatworks.threat.Encounter.TargetObservation;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityCreature;
@@ -25,19 +26,24 @@ import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.WorldServer;
 
 final class MobTargets {
-    private static final ResourceLocation ZOMBIE_ID = new ResourceLocation("minecraft", "zombie");
-    private static final ResourceLocation SKELETON_ID = new ResourceLocation("minecraft", "skeleton");
+    private static final ResourceLocation ZOMBIE_ID = new ResourceLocation(MobType.ZOMBIE.id);
+    private static final ResourceLocation SKELETON_ID = new ResourceLocation(MobType.SKELETON.id);
 
     private MobTargets() {
     }
 
-    static boolean supports(EntityLivingBase mob) {
+    static MobType supportedType(EntityLivingBase mob) {
         if (!(mob.world instanceof WorldServer)) {
-            return false;
+            return null;
         }
         Class<?> type = mob.getClass();
-        return (type == EntityZombie.class && ZOMBIE_ID.equals(EntityList.getKey(mob)))
-                || (type == EntitySkeleton.class && SKELETON_ID.equals(EntityList.getKey(mob)));
+        if (type == EntityZombie.class && ZOMBIE_ID.equals(EntityList.getKey(mob))) {
+            return MobType.ZOMBIE;
+        }
+        if (type == EntitySkeleton.class && SKELETON_ID.equals(EntityList.getKey(mob))) {
+            return MobType.SKELETON;
+        }
+        return null;
     }
 
     static EntityLivingBase resolve(WorldServer world, EntityCreature mob, Entity entity) {

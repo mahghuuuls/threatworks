@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.util.Map;
 import java.util.UUID;
 
+import static com.mahghuuuls.threatworks.TestRules.DEFAULT_RULES;
 import static com.mahghuuuls.threatworks.threat.Encounter.GrantResult.APPLIED;
 import static com.mahghuuuls.threatworks.threat.Encounter.GrantResult.INVALID_AMOUNT;
 import static com.mahghuuuls.threatworks.threat.Encounter.GrantResult.SCORE_LIMIT;
@@ -24,7 +25,7 @@ class EncounterActionsTest {
 
     @Test
     void aGrantChangesOnlyTheNamedScoreAndSchedulesSelection() {
-        Encounter encounter = Encounter.recordPlayerHit(null, player, incumbent, 100, 5.0);
+        Encounter encounter = Encounter.recordHit(null, player, incumbent, 100, 5.0, DEFAULT_RULES);
         assertEquals(incumbent, encounter.selectTarget(105, id -> IN_REACH));
         assertFalse(encounter.shouldReevaluate(106, 0));
 
@@ -38,7 +39,7 @@ class EncounterActionsTest {
 
     @Test
     void invalidAndUnrepresentableGrantsLeaveScoresAndSelectionUntouched() {
-        Encounter encounter = Encounter.recordPlayerHit(null, player, incumbent, 100, 5.0);
+        Encounter encounter = Encounter.recordHit(null, player, incumbent, 100, 5.0, DEFAULT_RULES);
         encounter.selectTarget(105, id -> IN_REACH);
         Map<UUID, Double> before = encounter.copyScores();
 
@@ -54,11 +55,11 @@ class EncounterActionsTest {
 
     @Test
     void damageAtTheScoreLimitCannotOverflow() {
-        Encounter encounter = Encounter.recordPlayerHit(null, player, incumbent, 100, 1.0);
+        Encounter encounter = Encounter.recordHit(null, player, incumbent, 100, 1.0, DEFAULT_RULES);
         double limit = Double.MAX_VALUE / 2.0;
         assertEquals(APPLIED, encounter.grant(secondPlayer, limit));
         assertEquals(SCORE_LIMIT, encounter.grant(secondPlayer, limit));
-        Encounter.recordPlayerHit(encounter, secondPlayer, null, 105, limit);
+        Encounter.recordHit(encounter, secondPlayer, null, 105, limit, DEFAULT_RULES);
 
         assertEquals(limit, encounter.copyScores().get(secondPlayer), 0.0);
         assertEquals(secondPlayer, encounter.selectTarget(105, id -> IN_REACH));
@@ -67,8 +68,8 @@ class EncounterActionsTest {
 
     @Test
     void openingTauntSeedsOnlyAnEligibleIncumbentAndTakesControlImmediately() {
-        assertNull(Encounter.tryTaunt(null, player, incumbent, 100, id -> INELIGIBLE));
-        Encounter encounter = Encounter.tryTaunt(null, player, incumbent, 100, id -> IN_REACH);
+        assertNull(Encounter.tryTaunt(null, player, incumbent, 100, id -> INELIGIBLE, DEFAULT_RULES));
+        Encounter encounter = Encounter.tryTaunt(null, player, incumbent, 100, id -> IN_REACH, DEFAULT_RULES);
         assertEquals(player, encounter.getTarget());
         assertEquals(player, encounter.getTaunter());
         assertFalse(encounter.holdsOpeningTarget(100));
@@ -77,22 +78,22 @@ class EncounterActionsTest {
         assertEquals(10.0, encounter.copyScores().get(player), 0.0);
 
         Encounter noSeed = Encounter.tryTaunt(null, player, incumbent, 100,
-                id -> id.equals(player) ? IN_REACH : INELIGIBLE);
+                id -> id.equals(player) ? IN_REACH : INELIGIBLE, DEFAULT_RULES);
         assertEquals(1, noSeed.participantCount());
         assertEquals(0.0, noSeed.copyScores().get(player), 0.0);
     }
 
     @Test
     void tauntMatchesTheHighestEligibleScoreAndPreservesAHigherTaunterScore() {
-        Encounter encounter = Encounter.recordPlayerHit(null, player, incumbent, 100, 3.0);
+        Encounter encounter = Encounter.recordHit(null, player, incumbent, 100, 3.0, DEFAULT_RULES);
         assertEquals(APPLIED, encounter.grant(secondPlayer, 30.0));
         assertSame(encounter, Encounter.tryTaunt(encounter, player, incumbent, 101,
-                id -> id.equals(secondPlayer) ? INELIGIBLE : IN_REACH));
+                id -> id.equals(secondPlayer) ? INELIGIBLE : IN_REACH, DEFAULT_RULES));
         assertEquals(10.0, encounter.copyScores().get(player), 0.0);
         assertEquals(30.0, encounter.copyScores().get(secondPlayer), 0.0);
 
         assertSame(encounter, Encounter.tryTaunt(encounter, secondPlayer, player, 102,
-                id -> id.equals(player) ? INELIGIBLE : IN_REACH));
+                id -> id.equals(player) ? INELIGIBLE : IN_REACH, DEFAULT_RULES));
         assertEquals(30.0, encounter.copyScores().get(secondPlayer), 0.0);
         assertEquals(secondPlayer, encounter.getTarget());
         assertEquals(10.0, encounter.copyScores(1).get(incumbent), 0.0);
@@ -101,11 +102,11 @@ class EncounterActionsTest {
 
     @Test
     void latestValidTauntReplacesTheTimerAndInvalidTauntKeepsItAndAllScores() {
-        Encounter encounter = Encounter.tryTaunt(null, player, incumbent, 100, id -> IN_REACH);
-        assertSame(encounter, Encounter.tryTaunt(encounter, secondPlayer, player, 120, id -> IN_REACH));
+        Encounter encounter = Encounter.tryTaunt(null, player, incumbent, 100, id -> IN_REACH, DEFAULT_RULES);
+        assertSame(encounter, Encounter.tryTaunt(encounter, secondPlayer, player, 120, id -> IN_REACH, DEFAULT_RULES));
         Map<UUID, Double> before = encounter.copyScores();
         assertNull(Encounter.tryTaunt(encounter, incumbent, secondPlayer, 130,
-                id -> id.equals(incumbent) ? INELIGIBLE : IN_REACH));
+                id -> id.equals(incumbent) ? INELIGIBLE : IN_REACH, DEFAULT_RULES));
         assertEquals(before, encounter.copyScores());
         assertEquals(secondPlayer, encounter.getTaunter());
         assertEquals(50, encounter.remainingTauntTicks(130));
@@ -119,7 +120,7 @@ class EncounterActionsTest {
 
     @Test
     void expiredFocusKeepsItsCurrentTargetWhenNoChallengerQualifies() {
-        Encounter encounter = Encounter.tryTaunt(null, player, incumbent, 100, id -> IN_REACH);
+        Encounter encounter = Encounter.tryTaunt(null, player, incumbent, 100, id -> IN_REACH, DEFAULT_RULES);
 
         assertEquals(player, encounter.selectTarget(160, id -> IN_REACH));
         assertNull(encounter.getTaunter());
@@ -128,20 +129,20 @@ class EncounterActionsTest {
 
     @Test
     void tauntUsesExistingSightGraceAndCannotRenewItAfterSightLoss() {
-        Encounter encounter = Encounter.tryTaunt(null, player, incumbent, 100, id -> IN_REACH);
+        Encounter encounter = Encounter.tryTaunt(null, player, incumbent, 100, id -> IN_REACH, DEFAULT_RULES);
         assertEquals(player, encounter.selectTarget(105, id -> id.equals(player) ? obscured(true) : IN_REACH));
         assertSame(encounter, Encounter.tryTaunt(encounter, player, player, 130,
-                id -> id.equals(player) ? obscured(true) : IN_REACH));
+                id -> id.equals(player) ? obscured(true) : IN_REACH, DEFAULT_RULES));
         assertEquals(player, encounter.selectTarget(144, id -> id.equals(player) ? obscured(true) : IN_REACH));
         assertNull(Encounter.tryTaunt(encounter, player, player, 145,
-                id -> id.equals(player) ? obscured(true) : IN_REACH));
+                id -> id.equals(player) ? obscured(true) : IN_REACH, DEFAULT_RULES));
         assertEquals(incumbent, encounter.selectTarget(145, id -> id.equals(player) ? obscured(true) : IN_REACH));
         assertNull(encounter.getTaunter());
     }
 
     @Test
     void anInvalidTaunterLosesFocusBeforeTheTimerExpires() {
-        Encounter encounter = Encounter.tryTaunt(null, player, incumbent, 100, id -> IN_REACH);
+        Encounter encounter = Encounter.tryTaunt(null, player, incumbent, 100, id -> IN_REACH, DEFAULT_RULES);
 
         assertEquals(incumbent, encounter.selectTarget(101, id -> id.equals(player) ? INELIGIBLE : IN_REACH));
         assertNull(encounter.getTaunter());

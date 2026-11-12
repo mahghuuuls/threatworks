@@ -7,20 +7,10 @@ import java.util.UUID;
 import java.util.function.Function;
 
 public final class Encounter {
-    private static final double OPENING_THREAT = 10.0;
     // Vanilla target tasks consider new goals every three mob updates in 1.12.2.
     private static final int OPENING_HOLD_TICKS = 3;
     private static final int SELECTION_INTERVAL = 5;
-    private static final int SIGHT_GRACE_TICKS = 40;
-    private static final int TAUNT_TICKS = 60;
-    private static final int RESET_DELAY_TICKS = 200;
-    private static final double ORDINARY_LEAD = 0.2;
-    private static final double MAXIMUM_CHASE_LEAD = 0.4;
-    private static final double CHASE_START = 8.0;
-    private static final double CHASE_END = 16.0;
-    // Leave room for multiplying scores by the switch lead without overflowing.
-    private static final double MAX_SCORE = Double.MAX_VALUE / 2.0;
-
+    private final Rules rules;
     private final Map<UUID, Double> scores = new LinkedHashMap<>();
     private int openedAtMobTick;
     private UUID target;
@@ -31,26 +21,27 @@ public final class Encounter {
     private int tauntedAt;
     private Integer resetStartedAt;
 
-    private Encounter(UUID incumbent) {
+    private Encounter(UUID incumbent, Rules rules) {
+        this.rules = rules;
         target = incumbent;
         if (incumbent != null) {
-            scores.put(incumbent, OPENING_THREAT);
+            scores.put(incumbent, rules.openingThreat);
         }
     }
 
-    public static Encounter recordPlayerHit(Encounter encounter, UUID player, UUID incumbent, int mobTick,
-                                            double healthLost) {
-        if (!(healthLost > 0.0) || !Double.isFinite(healthLost)) {
+    public static Encounter recordHit(Encounter encounter, UUID attacker, UUID incumbent, int mobTick,
+                                      double gain, Rules rules) {
+        if (!(gain > 0.0) || !Double.isFinite(gain)) {
             return encounter;
         }
         Encounter updated = encounter;
         if (updated == null) {
-            updated = new Encounter(incumbent);
+            updated = new Encounter(incumbent, rules);
             updated.opening = incumbent != null;
             updated.openedAtMobTick = mobTick;
         }
-        updated.scores.merge(player, Math.min(healthLost, MAX_SCORE),
-                (score, gain) -> Math.min(score + gain, MAX_SCORE));
+        updated.scores.merge(attacker, Math.min(gain, Rules.MAX_SCORE),
+                (score, amount) -> Math.min(score + amount, Rules.MAX_SCORE));
         updated.selectionPending = true;
         return updated;
     }
@@ -61,7 +52,7 @@ public final class Encounter {
         }
         double previous = scores.getOrDefault(participant, 0.0);
         double updated = previous + amount;
-        if (updated > MAX_SCORE || updated <= previous) {
+        if (updated > Rules.MAX_SCORE || updated <= previous) {
             return GrantResult.SCORE_LIMIT;
         }
         scores.put(participant, updated);
@@ -71,7 +62,7 @@ public final class Encounter {
 
     /** Returns null on rejection, leaving any existing encounter untouched. */
     public static Encounter tryTaunt(Encounter encounter, UUID participant, UUID incumbent, int tick,
-                                     Function<UUID, TargetObservation> observe) {
+                                     Function<UUID, TargetObservation> observe, Rules rules) {
         TargetObservation taunterObservation = observe.apply(participant);
         if (encounter == null) {
             if (!taunterObservation.isEligible()) {
@@ -79,7 +70,7 @@ public final class Encounter {
             }
             UUID seed = incumbent != null && (incumbent.equals(participant) || observe.apply(incumbent).isEligible())
                     ? incumbent : null;
-            encounter = new Encounter(seed);
+            encounter = new Encounter(seed, rules);
         } else if (!encounter.isEligible(participant, tick, taunterObservation)) {
             return null;
         }
@@ -155,8 +146,7 @@ public final class Encounter {
             taunter = null;
         }
         double incumbentScore = incumbentEligible ? scores.get(target) : 0.0;
-        double ordinaryThreshold = threshold(incumbentScore, ORDINARY_LEAD);
-        double minimumThreshold = Math.min(ordinaryThreshold, threshold(incumbentScore, MAXIMUM_CHASE_LEAD));
+        double ordinaryThreshold = threshold(incumbentScore, rules.ordinaryLead);
         UUID selected = incumbentEligible ? target : null;
         double bestScore = Double.NEGATIVE_INFINITY;
 
@@ -164,7 +154,7 @@ public final class Encounter {
             UUID challenger = entry.getKey();
             double score = entry.getValue();
             if (challenger.equals(target) || score <= bestScore
-                    || (incumbentEligible && score <= minimumThreshold)) {
+                    || (incumbentEligible && score <= ordinaryThreshold)) {
                 continue;
             }
             TargetObservation candidate = observe.apply(challenger);
@@ -185,11 +175,11 @@ public final class Encounter {
     }
 
     public Integer remainingResetTicks(int serverTick) {
-        return resetStartedAt == null ? null : Math.max(0, RESET_DELAY_TICKS - (serverTick - resetStartedAt));
+        return resetStartedAt == null ? null : Math.max(0, rules.resetTicks - (serverTick - resetStartedAt));
     }
 
     public boolean resetDue(int serverTick) {
-        return resetStartedAt != null && serverTick - resetStartedAt >= RESET_DELAY_TICKS;
+        return resetStartedAt != null && serverTick - resetStartedAt >= rules.resetTicks;
     }
 
     public UUID getTaunter() {
@@ -197,12 +187,12 @@ public final class Encounter {
     }
 
     public int remainingTauntTicks(int tick) {
-        return taunter == null ? 0 : Math.max(0, TAUNT_TICKS - (tick - tauntedAt));
+        return taunter == null ? 0 : Math.max(0, rules.tauntTicks - (tick - tauntedAt));
     }
 
     public boolean isEligible(UUID participant, int tick, TargetObservation observation) {
         return observation.isEligible() || (participant.equals(target) && observation.sightLost
-                && (sightLostAt == null || tick - sightLostAt < SIGHT_GRACE_TICKS));
+                && rules.sightTicks > 0 && (sightLostAt == null || tick - sightLostAt < rules.sightTicks));
     }
 
     private boolean retainsIncumbent(int tick, TargetObservation observation) {
@@ -222,12 +212,15 @@ public final class Encounter {
     }
 
     private static double threshold(double score, double lead) {
-        return score * (1.0 + lead);
+        return Math.min(Rules.MAX_SCORE, score * (1.0 + lead));
     }
 
-    private static double chaseLead(double distance) {
-        double progress = Math.max(0.0, Math.min(1.0, (distance - CHASE_START) / (CHASE_END - CHASE_START)));
-        return ORDINARY_LEAD + progress * (MAXIMUM_CHASE_LEAD - ORDINARY_LEAD);
+    private double chaseLead(double distance) {
+        double progress = Math.max(0.0, Math.min(1.0, (distance - rules.chaseStart)
+                / (rules.chaseEnd - rules.chaseStart)));
+        // Rounding near the upper double limit can overshoot the configured endpoint.
+        return Math.min(rules.maximumChaseLead,
+                rules.ordinaryLead + progress * (rules.maximumChaseLead - rules.ordinaryLead));
     }
 
     public Map<UUID, Double> copyScores() {
@@ -247,6 +240,32 @@ public final class Encounter {
 
     public int participantCount() {
         return scores.size();
+    }
+
+    /** Validated rules supplied by the server when an encounter opens. */
+    public static final class Rules {
+        public static final double MAX_SCORE = Double.MAX_VALUE / 2.0;
+
+        public final double openingThreat;
+        public final double ordinaryLead;
+        public final double maximumChaseLead;
+        public final double chaseStart;
+        public final double chaseEnd;
+        public final int tauntTicks;
+        public final int resetTicks;
+        public final int sightTicks;
+
+        public Rules(double openingThreat, double ordinaryLead, double maximumChaseLead, double chaseStart,
+                     double chaseEnd, int tauntTicks, int resetTicks, int sightTicks) {
+            this.openingThreat = openingThreat;
+            this.ordinaryLead = ordinaryLead;
+            this.maximumChaseLead = maximumChaseLead;
+            this.chaseStart = chaseStart;
+            this.chaseEnd = chaseEnd;
+            this.tauntTicks = tauntTicks;
+            this.resetTicks = resetTicks;
+            this.sightTicks = sightTicks;
+        }
     }
 
     public static final class TargetObservation {

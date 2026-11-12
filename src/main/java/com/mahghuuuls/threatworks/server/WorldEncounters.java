@@ -1,6 +1,8 @@
 package com.mahghuuuls.threatworks.server;
 
+import com.mahghuuuls.threatworks.points.ThreatPoints;
 import com.mahghuuuls.threatworks.threat.Encounter;
+import com.mahghuuuls.threatworks.threat.Encounter.Rules;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.EntityPlayer;
@@ -13,20 +15,31 @@ import net.minecraft.world.World;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.DoubleSupplier;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 final class WorldEncounters implements IWorldEventListener {
     final Map<UUID, Encounter> encounters = new HashMap<>();
+    // A snapshot can compare world sessions without retaining a world or its encounter table.
+    final Object launchSession = new Object();
 
-    void recordPlayerHit(UUID mob, UUID player, int mobTick, float before, float after, Supplier<UUID> openingTarget) {
+    void recordHit(UUID mob, UUID attacker, int mobTick, boolean mayOpen, float before, float after, Rules rules,
+                   DoubleSupplier points, Supplier<UUID> openingTarget) {
         double lost = Encounter.healthLost(before, after);
         if (!(lost > 0.0) || !Double.isFinite(lost)) {
             return;
         }
+        double gain = ThreatPoints.damageThreat(lost, points.getAsDouble());
         Encounter previous = encounters.get(mob);
+        if (!mayOpen && previous == null) {
+            return;
+        }
         UUID incumbent = previous == null ? openingTarget.get() : null;
-        encounters.put(mob, Encounter.recordPlayerHit(previous, player, incumbent, mobTick, lost));
+        Encounter updated = Encounter.recordHit(previous, attacker, incumbent, mobTick, gain, rules);
+        if (updated != null) {
+            encounters.put(mob, updated);
+        }
     }
 
     boolean blocksTargetWrite(UUID mob, boolean changesTarget, Predicate<UUID> targetStillValid) {
