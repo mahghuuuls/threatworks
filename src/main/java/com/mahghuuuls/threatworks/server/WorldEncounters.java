@@ -29,10 +29,10 @@ final class WorldEncounters implements IWorldEventListener {
         encounters.put(mob, Encounter.recordPlayerHit(previous, player, incumbent, mobTick, lost));
     }
 
-    boolean blocksOpeningTargetWrite(UUID mob, int mobTick, boolean changesTarget, Predicate<UUID> targetStillValid) {
+    boolean blocksTargetWrite(UUID mob, boolean changesTarget, Predicate<UUID> targetStillValid) {
         Encounter encounter = encounters.get(mob);
-        return changesTarget && encounter != null && encounter.holdsOpeningTarget(mobTick)
-                && targetStillValid.test(encounter.getHeldTarget());
+        return changesTarget && encounter != null && encounter.getTarget() != null
+                && targetStillValid.test(encounter.getTarget());
     }
 
     @Override

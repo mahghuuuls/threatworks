@@ -18,7 +18,7 @@ import java.util.UUID;
 public final class ThreatworksCommand extends CommandBase {
     private static final Logger LOGGER = LogManager.getLogger("Threatworks");
     private static final int MAX_SHOWN_SCORES = 16;
-    private static final String SELECT_ONE_ZOMBIE = "Select exactly one loaded zombie or use its UUID.";
+    private static final String SELECT_ONE_MOB = "Select exactly one loaded zombie or skeleton, or use its UUID.";
 
     @Override
     public String getName() {
@@ -44,10 +44,10 @@ public final class ThreatworksCommand extends CommandBase {
         try {
             mob = getEntity(server, sender, args[1], EntityLivingBase.class);
         } catch (EntityNotFoundException invalidSelection) {
-            throw new CommandException(SELECT_ONE_ZOMBIE);
+            throw new CommandException(SELECT_ONE_MOB);
         }
         if (!EncounterCoordinator.supports(mob)) {
-            throw new CommandException(SELECT_ONE_ZOMBIE);
+            throw new CommandException(SELECT_ONE_MOB);
         }
         EncounterCoordinator.Inspection inspection = EncounterCoordinator.INSTANCE.inspect(mob);
         report(sender, "mob=" + mob.getUniqueID()

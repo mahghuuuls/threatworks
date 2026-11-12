@@ -2,13 +2,11 @@ package com.mahghuuuls.threatworks.server;
 
 import com.mahghuuuls.threatworks.threat.Encounter;
 import net.minecraft.entity.Entity;
-import net.minecraft.entity.EntityList;
+import net.minecraft.entity.EntityCreature;
 import net.minecraft.entity.EntityLiving;
 import net.minecraft.entity.EntityLivingBase;
-import net.minecraft.entity.monster.EntityZombie;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.util.DamageSource;
-import net.minecraft.util.ResourceLocation;
 import net.minecraft.world.World;
 import net.minecraft.world.WorldServer;
 import net.minecraftforge.event.world.WorldEvent;
@@ -21,20 +19,20 @@ import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 public final class EncounterCoordinator {
     public static final EncounterCoordinator INSTANCE = new EncounterCoordinator();
-    private static final ResourceLocation ZOMBIE_ID = new ResourceLocation("minecraft", "zombie");
 
     private final Map<WorldServer, WorldEncounters> worlds = new IdentityHashMap<>();
+    private TargetWrite targetWrite;
 
     private EncounterCoordinator() {
     }
 
     public static boolean supports(EntityLivingBase mob) {
-        return mob.world instanceof WorldServer && mob.getClass() == EntityZombie.class
-                && ZOMBIE_ID.equals(EntityList.getKey(mob));
+        return MobTargets.supports(mob);
     }
 
     @SubscribeEvent
@@ -68,40 +66,43 @@ public final class EncounterCoordinator {
             return;
         }
 
-        EntityZombie zombie = (EntityZombie) victim;
-        WorldServer world = (WorldServer) zombie.world;
+        EntityCreature mob = (EntityCreature) victim;
+        WorldServer world = (WorldServer) mob.world;
         WorldEncounters state = worlds.get(world);
-        UUID mobId = zombie.getUniqueID();
-        if (state == null || world.getEntityFromUuid(mobId) != zombie) {
+        UUID mobId = mob.getUniqueID();
+        if (state == null || world.getEntityFromUuid(mobId) != mob) {
             return;
         }
 
         UUID playerId = actor.getUniqueID();
-        if (world.getEntityFromUuid(playerId) != actor || !ZombieTargets.isAttackable(zombie, (EntityPlayerMP) actor)) {
+        if (world.getEntityFromUuid(playerId) != actor || !MobTargets.isAttackable(mob, (EntityPlayerMP) actor)) {
             return;
         }
-        state.recordPlayerHit(mobId, playerId, zombie.ticksExisted, before, after,
-                () -> ZombieTargets.canEngage(zombie, incumbent)
-                        && world.getEntityFromUuid(incumbent.getUniqueID()) == incumbent
+        state.recordPlayerHit(mobId, playerId, mob.ticksExisted, before, after,
+                () -> incumbent != null && world.getEntityFromUuid(incumbent.getUniqueID()) == incumbent
+                        && MobTargets.observe(world, mob, incumbent).isEligible()
                         ? incumbent.getUniqueID() : null);
     }
 
     public boolean blocksTargetWrite(EntityLiving mob, EntityLivingBase requestedTarget) {
-        if (!supports(mob)) {
+        if (!(mob instanceof EntityCreature) || !(mob.world instanceof WorldServer)) {
             return false;
+        }
+        TargetWrite write = targetWrite;
+        if (write != null && write.mob == mob) {
+            return !write.consume(requestedTarget);
         }
         WorldServer world = (WorldServer) mob.world;
         WorldEncounters state = worlds.get(world);
-        EntityZombie zombie = (EntityZombie) mob;
-        EntityLivingBase current = zombie.getAttackTarget();
-        return state != null && state.blocksOpeningTargetWrite(zombie.getUniqueID(), zombie.ticksExisted,
-                current != requestedTarget, held -> isValidHeldTarget(world, zombie, current, held));
+        return state != null && mob.isEntityAlive() && state.blocksTargetWrite(mob.getUniqueID(),
+                mob.getAttackTarget() != requestedTarget,
+                target -> MobTargets.resolve(world, (EntityCreature) mob, world.getEntityFromUuid(target)) != null);
     }
 
     public Inspection inspect(EntityLivingBase victim) {
         WorldEncounters state = worlds.get(victim.world);
         Encounter encounter = state == null ? null : state.encounters.get(victim.getUniqueID());
-        EntityLivingBase actualTarget = ((EntityZombie) victim).getAttackTarget();
+        EntityLivingBase actualTarget = ((EntityLiving) victim).getAttackTarget();
         return new Inspection(encounter != null && victim.isEntityAlive(),
                 actualTarget == null ? null : actualTarget.getUniqueID(),
                 encounter == null || !victim.isEntityAlive() ? Collections.emptyMap() : encounter.copyScores());
@@ -119,50 +120,81 @@ public final class EncounterCoordinator {
         }
 
         Iterator<Map.Entry<UUID, Encounter>> entries = state.encounters.entrySet().iterator();
-        List<Runnable> targetClears = new ArrayList<>();
+        List<Runnable> targetUpdates = new ArrayList<>();
         while (entries.hasNext()) {
             Map.Entry<UUID, Encounter> entry = entries.next();
             Entity entity = world.getEntityFromUuid(entry.getKey());
-            if (!(entity instanceof EntityZombie) || !entity.isEntityAlive()) {
+            if (!(entity instanceof EntityCreature) || !entity.isEntityAlive()) {
                 entries.remove();
             } else {
-                reconcileOpeningTarget(world, (EntityZombie) entity, entry.getValue(), targetClears);
+                reconcileTarget(world, state, (EntityCreature) entity, entry.getValue(), targetUpdates);
             }
         }
         // The vanilla setter notifies Forge listeners that can change encounter membership.
-        targetClears.forEach(Runnable::run);
+        targetUpdates.forEach(Runnable::run);
     }
 
-    private static void reconcileOpeningTarget(WorldServer world, EntityZombie zombie, Encounter encounter,
-                                               List<Runnable> targetClears) {
-        UUID heldTarget = encounter.getHeldTarget();
-        if (heldTarget == null) {
+    private void reconcileTarget(WorldServer world, WorldEncounters state, EntityCreature mob, Encounter encounter,
+                                 List<Runnable> updates) {
+        UUID previous = encounter.getTarget();
+        EntityLivingBase previousTarget = previous == null ? null
+                : MobTargets.resolve(world, mob, world.getEntityFromUuid(previous));
+        boolean lostTarget = previous != null && previousTarget == null;
+        if (!lostTarget && (encounter.holdsOpeningTarget(mob.ticksExisted)
+                || !encounter.shouldReevaluate(mob.ticksExisted, mob.getEntityId()))) {
             return;
         }
-        if (!encounter.holdsOpeningTarget(zombie.ticksExisted)) {
-            encounter.releaseTarget();
+        UUID selected = encounter.selectTarget(mob.ticksExisted,
+                id -> MobTargets.observe(world, mob, world.getEntityFromUuid(id)));
+        EntityLivingBase current = mob.getAttackTarget();
+        if (selected == null && (current == null || !current.getUniqueID().equals(previous))) {
             return;
         }
-        EntityLivingBase current = zombie.getAttackTarget();
-        if (!isValidHeldTarget(world, zombie, current, heldTarget)) {
-            encounter.releaseTarget();
-            if (current != null && heldTarget.equals(current.getUniqueID())) {
-                targetClears.add(() -> {
-                    if (zombie.isEntityAlive() && zombie.getAttackTarget() == current
-                            && world.getEntityFromUuid(zombie.getUniqueID()) == zombie
-                            && !isValidHeldTarget(world, zombie, current, heldTarget)) {
-                        zombie.setAttackTarget(null);
-                    }
-                });
+        EntityLivingBase target = selected == null ? null
+                : MobTargets.resolve(world, mob, world.getEntityFromUuid(selected));
+        if (target != current && (target != null || selected == null)) {
+            updates.add(() -> applyTarget(world, state, mob, encounter, selected, target, current));
+        }
+    }
+
+    private void applyTarget(WorldServer world, WorldEncounters state, EntityCreature mob, Encounter encounter,
+                             UUID selected, EntityLivingBase target, EntityLivingBase previous) {
+        UUID mobId = mob.getUniqueID();
+        if (worlds.get(world) != state || state.encounters.get(mobId) != encounter || !mob.isEntityAlive()
+                || world.getEntityFromUuid(mobId) != mob || !Objects.equals(encounter.getTarget(), selected)
+                || mob.getAttackTarget() == target) {
+            return;
+        }
+        if (target == null ? mob.getAttackTarget() != previous
+                : world.getEntityFromUuid(selected) != target || MobTargets.resolve(world, mob, target) == null) {
+            return;
+        }
+        TargetWrite saved = targetWrite;
+        targetWrite = new TargetWrite(mob, target);
+        try {
+            mob.setAttackTarget(target);
+        } finally {
+            targetWrite = saved;
+        }
+    }
+
+    static final class TargetWrite {
+        private final EntityLiving mob;
+        private final EntityLivingBase target;
+        private boolean consumed;
+
+        TargetWrite(EntityLiving mob, EntityLivingBase target) {
+            this.mob = mob;
+            this.target = target;
+        }
+
+        boolean consume(EntityLivingBase requested) {
+            if (consumed || requested != target) {
+                return false;
             }
+            consumed = true;
+            return true;
         }
-    }
-
-    private static boolean isValidHeldTarget(WorldServer world, EntityZombie zombie, EntityLivingBase current,
-                                             UUID heldTarget) {
-        return zombie.isEntityAlive() && ZombieTargets.isAttackable(zombie, current)
-                && heldTarget.equals(current.getUniqueID()) && world.getEntityFromUuid(heldTarget) == current
-                && ZombieTargets.withinPursuitBounds(zombie, current);
     }
 
     public static final class Inspection {

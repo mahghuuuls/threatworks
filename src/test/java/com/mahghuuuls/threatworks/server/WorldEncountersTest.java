@@ -1,5 +1,6 @@
 package com.mahghuuuls.threatworks.server;
 
+import com.mahghuuuls.threatworks.threat.Encounter.TargetObservation;
 import net.minecraft.entity.Entity;
 import net.minecraft.init.Bootstrap;
 import net.minecraft.nbt.NBTTagCompound;
@@ -32,15 +33,25 @@ class WorldEncountersTest {
     }
 
     @Test
-    void onlyAChangedTargetIsBlockedDuringTheEligibleOpeningHold() {
-        assertFalse(world.blocksOpeningTargetWrite(mob, 20, true, incumbent::equals));
+    void onlyAChangedTargetIsBlockedWhileAnEligibleTargetIsControlled() {
+        assertFalse(world.blocksTargetWrite(mob, true, incumbent::equals));
         world.recordPlayerHit(mob, player, 22, 20.0F, 7.0F, () -> incumbent);
 
-        assertTrue(world.blocksOpeningTargetWrite(mob, 22, true, incumbent::equals));
-        assertTrue(world.blocksOpeningTargetWrite(mob, 25, true, incumbent::equals));
-        assertFalse(world.blocksOpeningTargetWrite(mob, 25, false, incumbent::equals));
-        assertFalse(world.blocksOpeningTargetWrite(mob, 25, true, held -> false));
-        assertFalse(world.blocksOpeningTargetWrite(mob, 26, true, incumbent::equals));
+        assertTrue(world.blocksTargetWrite(mob, true, incumbent::equals));
+        assertFalse(world.blocksTargetWrite(mob, false, incumbent::equals));
+        assertFalse(world.blocksTargetWrite(mob, true, held -> false));
+        world.encounters.get(mob).selectTarget(26, id -> TargetObservation.IN_REACH);
+        assertTrue(world.blocksTargetWrite(mob, true, player::equals));
+        world.encounters.get(mob).selectTarget(27, id -> TargetObservation.INELIGIBLE);
+        assertFalse(world.blocksTargetWrite(mob, true, id -> true));
+    }
+
+    @Test
+    void aCoordinatorClearIsAuthorizedOnceEvenForAnIdenticalNestedWrite() {
+        EncounterCoordinator.TargetWrite write = new EncounterCoordinator.TargetWrite(null, null);
+
+        assertTrue(write.consume(null));
+        assertFalse(write.consume(null));
     }
 
     @Test
@@ -66,7 +77,7 @@ class WorldEncountersTest {
         world.onEntityRemoved(entity);
 
         assertFalse(world.encounters.containsKey(mob));
-        assertFalse(world.blocksOpeningTargetWrite(mob, 22, true, incumbent::equals));
+        assertFalse(world.blocksTargetWrite(mob, true, incumbent::equals));
     }
 
     private UUID unexpectedOpeningLookup() {
