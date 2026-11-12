@@ -32,20 +32,20 @@ class DamageAttributionTest {
     @Test
     void arrowUsesItsOwnSnapshotAndNeverReadsCurrentGear() {
         TestArrow arrow = new TestArrow(shooter);
-        arrow.launch = new ArrowLaunch.Snapshot(shooter.getUniqueID(), worldSession, -100);
+        arrow.launch = new ArrowLaunch.Snapshot(shooter.getUniqueID(), worldSession, 0.5);
         DamageSource impact = DamageSource.causeArrowDamage(arrow, shooter);
         DamageAttribution hit = DamageAttribution.resolve(impact, worldSession);
         assertSame(shooter, hit.attacker);
-        assertEquals(-100, hit.points(() -> fail("Arrow impact cannot read equipment")));
+        assertEquals(0.5, hit.multiplier(() -> fail("Arrow impact cannot read equipment")));
     }
 
     @Test
     void knownShooterWithoutReliableObservationUsesBasePoints() {
         TestArrow arrow = new TestArrow(shooter);
         DamageSource impact = DamageSource.causeArrowDamage(arrow, shooter);
-        assertEquals(0, DamageAttribution.resolve(impact, worldSession).points(() -> fail("No snapshot")));
-        arrow.launch = new ArrowLaunch.Snapshot(shooter.getUniqueID(), new Object(), 100);
-        assertEquals(0, DamageAttribution.resolve(impact, worldSession).points(() -> fail("Stale snapshot")));
+        assertEquals(1, DamageAttribution.resolve(impact, worldSession).multiplier(() -> fail("No snapshot")));
+        arrow.launch = new ArrowLaunch.Snapshot(shooter.getUniqueID(), new Object(), 2);
+        assertEquals(1, DamageAttribution.resolve(impact, worldSession).multiplier(() -> fail("Stale snapshot")));
     }
 
     @Test
@@ -53,7 +53,7 @@ class DamageAttributionTest {
         TestArrow arrow = new TestArrow(shooter);
         EntityLivingBase other = new EntityArmorStand(null);
         assertNull(DamageAttribution.resolve(DamageSource.causeArrowDamage(arrow, other), worldSession));
-        arrow.launch = new ArrowLaunch.Snapshot(other.getUniqueID(), worldSession, 100);
+        arrow.launch = new ArrowLaunch.Snapshot(other.getUniqueID(), worldSession, 2);
         assertNull(DamageAttribution.resolve(DamageSource.causeArrowDamage(arrow, shooter), worldSession));
         arrow.shootingEntity = null;
         assertNull(DamageAttribution.resolve(DamageSource.causeArrowDamage(arrow, arrow), worldSession));
@@ -81,13 +81,13 @@ class DamageAttributionTest {
         DamageSource source = new IndirectMinionDamage("arrow", arrow, skeleton, shooter,
                 MagicDamage.DamageType.MAGIC, false).setProjectile();
         DamageAttribution.SummonSource adapter = newWizardrySource();
-        assertEquals(0, DamageAttribution.resolve(source, worldSession, adapter).points(() -> fail("No launch snapshot")));
-        arrow.launch = new ArrowLaunch.Snapshot(skeleton.getUniqueID(), worldSession, 100);
+        assertEquals(1, DamageAttribution.resolve(source, worldSession, adapter).multiplier(() -> fail("No launch snapshot")));
+        arrow.launch = new ArrowLaunch.Snapshot(skeleton.getUniqueID(), worldSession, 2);
         DamageAttribution hit = DamageAttribution.resolve(source, worldSession, adapter);
         assertSame(skeleton, hit.attacker);
         assertSame(shooter, hit.summonOwner);
         assertFalse(hit.mayOpenEncounter());
-        assertEquals(100, hit.points(() -> fail("Use the minion's launch snapshot")));
+        assertEquals(2, hit.multiplier(() -> fail("Use the minion's launch snapshot")));
         EntitySkeletonMinion otherMinion = new EntitySkeletonMinion(null);
         otherMinion.setOwnerId(shooter.getUniqueID());
         arrow.launch = null;
@@ -113,7 +113,7 @@ class DamageAttributionTest {
         assertSame(skeleton, ranged.attacker);
         assertNull(ranged.summonOwner);
         assertFalse(ranged.mayOpenEncounter());
-        assertEquals(0, ranged.points(() -> fail("No launch snapshot")));
+        assertEquals(1, ranged.multiplier(() -> fail("No launch snapshot")));
         skeleton.setOwnerId(null);
         assertNull(DamageAttribution.resolve(DamageSource.causeArrowDamage(arrow, skeleton), worldSession, adapter));
     }

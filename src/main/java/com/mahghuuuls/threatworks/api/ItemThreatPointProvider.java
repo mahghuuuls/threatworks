@@ -11,4 +11,12 @@ public interface ItemThreatPointProvider {
      * Threatworks skips this call when a pack assignment overrides the stack.
      */
     double points(ItemStack stack, EntityEquipmentSlot slot);
+
+    /**
+     * Supplies base points for an equipped Bauble under the same server-thread and pack override
+     * contract as {@link #points}. The index is local to the installed handler's slot layout.
+     */
+    default double baublePoints(ItemStack stack, int slot) {
+        return 0;
+    }
 }

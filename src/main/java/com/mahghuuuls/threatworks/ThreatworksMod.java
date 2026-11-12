@@ -3,6 +3,10 @@ package com.mahghuuuls.threatworks;
 import com.mahghuuuls.threatworks.api.ItemThreatPointProvider;
 import com.mahghuuuls.threatworks.api.ThreatActions;
 import com.mahghuuuls.threatworks.command.ThreatworksCommand;
+import com.mahghuuuls.threatworks.compat.BaublesCompatibility;
+import com.mahghuuuls.threatworks.compat.JafsCompatibility;
+import com.mahghuuuls.threatworks.compat.QualityToolsCompatibility;
+import com.mahghuuuls.threatworks.compat.SetworksCompatibility;
 import com.mahghuuuls.threatworks.compat.WizardryCompatibility;
 import com.mahghuuuls.threatworks.config.ServerTuning;
 import com.mahghuuuls.threatworks.points.ThreatPoints;
@@ -29,7 +33,7 @@ import java.io.File;
         version = Tags.VERSION,
         acceptedMinecraftVersions = "[1.12.2]",
         acceptableRemoteVersions = "*",
-        dependencies = "required-after:mixinbooter@[12.1,)"
+        dependencies = "required-after:mixinbooter@[12.1,);after:jafs;after:setworks"
 )
 public final class ThreatworksMod {
     private static final Logger LOGGER = LogManager.getLogger(Tags.MOD_ID);
@@ -57,11 +61,14 @@ public final class ThreatworksMod {
 
     @Mod.EventHandler
     public void init(FMLInitializationEvent event) {
+        POINTS.installFoodSource(JafsCompatibility.load(LOGGER));
+        POINTS.installSetBonusSource(SetworksCompatibility.load(LOGGER));
         MinecraftForge.EVENT_BUS.register(EncounterCoordinator.INSTANCE);
     }
 
     @Mod.EventHandler
     public void loadComplete(FMLLoadCompleteEvent event) {
+        POINTS.installEquipmentSources(BaublesCompatibility.load(LOGGER), QualityToolsCompatibility.load(LOGGER));
         POINTS.freezeRegistrations();
         EncounterCoordinator.INSTANCE.setSummonSource(WizardryCompatibility.load(LOGGER));
     }

@@ -12,13 +12,13 @@ import java.util.function.DoubleSupplier;
 public final class DamageAttribution {
     final EntityLivingBase attacker;
     final EntityLivingBase summonOwner;
-    // Only direct hits read equipment at impact. An arrow without a snapshot uses an explicit zero.
-    private final Double launchPoints;
+    // Only direct hits read equipment at impact. An arrow without a snapshot uses the base multiplier.
+    private final Double launchMultiplier;
 
-    private DamageAttribution(EntityLivingBase attacker, EntityLivingBase summonOwner, Double launchPoints) {
+    private DamageAttribution(EntityLivingBase attacker, EntityLivingBase summonOwner, Double launchMultiplier) {
         this.attacker = attacker;
         this.summonOwner = summonOwner;
-        this.launchPoints = launchPoints;
+        this.launchMultiplier = launchMultiplier;
     }
 
     static DamageAttribution resolve(DamageSource source, Object worldSession) {
@@ -69,17 +69,17 @@ public final class DamageAttribution {
         }
         ArrowLaunch.Snapshot snapshot = ((ArrowLaunch) arrow).threatworks$getLaunch();
         if (snapshot == null || snapshot.worldSession != worldSession) {
-            return new DamageAttribution(actor, owner, 0.0);
+            return new DamageAttribution(actor, owner, 1.0);
         }
         return snapshot.shooter.equals(actor.getUniqueID())
-                ? new DamageAttribution(actor, owner, snapshot.points) : null;
+                ? new DamageAttribution(actor, owner, snapshot.multiplier) : null;
     }
 
     boolean mayOpenEncounter() {
         return summonOwner == null && attacker instanceof EntityPlayerMP;
     }
 
-    double points(DoubleSupplier currentPoints) {
-        return launchPoints == null ? currentPoints.getAsDouble() : launchPoints;
+    double multiplier(DoubleSupplier currentMultiplier) {
+        return launchMultiplier == null ? currentMultiplier.getAsDouble() : launchMultiplier;
     }
 }

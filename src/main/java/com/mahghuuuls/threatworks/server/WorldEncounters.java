@@ -25,7 +25,7 @@ final class WorldEncounters implements IWorldEventListener {
     final Object launchSession = new Object();
 
     void recordHit(UUID mob, Supplier<UUID> recipient, int mobTick, boolean mayOpen, float before, float after, Rules rules,
-                   DoubleSupplier points, Supplier<UUID> openingTarget) {
+                   DoubleSupplier multiplier, Supplier<UUID> openingTarget) {
         double lost = Encounter.healthLost(before, after);
         if (!(lost > 0.0) || !Double.isFinite(lost)) {
             return;
@@ -34,7 +34,7 @@ final class WorldEncounters implements IWorldEventListener {
         if (!mayOpen && beforeCredit == null) {
             return;
         }
-        double gain = ThreatPoints.damageThreat(lost, points.getAsDouble());
+        double gain = ThreatPoints.damageThreat(lost, multiplier.getAsDouble());
         UUID credit = recipient.get();
         Encounter previous = encounters.get(mob);
         if (!mayOpen && previous != beforeCredit) {

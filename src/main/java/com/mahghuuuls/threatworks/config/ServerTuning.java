@@ -22,7 +22,7 @@ public final class ServerTuning {
     public static final double BASE_THREAT_PER_HEALTH_LOST = 1.0;
     public static final double POINT_SCALE = 100.0;
     public static final int TICKS_PER_SECOND = 20;
-    // Six vanilla slots can all contribute at either extreme without overflowing the sum.
+    // Bound each input independently; the collector also handles totals beyond the double range.
     public static final double MAX_ITEM_POINTS = Double.MAX_VALUE / 8.0;
 
     private static final String CATEGORY = "server";

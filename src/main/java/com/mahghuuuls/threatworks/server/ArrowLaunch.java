@@ -9,12 +9,12 @@ public interface ArrowLaunch {
     final class Snapshot {
         final UUID shooter;
         final Object worldSession;
-        final double points;
+        final double multiplier;
 
-        Snapshot(UUID shooter, Object worldSession, double points) {
+        Snapshot(UUID shooter, Object worldSession, double multiplier) {
             this.shooter = shooter;
             this.worldSession = worldSession;
-            this.points = points;
+            this.multiplier = multiplier;
         }
     }
 }

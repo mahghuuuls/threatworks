@@ -8,10 +8,16 @@ import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.ResourceLocation;
 
+import java.math.BigDecimal;
+import java.math.MathContext;
+import java.util.Collections;
 import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+import java.util.function.DoubleConsumer;
 import java.util.function.Function;
+import java.util.function.ToDoubleFunction;
 
 /** Resolves one base value per physical slot and converts the signed total once per qualifying hit. */
 public final class ThreatPoints {
@@ -19,6 +25,10 @@ public final class ThreatPoints {
 
     private final Map<Item, RegisteredProvider> providers = new IdentityHashMap<>();
     private final Consumer<String> warn;
+    private Accessories accessories = wearer -> Collections.emptyList();
+    private QualitySource qualities = (stack, slots, points) -> {};
+    private ToDoubleFunction<EntityLivingBase> food = wearer -> 0;
+    private SetBonusSource setBonuses;
     private boolean frozen;
 
     public ThreatPoints(Consumer<String> warn) {
@@ -48,28 +58,70 @@ public final class ThreatPoints {
         frozen = true;
     }
 
-    public double total(EntityLivingBase wearer, ServerTuning tuning) {
-        return total(wearer::getItemStackFromSlot, tuning);
+    public void installEquipmentSources(Accessories accessories, QualitySource qualities) {
+        if (accessories != null) {
+            this.accessories = accessories;
+        }
+        if (qualities != null) {
+            this.qualities = qualities;
+        }
     }
 
-    double total(Function<EntityEquipmentSlot, ItemStack> equipment, ServerTuning tuning) {
-        double total = 0;
-        double correction = 0;
+    public void installFoodSource(ToDoubleFunction<EntityLivingBase> food) {
+        if (food != null) {
+            this.food = food;
+        }
+    }
+
+    public double multiplier(EntityLivingBase wearer, ServerTuning tuning) {
+        Sum total = new Sum();
+        total.add(food.applyAsDouble(wearer));
+        if (setBonuses != null) {
+            setBonuses.collect(wearer, total::add);
+        }
+        return multiplier(wearer::getItemStackFromSlot, accessories.equipped(wearer), total, tuning);
+    }
+
+    double multiplier(Function<EntityEquipmentSlot, ItemStack> equipment, ServerTuning tuning) {
+        return multiplier(equipment, Collections.emptyList(), new Sum(), tuning);
+    }
+
+    private double multiplier(Function<EntityEquipmentSlot, ItemStack> equipment, List<Accessory> worn,
+                              Sum total, ServerTuning tuning) {
         for (EntityEquipmentSlot slot : VANILLA_SLOTS) {
             ItemStack stack = equipment.apply(slot);
             if (!stack.isEmpty()) {
-                double points = basePoints(stack, slot, tuning);
-                // Retain a small contribution when larger positive and negative slots cancel.
-                double combined = total + points;
-                correction += Math.abs(total) >= Math.abs(points)
-                        ? (total - combined) + points : (points - combined) + total;
-                total = combined;
+                total.add(basePoints(stack, tuning, provider -> provider.points(stack, slot)));
+                qualities.collect(stack, Collections.singletonList(slot.getName()), total::add);
             }
         }
-        return total + correction;
+        for (Accessory slot : worn) {
+            ItemStack stack = slot.stack;
+            if (!stack.isEmpty()) {
+                total.add(basePoints(stack, tuning, provider -> provider.baublePoints(stack, slot.index)));
+                qualities.collect(stack, slot.qualitySlots, total::add);
+            }
+        }
+        return total.multiplier();
     }
 
-    private double basePoints(ItemStack stack, EntityEquipmentSlot slot, ServerTuning tuning) {
+    public void installSetBonusSource(SetBonusSource setBonuses) {
+        this.setBonuses = setBonuses;
+    }
+
+    public void discardSetBonuses(EntityLivingBase player) {
+        if (setBonuses != null) {
+            setBonuses.discard(player);
+        }
+    }
+
+    public void clearSetBonuses() {
+        if (setBonuses != null) {
+            setBonuses.clear();
+        }
+    }
+
+    private double basePoints(ItemStack stack, ServerTuning tuning, ToDoubleFunction<ItemThreatPointProvider> read) {
         Item item = stack.getItem();
         ResourceLocation id = item.getRegistryName();
         if (id == null) {
@@ -88,7 +140,7 @@ public final class ThreatPoints {
             return 0;
         }
         try {
-            double points = registered.provider.points(stack, slot);
+            double points = read.applyAsDouble(registered.provider);
             if (ServerTuning.validItemPoints(points)) {
                 return points;
             }
@@ -107,15 +159,79 @@ public final class ThreatPoints {
         }
     }
 
-    public static double damageThreat(double healthLost, double totalPoints) {
+    public static double damageThreat(double healthLost, double multiplier) {
         if (!(healthLost > 0) || !Double.isFinite(healthLost)) {
             return 0;
         }
         double base = healthLost * ServerTuning.BASE_THREAT_PER_HEALTH_LOST;
-        double scaled = Math.abs(totalPoints) / ServerTuning.POINT_SCALE;
-        double multiplier = totalPoints < 0 ? 1 / (1 + scaled) : 1 + scaled;
         // Clamp the product: a quotient used as an overflow precheck can round up.
         return Math.max(Double.MIN_VALUE, Math.min(Double.MAX_VALUE, base * multiplier));
+    }
+
+    @FunctionalInterface
+    public interface Accessories {
+        List<Accessory> equipped(EntityLivingBase wearer);
+    }
+
+    @FunctionalInterface
+    public interface QualitySource {
+        void collect(ItemStack stack, List<String> slots, DoubleConsumer points);
+    }
+
+    public interface SetBonusSource {
+        void collect(EntityLivingBase wearer, DoubleConsumer points);
+
+        void discard(EntityLivingBase player);
+
+        void clear();
+    }
+
+    /** One physical entry. Multiple names may describe the same slot for quality matching. */
+    public static final class Accessory {
+        final ItemStack stack;
+        final int index;
+        final List<String> qualitySlots;
+
+        public Accessory(ItemStack stack, int index, List<String> qualitySlots) {
+            this.stack = stack;
+            this.index = index;
+            this.qualitySlots = qualitySlots;
+        }
+    }
+
+    private static final class Sum {
+        private double total;
+        private double correction;
+        private BigDecimal wide;
+
+        void add(double points) {
+            if (wide != null) {
+                wide = wide.add(new BigDecimal(points));
+                return;
+            }
+            // Keep small contributions when larger ones cancel. Only widen if a running sum overflows.
+            double combined = total + points;
+            if (Double.isFinite(combined)) {
+                correction += Math.abs(total) >= Math.abs(points)
+                        ? (total - combined) + points : (points - combined) + total;
+                total = combined;
+            } else {
+                wide = new BigDecimal(total).add(new BigDecimal(correction)).add(new BigDecimal(points));
+            }
+        }
+
+        double multiplier() {
+            double points = total + correction;
+            if (wide == null && Double.isFinite(points)) {
+                double scaled = points / ServerTuning.POINT_SCALE;
+                return scaled < 0 ? 1 / (1 - scaled) : 1 + scaled;
+            }
+            BigDecimal sum = wide == null ? new BigDecimal(total).add(new BigDecimal(correction)) : wide;
+            BigDecimal scale = BigDecimal.valueOf(ServerTuning.POINT_SCALE);
+            return sum.signum() < 0
+                    ? scale.divide(scale.subtract(sum), MathContext.DECIMAL128).doubleValue()
+                    : sum.add(scale).divide(scale, MathContext.DECIMAL128).doubleValue();
+        }
     }
 
     private static final class RegisteredProvider {

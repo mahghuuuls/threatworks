@@ -25,6 +25,17 @@ repositories {
             includeGroup 'maven.modrinth'
         }
     }
+    exclusiveContent {
+        forRepository {
+            maven {
+                name 'BlameJared'
+                url 'https://maven.blamejared.com'
+            }
+        }
+        filter {
+            includeGroup 'CraftTweaker2'
+        }
+    }
     mavenLocal() // Must be last for caching to work
 }
 
@@ -40,6 +51,34 @@ dependencies {
     testImplementation wizardry
     if (providers.gradleProperty('withWizardry').isPresent()) {
         runtimeOnly wizardry
+    }
+
+    def baubles = rfg.deobf('curse.maven:baubles-227083:2518667')
+    compileOnly baubles
+    testImplementation baubles
+    if (providers.gradleProperty('withBaubles').isPresent()) {
+        runtimeOnly baubles
+    }
+    // Quality Tools is a data-only integration. These parents are for development qualification.
+    if (providers.gradleProperty('withQualityTools').isPresent()) {
+        runtimeOnly rfg.deobf('curse.maven:quality-tools-264756:2732994')
+        runtimeOnly rfg.deobf('curse.maven:potion-core-242872:2905184')
+    }
+
+    def jafs = rfg.deobf('curse.maven:just-another-food-system-1758738:9529708')
+    compileOnly jafs
+    testImplementation jafs
+    if (providers.gradleProperty('withJafs').isPresent()) {
+        runtimeOnly jafs
+    }
+
+    def setworks = rfg.deobf('curse.maven:setworks-1768283:9434914')
+    compileOnly setworks
+    testImplementation setworks
+    if (providers.gradleProperty('withSetworks').isPresent()) {
+        runtimeOnly setworks
+        // Use CraftTweaker's Maven distribution for the development mapping transform.
+        runtimeOnly rfg.deobf('CraftTweaker2:CraftTweaker2-MC1120-Main:1.12-4.1.20.718')
     }
 
     // Include StripLatestForgeRequirements by default for the dev env, saves everyone a hassle

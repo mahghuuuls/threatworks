@@ -90,6 +90,9 @@ public final class EncounterCoordinator implements ThreatActions {
         worlds.forEach(World::removeEventListener);
         worlds.clear();
         pendingPlayerDeaths.clear();
+        if (points != null) {
+            points.clearSetBonuses();
+        }
         tuning = null;
         points = null;
     }
@@ -104,12 +107,24 @@ public final class EncounterCoordinator implements ThreatActions {
 
     @SubscribeEvent
     public void onPlayerClone(PlayerEvent.Clone event) {
-        if (event.isWasDeath() && event.getOriginal() instanceof EntityPlayerMP) {
+        if (event.getOriginal() instanceof EntityPlayerMP && event.getOriginal() != event.getEntityPlayer()) {
             EntityPlayerMP original = (EntityPlayerMP) event.getOriginal();
-            Integer before = pendingPlayerDeaths.remove(original);
-            if (before != null) {
-                confirmPlayerDeath(original, before);
+            if (points != null) {
+                points.discardSetBonuses(original);
             }
+            if (event.isWasDeath()) {
+                Integer before = pendingPlayerDeaths.remove(original);
+                if (before != null) {
+                    confirmPlayerDeath(original, before);
+                }
+            }
+        }
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public void onPlayerLogout(net.minecraftforge.fml.common.gameevent.PlayerEvent.PlayerLoggedOutEvent event) {
+        if (points != null && event.player instanceof EntityPlayerMP) {
+            points.discardSetBonuses(event.player);
         }
     }
 
@@ -125,6 +140,9 @@ public final class EncounterCoordinator implements ThreatActions {
     private void confirmPlayerDeath(EntityPlayerMP player, int previousDeaths) {
         // Vanilla increments the death statistic after Forge accepts the death event.
         if (player.getStatFile().readStat(StatList.DEATHS) != previousDeaths) {
+            if (points != null) {
+                points.discardSetBonuses(player);
+            }
             WorldEncounters.removePlayerScores(worlds.values(), player.getUniqueID());
         }
     }
@@ -146,7 +164,7 @@ public final class EncounterCoordinator implements ThreatActions {
             return null;
         }
         return new ArrowLaunch.Snapshot(shooter.getUniqueID(), state.launchSession,
-                points.total((EntityLivingBase) shooter, tuning));
+                points.multiplier((EntityLivingBase) shooter, tuning));
     }
 
     public void onHealthWritten(EntityLivingBase victim, DamageSource source, EntityLivingBase incumbent,
@@ -170,7 +188,7 @@ public final class EncounterCoordinator implements ThreatActions {
             return;
         }
         state.recordHit(mobId, () -> creditRecipient(world, mob, hit, source), mob.ticksExisted, hit.mayOpenEncounter(),
-                before, after, tuning.rulesFor(type), () -> hit.points(() -> points.total(hit.attacker, tuning)),
+                before, after, tuning.rulesFor(type), () -> hit.multiplier(() -> points.multiplier(hit.attacker, tuning)),
                 () -> incumbent != null && world.getEntityFromUuid(incumbent.getUniqueID()) == incumbent
                         && MobTargets.observe(world, mob, incumbent).isEligible()
                         ? incumbent.getUniqueID() : null);
