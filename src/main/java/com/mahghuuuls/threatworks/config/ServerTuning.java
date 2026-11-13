@@ -113,6 +113,11 @@ public final class ServerTuning {
         GAIA_ILLAGER_INQUISITOR("grimoireofgaia:illager_inquisitor"),
         GAIA_SPORELING("grimoireofgaia:sporeling"),
         GAIA_YETI("grimoireofgaia:yeti"),
+        GAIA_MANDRAGORA("grimoireofgaia:mandragora"),
+        GAIA_MATANGO("grimoireofgaia:matango"),
+        GAIA_MIMIC("grimoireofgaia:mimic"),
+        GAIA_SPHINX("grimoireofgaia:sphinx"),
+        GAIA_SPRIGGAN("grimoireofgaia:spriggan"),
         FOLIAATH("mowziesmobs:foliaath");
 
         public final String id;

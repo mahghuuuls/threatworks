@@ -41,6 +41,7 @@ public final class GaiaCompatibility {
         switch (type) {
             case GAIA_COBBLESTONE_GOLEM:
             case GAIA_GELATINOUS_SLIME:
+            case GAIA_MATANGO:
                 return 0;
             case GAIA_ANT:
             case GAIA_SPORELING:
@@ -101,6 +102,16 @@ public final class GaiaCompatibility {
                 return "Sporeling";
             case GAIA_YETI:
                 return "Yeti";
+            case GAIA_MANDRAGORA:
+                return "Mandragora";
+            case GAIA_MATANGO:
+                return "Matango";
+            case GAIA_MIMIC:
+                return "Mimic";
+            case GAIA_SPHINX:
+                return "Sphinx";
+            case GAIA_SPRIGGAN:
+                return "Spriggan";
             default:
                 return null;
         }

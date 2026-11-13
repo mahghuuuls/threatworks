@@ -375,6 +375,27 @@ final class CoverageFixtureCommand extends CommandBase {
                 LOGGER.info("coverage gaiaVertical mob={} player={} playerY={} mobY={} velocityY={}",
                         mob.getUniqueID(), player.getUniqueID(), player.posY, mob.posY, player.motionY);
                 break;
+            case "gaia-spriggan-visibility":
+                if (!"grimoireofgaia:spriggan".equals(String.valueOf(EntityList.getKey(mob)))) {
+                    throw new CommandException("Expected Gaia's Spriggan.");
+                }
+                LOGGER.info("coverage gaiaSpriggan mob={} player={} invisible={} distance={}", mob.getUniqueID(),
+                        player.getUniqueID(), mob.isPotionActive(MobEffects.INVISIBILITY), mob.getDistance(player));
+                break;
+            case "gaia-matango-spawn-stimulus":
+                ResourceLocation matangoId = new ResourceLocation("grimoireofgaia:matango");
+                if (!matangoId.equals(EntityList.getKey(mob)) || mob.getAttackTarget() != player) {
+                    throw new CommandException("Expected a tracked Matango targeting the player.");
+                }
+                Entity nativeMatango = EntityList.createEntityByIDFromName(matangoId, world);
+                if (!(nativeMatango instanceof EntityLivingBase)) {
+                    throw new CommandException("Gaia's Matango is missing.");
+                }
+                float naturalMax = ((EntityLivingBase) nativeMatango).getMaxHealth();
+                mob.setHealth(naturalMax * 0.6F);
+                LOGGER.info("coverage gaiaMatangoSpawnStimulus mob={} hp={} naturalMax={}", mob.getUniqueID(),
+                        mob.getHealth(), naturalMax);
+                break;
             case "gaia-ant-wander":
                 if (guard == null || mob.getAttackTarget() != player
                         || !"grimoireofgaia:ant".equals(String.valueOf(EntityList.getKey(mob)))) {
