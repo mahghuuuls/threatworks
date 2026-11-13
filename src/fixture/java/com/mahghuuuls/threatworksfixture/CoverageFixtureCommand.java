@@ -26,6 +26,7 @@ import net.minecraft.entity.monster.EntitySpider;
 import net.minecraft.entity.monster.EntityZombie;
 import net.minecraft.entity.passive.EntityOcelot;
 import net.minecraft.entity.projectile.EntityArrow;
+import net.minecraft.entity.projectile.EntityTippedArrow;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.init.Blocks;
 import net.minecraft.init.Items;
@@ -509,15 +510,31 @@ final class CoverageFixtureCommand extends CommandBase {
                 player.setPosition(mob.posX - 5.0, mob.posY, mob.posZ);
                 break;
             case "creeper-short-blast":
-                String creeperId = String.valueOf(EntityList.getKey(mob));
                 if (!(mob instanceof EntityCreeper) || mob.getAttackTarget() != player
-                        || ((EntityCreeper) mob).getCreeperState() <= 0
-                        || !("specialmobs:doomcreeper".equals(creeperId) || "specialmobs:minicreeper".equals(creeperId))) {
-                    throw new CommandException("Expected a selected player and a swelling Doom or Mini Creeper.");
+                        || ((EntityCreeper) mob).getCreeperState() <= 0) {
+                    throw new CommandException("Expected a selected player and a swelling creeper.");
                 }
                 player.setPosition(mob.posX - 1.1, mob.posY, mob.posZ);
                 LOGGER.info("coverage creeperShortBlast mob={} player={} distance={}", mob.getUniqueID(),
                         player.getUniqueID(), mob.getDistance(player));
+                break;
+            case "creeper-splitting-shot":
+                if (!(mob instanceof EntityCreeper) || mob.getAttackTarget() != player
+                        || ((EntityCreeper) mob).getCreeperState() > 0 || ((EntityCreeper) mob).hasIgnited()
+                        || !"specialmobs:splittingcreeper".equals(String.valueOf(EntityList.getKey(mob)))) {
+                    throw new CommandException("Expected a Splitting Creeper pursuing the player before its fuse.");
+                }
+                player.setPosition(mob.posX, mob.posY, mob.posZ + 3.8);
+                EntityTippedArrow shot = new EntityTippedArrow(world, player);
+                shot.addTag("tw_l_splitting_shot");
+                shot.shoot(mob.posX - shot.posX, mob.posY + mob.height * 0.5 - shot.posY, mob.posZ - shot.posZ,
+                        2.0F, 0.0F);
+                if (!world.spawnEntity(shot)) {
+                    throw new CommandException("Splitting Creeper fixture arrow failed to spawn.");
+                }
+                LOGGER.info("coverage creeperSplittingShot mob={} player={} arrow={} distance={} fuse={} ignited={}",
+                        mob.getUniqueID(), player.getUniqueID(), shot.getUniqueID(), mob.getDistance(player),
+                        ((EntityCreeper) mob).getCreeperState(), ((EntityCreeper) mob).hasIgnited());
                 break;
             case "creeper-burn":
                 if (!(mob instanceof EntityCreeper) || mob.getAttackTarget() != player

@@ -8,6 +8,7 @@ import net.minecraft.entity.EntityAreaEffectCloud;
 import net.minecraft.entity.EntityCreature;
 import net.minecraft.entity.EntityList;
 import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.entity.item.EntityFallingBlock;
 import net.minecraft.entity.monster.EntityIronGolem;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.entity.projectile.EntityArrow;
@@ -23,6 +24,9 @@ import net.minecraftforge.event.entity.living.LivingDamageEvent;
 import net.minecraftforge.event.entity.living.LivingDeathEvent;
 import net.minecraftforge.event.entity.living.LivingSetAttackTargetEvent;
 import net.minecraftforge.event.entity.EntityJoinWorldEvent;
+import net.minecraftforge.event.entity.EntityStruckByLightningEvent;
+import net.minecraftforge.event.entity.ProjectileImpactEvent;
+import net.minecraftforge.event.world.ExplosionEvent;
 import net.minecraftforge.event.entity.living.PotionEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.event.FMLInitializationEvent;
@@ -51,6 +55,8 @@ public final class ThreatworksFixture {
     private UUID webVictim;
     private BlockPos webImpact;
     private boolean webBeforeImpact;
+    private EntityLiving creeperBlastSource;
+    private long creeperBlastTick;
 
     @Mod.EventHandler
     public void init(FMLInitializationEvent event) {
@@ -122,14 +128,74 @@ public final class ThreatworksFixture {
     }
 
     @SubscribeEvent
-    public void onDoomCloud(EntityJoinWorldEvent event) {
-        if (event.getWorld().isRemote || !(event.getEntity() instanceof EntityAreaEffectCloud)) {
+    public void onCreeperBlast(ExplosionEvent.Detonate event) {
+        EntityLivingBase owner = event.getExplosion().getExplosivePlacedBy();
+        if (owner instanceof net.minecraft.entity.monster.EntityCreeper && owner.getTags().contains("tw_i_mob")
+                && logsCoverageCombat(owner)) {
+            creeperBlastSource = (EntityLiving) owner;
+            creeperBlastTick = owner.world.getTotalWorldTime();
+        }
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public void onSplittingShot(ProjectileImpactEvent.Arrow event) {
+        EntityArrow arrow = event.getArrow();
+        Entity hit = event.getRayTraceResult().entityHit;
+        if (!arrow.world.isRemote && arrow.getTags().contains("tw_l_splitting_shot") && hit != null) {
+            LOGGER.info("coverage creeperShotImpact mob={} arrow={} shooter={}", hit.getUniqueID(),
+                    arrow.getUniqueID(), ArrowFixtureCommand.identity(arrow.shootingEntity));
+        }
+    }
+
+    @SubscribeEvent
+    public void onCreeperSpawn(EntityJoinWorldEvent event) {
+        Entity spawned = event.getEntity();
+        if (event.getWorld().isRemote) {
             return;
         }
-        EntityAreaEffectCloud cloud = (EntityAreaEffectCloud) event.getEntity();
+        EntityLiving parent = creeperBlastSource;
+        if (parent != null && parent.world == event.getWorld() && parent.world.getTotalWorldTime() == creeperBlastTick
+                && spawned.getDistanceSq(parent) < 9.0) {
+            String parentId = String.valueOf(EntityList.getKey(parent));
+            if ("specialmobs:gravelcreeper".equals(parentId) && spawned instanceof EntityFallingBlock
+                    && ((EntityFallingBlock) spawned).getBlock().getBlock() == Blocks.GRAVEL) {
+                spawned.addTag(CoverageFixtureCommand.TAG);
+                LOGGER.info("coverage creeperGravel mob={} falling={} tick={}", parent.getUniqueID(),
+                        spawned.getUniqueID(), creeperBlastTick);
+            } else if ("specialmobs:splittingcreeper".equals(parentId) && spawned instanceof EntityLiving
+                    && "specialmobs:minicreeper".equals(String.valueOf(EntityList.getKey(spawned)))) {
+                spawned.addTag(CoverageFixtureCommand.TAG);
+                LOGGER.info("coverage creeperOffspring mob={} child={} target={} tick={}", parent.getUniqueID(),
+                        spawned.getUniqueID(), ArrowFixtureCommand.identity(((EntityLiving) spawned).getAttackTarget()),
+                        creeperBlastTick);
+            }
+        }
+        if (spawned instanceof EntityAreaEffectCloud) {
+            reportCreeperCloud((EntityAreaEffectCloud) spawned);
+        }
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public void onCreeperLightning(EntityStruckByLightningEvent event) {
+        Entity victim = event.getEntity();
+        EntityLiving parent = creeperBlastSource;
+        if (!event.isCanceled() && parent != null && parent.world == victim.world
+                && victim.world.getTotalWorldTime() - creeperBlastTick <= 2
+                && victim.getTags().contains("tw_i_player") && event.getLightning().getDistanceSq(parent) < 1.0
+                && "specialmobs:lightningcreeper".equals(String.valueOf(EntityList.getKey(parent)))) {
+            LOGGER.info("coverage creeperLightning mob={} target={} lightning={} tick={}", parent.getUniqueID(),
+                    victim.getUniqueID(), event.getLightning().getUniqueID(), victim.world.getTotalWorldTime());
+        }
+    }
+
+    private static void reportCreeperCloud(EntityAreaEffectCloud cloud) {
         EntityLivingBase owner = cloud.getOwner();
-        if (!(owner instanceof EntityLiving) || !owner.getTags().contains("tw_i_mob")
-                || !"specialmobs:doomcreeper".equals(String.valueOf(EntityList.getKey(owner)))) {
+        if (!(owner instanceof EntityLiving) || !owner.getTags().contains("tw_i_mob")) {
+            return;
+        }
+        String ownerId = String.valueOf(EntityList.getKey(owner));
+        boolean doom = "specialmobs:doomcreeper".equals(ownerId);
+        if (!doom && !"specialmobs:darkcreeper".equals(ownerId)) {
             return;
         }
         EntityLivingBase target = ((EntityLiving) owner).getAttackTarget();
@@ -137,13 +203,13 @@ public final class ThreatworksFixture {
             return;
         }
         cloud.addTag(CoverageFixtureCommand.TAG);
-        target.addTag("tw_l_doom_cloud_target");
+        target.addTag(doom ? "tw_l_doom_cloud_target" : "tw_l_dark_cloud_target");
         NBTTagList effects = cloud.writeToNBT(new NBTTagCompound()).getTagList("Effects", 10);
         for (int index = 0; index < effects.tagCount(); index++) {
             PotionEffect effect = PotionEffect.readCustomPotionEffectFromNBT(effects.getCompoundTagAt(index));
             if (effect != null) {
-                LOGGER.info("coverage doomCloud mob={} target={} cloud={} potion={} amplifier={} duration={} radius={} distance={}",
-                        owner.getUniqueID(), target.getUniqueID(), cloud.getUniqueID(), effect.getPotion().getRegistryName(),
+                LOGGER.info("coverage {}Cloud mob={} target={} cloud={} potion={} amplifier={} duration={} radius={} distance={}",
+                        doom ? "doom" : "dark", owner.getUniqueID(), target.getUniqueID(), cloud.getUniqueID(), effect.getPotion().getRegistryName(),
                         effect.getAmplifier(), effect.getDuration(), cloud.getRadius(), cloud.getDistance(target));
             }
         }
@@ -166,6 +232,11 @@ public final class ThreatworksFixture {
         if (!target.world.isRemote && target.getTags().contains("tw_l_doom_cloud_target")) {
             PotionEffect effect = event.getPotionEffect();
             LOGGER.info("coverage doomPotion target={} potion={} amplifier={} duration={}", target.getUniqueID(),
+                    effect.getPotion().getRegistryName(), effect.getAmplifier(), effect.getDuration());
+        }
+        if (!target.world.isRemote && target.getTags().contains("tw_l_dark_cloud_target")) {
+            PotionEffect effect = event.getPotionEffect();
+            LOGGER.info("coverage darkPotion target={} potion={} amplifier={} duration={}", target.getUniqueID(),
                     effect.getPotion().getRegistryName(), effect.getAmplifier(), effect.getDuration());
         }
         if (!target.world.isRemote && target.getTags().contains("tw_l_gaia_effect")) {
@@ -272,6 +343,10 @@ public final class ThreatworksFixture {
     public void onPhaseTick(TickEvent.WorldTickEvent event) {
         if (event.phase != TickEvent.Phase.END || event.world.isRemote) {
             return;
+        }
+        if (creeperBlastSource != null && creeperBlastSource.world == event.world
+                && event.world.getTotalWorldTime() - creeperBlastTick > 2) {
+            creeperBlastSource = null;
         }
         String folder = event.world.getMinecraftServer().getFolderName();
         if (folder.startsWith("TW-Campaign-L")) {
