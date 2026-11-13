@@ -14,14 +14,17 @@ import net.minecraft.entity.EntityCreature;
 import net.minecraft.entity.item.EntityTNTPrimed;
 import net.minecraft.entity.EntityList;
 import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.entity.ai.EntityAIAvoidEntity;
 import net.minecraft.entity.ai.EntityAITasks.EntityAITaskEntry;
 import net.minecraft.entity.ai.EntityAIWander;
 import net.minecraft.entity.SharedMonsterAttributes;
 import net.minecraft.entity.monster.EntityIronGolem;
 import net.minecraft.entity.monster.AbstractSkeleton;
+import net.minecraft.entity.monster.EntityCreeper;
 import net.minecraft.entity.monster.EntitySkeleton;
 import net.minecraft.entity.monster.EntitySpider;
 import net.minecraft.entity.monster.EntityZombie;
+import net.minecraft.entity.passive.EntityOcelot;
 import net.minecraft.entity.projectile.EntityArrow;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.init.Blocks;
@@ -40,6 +43,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.WorldServer;
 import net.minecraftforge.common.ForgeChunkManager;
 import net.minecraft.util.math.ChunkPos;
@@ -235,8 +239,8 @@ final class CoverageFixtureCommand extends CommandBase {
                 guard.getEntityAttribute(SharedMonsterAttributes.MAX_HEALTH).setBaseValue(1000);
                 guard.setHealth(1000);
             }
-            double offset = mob instanceof AbstractSkeleton && mob.getHeldItemMainhand().getItem() instanceof net.minecraft.item.ItemBow
-                    ? 9 : 2;
+            double offset = mob instanceof EntityCreeper || mob instanceof AbstractSkeleton
+                    && mob.getHeldItemMainhand().getItem() instanceof net.minecraft.item.ItemBow ? 9 : 2;
             place(world, guard, "tw_i_guard", X + offset, mob.posY, Z);
         }
         FakePlayer player = new FakePlayer(world, new GameProfile(UUID.randomUUID(), "CampaignI")) {
@@ -494,6 +498,60 @@ final class CoverageFixtureCommand extends CommandBase {
                 break;
             case "legal-player":
                 restorePlayer(player);
+                break;
+            case "creeper-opening":
+                if (!(mob instanceof EntityCreeper) || guard == null || mob.getAttackTarget() != guard
+                        || mob.getDistanceSq(guard) < 9.0 || ((EntityCreeper) mob).getCreeperState() > 0) {
+                    throw new CommandException("Expected a creeper pursuing its guard before swelling.");
+                }
+                restorePlayer(player);
+                attack(mob, player, "hit");
+                player.setPosition(mob.posX - 5.0, mob.posY, mob.posZ);
+                break;
+            case "creeper-ocelot":
+                if (!(mob instanceof EntityCreeper) || guard == null || mob.getAttackTarget() != player
+                        || ((EntityCreeper) mob).getCreeperState() > 0) {
+                    throw new CommandException("Expected a creeper pursuing the selected player before swelling.");
+                }
+                EntityOcelot ocelot = new EntityOcelot(world);
+                ocelot.setNoAI(true);
+                ocelot.enablePersistence();
+                place(world, ocelot, "tw_l_creeper_ocelot", mob.posX, mob.posY, mob.posZ + 2.0);
+                LOGGER.info("coverage creeperOcelot mob={} cat={} x={} z={}", mob.getUniqueID(), ocelot.getUniqueID(),
+                        ocelot.posX, ocelot.posZ);
+                break;
+            case "creeper-ocelot-handoff":
+                EntityOcelot cat = get(world, EntityOcelot.class, "tw_l_creeper_ocelot");
+                boolean avoiding = mob.tasks.taskEntries.stream().anyMatch(entry -> entry.using && entry.priority == 3
+                        && entry.action.getClass() == EntityAIAvoidEntity.class);
+                if (!(mob instanceof EntityCreeper) || cat == null || guard == null) {
+                    throw new CommandException("Expected the fixture creeper, ocelot and guard.");
+                }
+                Path retreat = mob.getNavigator().getPath();
+                if (avoiding && retreat != null && !retreat.isFinished()) {
+                    Vec3d end = retreat.getVectorFromIndex(mob, retreat.getCurrentPathLength() - 1);
+                    if (end.squareDistanceTo(cat.getPositionVector()) <= cat.getDistanceSq(mob)) {
+                        break;
+                    }
+                    if (mob.getAttackTarget() != player) {
+                        throw new CommandException("Expected the player before the native setter probe.");
+                    }
+                    mob.setAttackTarget(guard);
+                    if (mob.getAttackTarget() != guard) {
+                        throw new CommandException("The native setter was blocked during ocelot avoidance.");
+                    }
+                    mob.setAttackTarget(player);
+                    if (mob.getAttackTarget() != player) {
+                        throw new CommandException("The native setter could not restore the player.");
+                    }
+                    LOGGER.info("coverage creeperAvoidanceTaunt mob={} cat={} target={} result={} endX={} endZ={}",
+                            mob.getUniqueID(), cat.getUniqueID(), identity(mob.getAttackTarget()), actions.taunt(mob, guard),
+                            end.x, end.z);
+                    report(mob, world);
+                    cat.setDead();
+                    mob.getNavigator().clearPath();
+                    return;
+                }
                 break;
             case "retaliation-opening":
             case "opening":

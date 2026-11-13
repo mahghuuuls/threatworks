@@ -4,6 +4,7 @@ import com.mahghuuuls.threatworks.config.ServerTuning.MobType;
 import net.minecraft.entity.EntityCreature;
 import net.minecraft.entity.ai.EntityAIAttackMelee;
 import net.minecraft.entity.monster.AbstractSkeleton;
+import net.minecraft.entity.monster.EntityCreeper;
 import net.minecraft.entity.monster.EntitySkeleton;
 import net.minecraft.entity.monster.EntitySilverfish;
 import net.minecraft.entity.monster.EntitySpider;
@@ -25,14 +26,14 @@ public final class SpecialMobsCompatibility {
 
     public static void reportVariantVersion(Logger logger) {
         if (Installed.MOD != null && !Installed.VARIANTS_SUPPORTED) {
-            logger.warn("Special Mobs silverfish, skeleton and spider variant targeting unavailable for version {}. Update to at least {}.",
+            logger.warn("Special Mobs silverfish, skeleton, spider and creeper variant targeting unavailable for version {}. Update to at least {}.",
                     Installed.MOD.getVersion(), VARIANT_MINIMUM);
         }
     }
 
-    public static boolean requiresLiveMeleeContract(MobType type) {
+    public static boolean requiresLiveGoalContract(MobType type) {
         return zombieClass(type) != null || silverfishClass(type) != null || skeletonClass(type) != null
-                || isVariantSpider(type);
+                || isVariantSpider(type) || creeperClass(type) != null;
     }
 
     public static boolean matches(MobType type, EntityCreature mob) {
@@ -54,6 +55,11 @@ public final class SpecialMobsCompatibility {
         if (spiderClass != null) {
             return Installed.VARIANTS_SUPPORTED && mob instanceof EntitySpider
                     && mob.getClass().getName().equals(ENTITY_PACKAGE + spiderClass);
+        }
+        String creeperClass = creeperClass(type);
+        if (creeperClass != null) {
+            return Installed.VARIANTS_SUPPORTED && mob instanceof EntityCreeper
+                    && mob.getClass().getName().equals(ENTITY_PACKAGE + creeperClass);
         }
         return type == MobType.SPECIAL_SKELETON && mob instanceof EntitySkeleton && mob.getClass().getName().equals(
                 "fathertoast.specialmobs.entity.skeleton.Entity_SpecialSkeleton");
@@ -188,6 +194,17 @@ public final class SpecialMobsCompatibility {
                 return "EntityHuskZombie";
             case PLAGUE_ZOMBIE:
                 return "EntityPlagueZombie";
+            default:
+                return null;
+        }
+    }
+
+    private static String creeperClass(MobType type) {
+        switch (type) {
+            case SPECIAL_CREEPER:
+                return "creeper.Entity_SpecialCreeper";
+            case FIRE_CREEPER:
+                return "creeper.EntityFireCreeper";
             default:
                 return null;
         }

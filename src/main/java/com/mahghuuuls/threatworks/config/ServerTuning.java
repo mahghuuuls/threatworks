@@ -94,6 +94,8 @@ public final class ServerTuning {
         MOTHER_CAVE_SPIDER("specialmobs:mothercavespider"),
         WEB_SPIDER("specialmobs:webspider"),
         WEB_CAVE_SPIDER("specialmobs:webcavespider"),
+        SPECIAL_CREEPER("specialmobs:specialcreeper"),
+        FIRE_CREEPER("specialmobs:firecreeper"),
         DEFILED_HOST("defiledlands:host"),
         DEFILED_SHAMBLER("defiledlands:shambler"),
         DEFILED_TWISTED_SHAMBLER("defiledlands:shambler_twisted"),

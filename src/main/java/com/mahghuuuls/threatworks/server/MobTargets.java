@@ -17,12 +17,14 @@ import net.minecraft.entity.ai.EntityAIAttackMelee;
 import net.minecraft.entity.ai.EntityAIAttackRangedBow;
 import net.minecraft.entity.ai.EntityAITasks.EntityAITaskEntry;
 import net.minecraft.entity.ai.EntityAIAvoidEntity;
+import net.minecraft.entity.ai.EntityAICreeperSwell;
 import net.minecraft.entity.ai.EntityAIFleeSun;
 import net.minecraft.entity.ai.EntityAILeapAtTarget;
 import net.minecraft.entity.ai.EntityAIWatchClosest;
 import net.minecraft.entity.ai.EntityAIZombieAttack;
 import net.minecraft.entity.monster.AbstractSkeleton;
 import net.minecraft.entity.monster.EntityBlaze;
+import net.minecraft.entity.monster.EntityCreeper;
 import net.minecraft.entity.monster.EntityEndermite;
 import net.minecraft.entity.monster.EntityShulker;
 import net.minecraft.entity.monster.EntitySpider;
@@ -84,6 +86,8 @@ final class MobTargets {
             }
         }
         boolean matched = false;
+        boolean creeper = mob instanceof EntityCreeper;
+        boolean foundSwell = false;
         for (EntityAITaskEntry entry : mob.tasks.taskEntries) {
             Class<?> goal = entry.action.getClass();
             boolean vanillaSkeletonMelee = attack == EntityAIAttackMelee.class
@@ -100,25 +104,37 @@ final class MobTargets {
                     return false;
                 }
                 matched = true;
+            } else if (creeper && goal == EntityAICreeperSwell.class) {
+                if (foundSwell || entry.priority != 2 || entry.action.getMutexBits() != 1) {
+                    return false;
+                }
+                foundSwell = true;
             } else if (SpecialAiCompatibility.hasUnknownCombatGoal(entry)
                     || !SpecialAiCompatibility.isCombatReaction(entry)
                     && !GaiaCompatibility.isAntWander(type, entry)
                     && (entry.priority > priority ? !entry.action.isInterruptible()
-                    : (entry.action.getMutexBits() & 3) != 0 && !nativeCompetingGoal(mob, goal))) {
+                    : (entry.action.getMutexBits() & 3) != 0 && !nativeCompetingGoal(mob, entry))) {
                 return false;
             }
         }
-        return matched;
+        return matched && (!creeper || foundSwell);
     }
 
-    private static boolean nativeCompetingGoal(EntityCreature mob, Class<?> goal) {
+    private static boolean nativeCompetingGoal(EntityCreature mob, EntityAITaskEntry entry) {
+        Class<?> goal = entry.action.getClass();
         return mob instanceof AbstractSkeleton && (goal == EntityAIFleeSun.class || goal == EntityAIAvoidEntity.class)
                 || mob instanceof EntitySpider && goal == EntityAILeapAtTarget.class
-                || mob instanceof EntityShulker && goal == EntityAIWatchClosest.class;
+                || mob instanceof EntityShulker && goal == EntityAIWatchClosest.class
+                || mob instanceof EntityCreeper && isCreeperAvoidance(entry);
+    }
+
+    private static boolean isCreeperAvoidance(EntityAITaskEntry entry) {
+        return entry.priority == 3 && entry.action.getClass() == EntityAIAvoidEntity.class
+                && entry.action.getMutexBits() == 1;
     }
 
     static boolean canControlImmediately(EntityCreature mob, MobType type) {
-        boolean providerGoalCheck = SpecialMobsCompatibility.requiresLiveMeleeContract(type)
+        boolean providerGoalCheck = SpecialMobsCompatibility.requiresLiveGoalContract(type)
                 || providerMeleePriority(type) >= 0;
         return (providerGoalCheck ? matchesBehavior(mob, type) : hasSupportedState(mob, type))
                 && !inNativePhase(mob, type);
@@ -133,7 +149,7 @@ final class MobTargets {
                 && (!SpecialMobsCompatibility.isVariantSkeleton(type) || !mob.isRiding()
                 && SpecialMobsCompatibility.hasSupportedSkeletonWeapon(type, mob, usesBow(mob)))
                 && (!(SpecialMobsCompatibility.isVariantSpider(type) || DungeonMobsCompatibility.meleePriority(type) >= 0
-                || type == MobType.GAIA_DULLAHAN || type == MobType.DEFILED_SCUTTLER)
+                || mob instanceof EntityCreeper || type == MobType.GAIA_DULLAHAN || type == MobType.DEFILED_SCUTTLER)
                 || !mob.isRiding() && !mob.isBeingRidden())
                 && (type != MobType.SPECIAL_SKELETON || usesBow(mob));
     }
@@ -152,10 +168,18 @@ final class MobTargets {
                 || mob instanceof EntityShulker && !canAttackWhileAttached((EntityShulker) mob)) {
             return true;
         }
+        if (mob instanceof EntityCreeper) {
+            EntityCreeper creeper = (EntityCreeper) mob;
+            if (creeper.getCreeperState() > 0 || creeper.hasIgnited() || creeper.isWet() || creeper.isBurning()) {
+                return true;
+            }
+        }
         for (EntityAITaskEntry entry : mob.tasks.taskEntries) {
             if (entry.using && (SpecialAiCompatibility.isCombatReaction(entry)
                     || SpecialAiCompatibility.isBlockGriefing(entry)
                     || GaiaCompatibility.isAntWander(type, entry)
+                    || mob instanceof EntityCreeper
+                    && (entry.action.getClass() == EntityAICreeperSwell.class || isCreeperAvoidance(entry))
                     || SpecialMobsCompatibility.isVariantSkeleton(type)
                     && (entry.action.getClass() == EntityAIFleeSun.class || entry.action.getClass() == EntityAIAvoidEntity.class))) {
                 return true;
@@ -383,6 +407,10 @@ final class MobTargets {
             return SkeletonBow.canReach(from.add(0.0, mob.getEyeHeight() - 0.1F, 0.0),
                     target.getEntityBoundingBox(), target.height, terrain::clearLine,
                     position -> terrain.getBlockState(new BlockPos(position)).getMaterial() == Material.WATER);
+        }
+        if (mob instanceof EntityCreeper) {
+            return from.squareDistanceTo(target.posX, target.posY, target.posZ) < 9.0
+                    && sees(terrain, mob, target, from);
         }
         float reach = mob.width * 2.0F;
         float reachSquared = mob instanceof EntitySpider ? 4.0F : reach * reach;
