@@ -1,7 +1,8 @@
 package com.mahghuuuls.threatworks.server;
 
-import com.mahghuuuls.threatworks.compat.SpecialMobsCompatibility;
+import com.mahghuuuls.threatworks.compat.DefiledLandsCompatibility;
 import com.mahghuuuls.threatworks.compat.FoliaathCompatibility;
+import com.mahghuuuls.threatworks.compat.SpecialMobsCompatibility;
 import com.mahghuuuls.threatworks.config.ServerTuning;
 import com.mahghuuuls.threatworks.config.ServerTuning.MobType;
 import net.minecraft.entity.EntityCreature;
@@ -130,6 +131,6 @@ final class MobAdmission {
             return mob.getClass() == entityClass;
         }
         return type == MobType.FOLIAATH ? foliaath != null && foliaath.matches(mob)
-                : SpecialMobsCompatibility.matches(type, mob);
+                : SpecialMobsCompatibility.matches(type, mob) || DefiledLandsCompatibility.matches(type, mob);
     }
 }

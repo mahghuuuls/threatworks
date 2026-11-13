@@ -61,6 +61,9 @@ public final class ServerTuning {
         HUSK_ZOMBIE("specialmobs:huskzombie"),
         PLAGUE_ZOMBIE("specialmobs:plaguezombie"),
         SPECIAL_SKELETON("specialmobs:specialskeleton"),
+        DEFILED_HOST("defiledlands:host"),
+        DEFILED_SHAMBLER("defiledlands:shambler"),
+        DEFILED_TWISTED_SHAMBLER("defiledlands:shambler_twisted"),
         FOLIAATH("mowziesmobs:foliaath");
 
         public final String id;

@@ -37,7 +37,7 @@ interface MobPolicy {
 
             @Override
             public TargetObservation observe(WorldServer world, EntityCreature mob, Entity candidate, WorkSample sample) {
-                return MobTargets.observe(world, mob, candidate, sample);
+                return MobTargets.observe(world, mob, candidate, sample, type);
             }
         };
     }

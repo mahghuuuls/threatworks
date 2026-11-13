@@ -1,6 +1,7 @@
 package com.mahghuuuls.threatworks.server;
 
 import com.mahghuuuls.threatworks.config.ServerTuning.MobType;
+import com.mahghuuuls.threatworks.compat.DefiledLandsCompatibility;
 import com.mahghuuuls.threatworks.compat.FoliaathCompatibility;
 import com.mahghuuuls.threatworks.compat.SpecialAiCompatibility;
 import com.mahghuuuls.threatworks.compat.SpecialMobsCompatibility;
@@ -74,6 +75,11 @@ final class MobTargets {
             nestedAttack = "AIAttack";
         } else if (mob instanceof EntityEndermite) {
             priority = 2;
+        } else {
+            int defiledMelee = DefiledLandsCompatibility.meleePriority(type);
+            if (defiledMelee >= 0) {
+                priority = defiledMelee;
+            }
         }
         boolean matched = false;
         for (EntityAITaskEntry entry : mob.tasks.taskEntries) {
@@ -104,7 +110,9 @@ final class MobTargets {
     }
 
     static boolean canControlImmediately(EntityCreature mob, MobType type) {
-        return (SpecialMobsCompatibility.isMeleeZombie(type) ? matchesBehavior(mob, type) : hasSupportedState(mob, type))
+        boolean providerGoalCheck = SpecialMobsCompatibility.isMeleeZombie(type)
+                || DefiledLandsCompatibility.meleePriority(type) >= 0;
+        return (providerGoalCheck ? matchesBehavior(mob, type) : hasSupportedState(mob, type))
                 && !inNativePhase(mob);
     }
 
@@ -163,11 +171,7 @@ final class MobTargets {
                 && (!(mob instanceof EntityBlaze) || mob.getDistanceSq(target) < range * range) ? target : null;
     }
 
-    static TargetObservation observe(WorldServer world, EntityCreature mob, Entity entity) {
-        return observe(world, mob, entity, null);
-    }
-
-    static TargetObservation observe(WorldServer world, EntityCreature mob, Entity entity, WorkSample sample) {
+    static TargetObservation observe(WorldServer world, EntityCreature mob, Entity entity, WorkSample sample, MobType type) {
         EntityLivingBase target = resolve(world, mob, entity);
         if (target == null) {
             return TargetObservation.INELIGIBLE;
@@ -175,8 +179,8 @@ final class MobTargets {
         Vec3d position = mob.getPositionVector();
         LoadedPathTerrain terrain = new LoadedPathTerrain(world);
         boolean bow = usesBow(mob);
-        // The zombie's villager goal can acquire through walls. Other candidates need sight.
-        boolean needsSight = !(mob instanceof EntityZombie && target instanceof EntityVillager);
+        boolean needsSight = !(mob instanceof EntityZombie && target instanceof EntityVillager)
+                && !DefiledLandsCompatibility.canAcquireWithoutSight(type, target);
         boolean sightLost = needsSight && !sees(terrain, mob, target, position);
         if (mob instanceof EntityBlaze || mob instanceof EntityShulker) {
             return observeProjectile(terrain, mob, target, sightLost);

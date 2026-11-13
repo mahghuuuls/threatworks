@@ -121,8 +121,12 @@ final class CoverageFixtureCommand extends CommandBase {
     }
 
     private static void arena(WorldServer world) {
+        arena(world, Y);
+    }
+
+    private static void arena(WorldServer world, int height) {
         cleanup(world);
-        for (BlockPos pos : BlockPos.getAllInBox(new BlockPos(-12, Y - 1, -12), new BlockPos(40, Y - 1, 40))) {
+        for (BlockPos pos : BlockPos.getAllInBox(new BlockPos(-12, height - 1, -12), new BlockPos(40, height - 1, 40))) {
             world.setBlockState(pos, Blocks.STONE.getDefaultState(), 2);
         }
     }
@@ -140,20 +144,21 @@ final class CoverageFixtureCommand extends CommandBase {
     }
 
     private static void seed(WorldServer world, String id, boolean solo) throws CommandException {
-        arena(world);
+        int height = "defiledlands:shambler".equals(id) ? 60 : Y;
+        arena(world, height);
         Entity entity = EntityList.createEntityByIDFromName(new ResourceLocation(id), world);
         if (!(entity instanceof EntityCreature)) {
             throw new CommandException("Unknown coverage fixture mob " + id);
         }
         EntityCreature mob = (EntityCreature) entity;
-        mob.setPosition(X, Y, Z);
+        mob.setPosition(X, height, Z);
         mob.onInitialSpawn(world.getDifficultyForLocation(mob.getPosition()), null);
         // Keep exact-ID fixtures separate from the natural replacement probe.
         if (id.startsWith("minecraft:")) {
             mob.getEntityData().setBoolean("SpecialMobsInit", true);
         }
         configureMob(mob);
-        place(world, mob, "tw_i_mob", X, Z);
+        place(world, mob, "tw_i_mob", X, height, Z);
         actors(world, mob, solo);
     }
 
@@ -209,7 +214,7 @@ final class CoverageFixtureCommand extends CommandBase {
             }
             double offset = mob instanceof AbstractSkeleton && mob.getHeldItemMainhand().getItem() instanceof net.minecraft.item.ItemBow
                     ? 9 : 2;
-            place(world, guard, "tw_i_guard", X + offset, Z);
+            place(world, guard, "tw_i_guard", X + offset, mob.posY, Z);
         }
         FakePlayer player = new FakePlayer(world, new GameProfile(UUID.randomUUID(), "CampaignI")) {
             @Override
@@ -236,16 +241,20 @@ final class CoverageFixtureCommand extends CommandBase {
         ReflectionHelper.setPrivateValue(EntityPlayerMP.class, player, 0, "respawnInvulnerabilityTicks", "field_147101_bU");
         player.setSneaking(true);
         player.setInvisible(true);
-        place(world, player, "tw_i_player", X, Z + 13);
+        place(world, player, "tw_i_player", X, mob.posY, Z + 13);
         LOGGER.info("coverage actors mob={} player={} guard={}", mob.getUniqueID(), player.getUniqueID(),
                 identity(get(world, EntityIronGolem.class, "tw_i_guard")));
         report(mob, world);
     }
 
     private static void place(WorldServer world, Entity entity, String tag, double x, double z) throws CommandException {
+        place(world, entity, tag, x, Y, z);
+    }
+
+    private static void place(WorldServer world, Entity entity, String tag, double x, double y, double z) throws CommandException {
         entity.addTag(TAG);
         entity.addTag(tag);
-        entity.setPosition(x, Y, z);
+        entity.setPosition(x, y, z);
         if (!world.spawnEntity(entity)) {
             throw new CommandException("Could not spawn " + tag);
         }
@@ -276,18 +285,20 @@ final class CoverageFixtureCommand extends CommandBase {
                 if (guard == null) {
                     throw new CommandException("Missing native retaliation guard.");
                 }
-                player.setPosition(X, Y, Z + 13);
+                player.setPosition(X, mob.posY, Z + 13);
                 player.capabilities.disableDamage = true;
                 guard.attackEntityAsMob(mob);
                 break;
             case "legal-player":
-                player.capabilities.disableDamage = false;
-                player.setInvisible(false);
-                player.hurtResistantTime = 0;
+                restorePlayer(player);
                 break;
+            case "retaliation-opening":
             case "opening":
                 if (guard == null || mob.getAttackTarget() != guard) {
                     throw new CommandException("Expected the native guard immediately before the opening hit.");
+                }
+                if ("retaliation-opening".equals(operation)) {
+                    restorePlayer(player);
                 }
                 attack(mob, player, "hit");
                 break;
@@ -391,6 +402,13 @@ final class CoverageFixtureCommand extends CommandBase {
                 mob.setNoAI(false);
                 break;
             case "competing-goal":
+            case "defiled-native-goal":
+                boolean probeSetter = "defiled-native-goal".equals(operation);
+                if (probeSetter && (!mob.getServer().getFolderName().startsWith("TW-Campaign-L") || guard == null
+                        || !guard.isEntityAlive() || mob.getAttackTarget() != player
+                        || !"defiledlands:host".equals(String.valueOf(EntityList.getKey(mob))))) {
+                    throw new CommandException("Expected a tracked Campaign L Host targeting the player.");
+                }
                 mob.tasks.addTask(0, new net.minecraft.entity.ai.EntityAIBase() {
                     {
                         setMutexBits(1);
@@ -401,6 +419,29 @@ final class CoverageFixtureCommand extends CommandBase {
                         return true;
                     }
                 });
+                if (probeSetter) {
+                    mob.setAttackTarget(guard);
+                    if (mob.getAttackTarget() != guard) {
+                        throw new CommandException("The native setter was blocked after a competing goal appeared.");
+                    }
+                }
+                break;
+            case "defiled-covered-opening":
+                if (!mob.getServer().getFolderName().startsWith("TW-Campaign-L") || guard == null
+                        || mob.getAttackTarget() != guard
+                        || !"defiledlands:shambler_twisted".equals(String.valueOf(EntityList.getKey(mob)))) {
+                    throw new CommandException("Expected a Campaign L Twisted Shambler targeting the guard.");
+                }
+                restorePlayer(player);
+                attack(mob, player, "hit");
+                BlockPos origin = mob.getPosition();
+                for (BlockPos pos : BlockPos.getAllInBox(origin.add(-2, 0, -2), origin.add(-2, 2, 2))) {
+                    world.setBlockState(pos, Blocks.STONE.getDefaultState(), 2);
+                }
+                player.setPosition(mob.posX - 5.0, mob.posY, mob.posZ);
+                mob.addTag("tw_l_sight_probe");
+                LOGGER.info("coverage defiledSight mob={} player={} visible={}", mob.getUniqueID(),
+                        player.getUniqueID(), mob.canEntityBeSeen(player));
                 break;
             case "zombie-bow":
                 if (!mob.getServer().getFolderName().startsWith("TW-Campaign-L") || !(mob instanceof EntityZombie)
@@ -495,6 +536,12 @@ final class CoverageFixtureCommand extends CommandBase {
                 throw new CommandException("Unknown coverage operation " + operation);
         }
         report(mob, world);
+    }
+
+    private static void restorePlayer(EntityPlayerMP player) {
+        player.capabilities.disableDamage = false;
+        player.setInvisible(false);
+        player.hurtResistantTime = 0;
     }
 
     static void attack(EntityCreature mob, EntityPlayerMP player, String operation) {

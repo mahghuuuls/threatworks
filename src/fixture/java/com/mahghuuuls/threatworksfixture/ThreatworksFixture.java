@@ -144,8 +144,13 @@ public final class ThreatworksFixture {
         }
         if (logsCoverageCombat(entity)
                 && (entity.getTags().contains("tw_i_mob") || entity.getTags().contains(DimensionCoverageCommand.TAG))) {
+            boolean coordinated = coordinatedTargetWrite();
             LOGGER.info("coverage targetWrite mob={} requested={} coordinated={} tick={}", entity.getUniqueID(),
-                    target == null ? null : target.getUniqueID(), coordinatedTargetWrite(), entity.getServer().getTickCounter());
+                    target == null ? null : target.getUniqueID(), coordinated, entity.getServer().getTickCounter());
+            if (coordinated && target instanceof EntityPlayerMP && entity.getTags().contains("tw_l_sight_probe")) {
+                LOGGER.info("coverage coordinatedSight mob={} player={} visible={} tick={}", entity.getUniqueID(),
+                        target.getUniqueID(), entity.canEntityBeSeen(target), entity.getServer().getTickCounter());
+            }
         }
         if (target != null && entity.getTags().contains("tw_g_mob_0")) {
             LOGGER.info("work_target mob={} target={} serverTick={}", entity.getUniqueID(), target.getUniqueID(),
