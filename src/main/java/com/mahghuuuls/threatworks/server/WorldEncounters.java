@@ -1,6 +1,7 @@
 package com.mahghuuuls.threatworks.server;
 
 import com.mahghuuuls.threatworks.points.ThreatPoints;
+import com.mahghuuuls.threatworks.config.ServerTuning.MobType;
 import com.mahghuuuls.threatworks.threat.Encounter;
 import com.mahghuuuls.threatworks.threat.Encounter.Rules;
 import net.minecraft.block.state.IBlockState;
@@ -24,6 +25,8 @@ import java.util.function.Supplier;
 
 final class WorldEncounters implements IWorldEventListener {
     final Map<UUID, Encounter> encounters = new HashMap<>();
+    final Map<UUID, MobType> coverage = new HashMap<>();
+    final Map<UUID, Map<UUID, Encounter.TargetObservation>> observations = new HashMap<>();
     // A snapshot can compare world sessions without retaining a world or its encounter table.
     final Object launchSession = new Object();
     WorkSample workSample;
@@ -42,6 +45,8 @@ final class WorldEncounters implements IWorldEventListener {
                     sample.visit();
                 }
                 if (remove.test(entry.getKey(), entry.getValue())) {
+                    coverage.remove(entry.getKey());
+                    observations.remove(entry.getKey());
                     entries.remove();
                 }
             }
@@ -99,6 +104,8 @@ final class WorldEncounters implements IWorldEventListener {
             playerAvailabilityChanged(entity.getUniqueID());
         } else {
             encounters.remove(entity.getUniqueID());
+            coverage.remove(entity.getUniqueID());
+            observations.remove(entity.getUniqueID());
         }
     }
 

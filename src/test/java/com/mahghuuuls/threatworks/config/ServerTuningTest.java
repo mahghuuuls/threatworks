@@ -12,6 +12,8 @@ import java.util.List;
 import java.util.UUID;
 
 import static com.mahghuuuls.threatworks.config.ServerTuning.MobType.SKELETON;
+import static com.mahghuuuls.threatworks.config.ServerTuning.MobType.SPECIAL_SKELETON;
+import static com.mahghuuuls.threatworks.config.ServerTuning.MobType.SPECIAL_ZOMBIE;
 import static com.mahghuuuls.threatworks.config.ServerTuning.MobType.ZOMBIE;
 import static com.mahghuuuls.threatworks.threat.Encounter.TargetObservation.IN_REACH;
 import static com.mahghuuuls.threatworks.threat.Encounter.TargetObservation.obscured;
@@ -31,6 +33,8 @@ class ServerTuningTest {
         for (ServerTuning tuning : new ServerTuning[] {created, reloaded}) {
             assertTrue(tuning.isEnabled(ZOMBIE));
             assertTrue(tuning.isEnabled(SKELETON));
+            assertTrue(tuning.isEnabled(SPECIAL_ZOMBIE));
+            assertFalse(tuning.isEnabled(SPECIAL_SKELETON));
             assertNull(tuning.assignedPoints("minecraft:stick", null));
             Rules rules = tuning.rulesFor(ZOMBIE);
             assertArrayEquals(new double[] {0.2, 0.4, 8, 16, 10, 60, 200, 40}, new double[] {
@@ -39,6 +43,61 @@ class ServerTuningTest {
             });
         }
         assertTrue(warnings.isEmpty(), warnings.toString());
+    }
+
+    @Test
+    void legacyKeepsOnlyPreviouslyEnabledTypesAcrossRestartUntilExpanded() throws Exception {
+        Path file = directory.resolve("legacy.cfg");
+        ServerTuning legacy = TuningFiles.load(file, "S:enabledMobs <\n minecraft:zombie\n"
+                + " specialmobs:specialzombie\n >\nS:mobOptIn <\n specialmobs:specialskeleton\n >\nD:openingThreat=16",
+                id -> true, warnings);
+        ServerTuning restarted = TuningFiles.load(file, null, id -> true, warnings);
+        for (ServerTuning tuning : new ServerTuning[] {legacy, restarted}) {
+            assertTrue(tuning.isEnabled(ZOMBIE));
+            assertFalse(tuning.isEnabled(SKELETON));
+            assertFalse(tuning.isEnabled(SPECIAL_ZOMBIE));
+            assertFalse(tuning.isEnabled(SPECIAL_SKELETON));
+            assertEquals(16, tuning.rulesFor(SPECIAL_ZOMBIE).openingThreat);
+        }
+        String saved = new String(Files.readAllBytes(file), java.nio.charset.StandardCharsets.UTF_8);
+        assertTrue(saved.contains("S:mobCoverage=legacy"));
+        Files.write(file, saved.replace("S:mobCoverage=legacy", "S:mobCoverage=expanded")
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        ServerTuning expanded = TuningFiles.load(file, null, id -> true, warnings);
+        assertTrue(expanded.isEnabled(SKELETON));
+        assertTrue(expanded.isEnabled(SPECIAL_ZOMBIE));
+        assertTrue(expanded.isEnabled(SPECIAL_SKELETON));
+        assertEquals(16, expanded.rulesFor(SPECIAL_ZOMBIE).openingThreat);
+    }
+
+    @Test
+    void emptyLegacyListRemainsEmptyAcrossRestart() throws Exception {
+        Path file = directory.resolve("empty.cfg");
+        ServerTuning legacy = TuningFiles.load(file, "S:enabledMobs <\n >", id -> true, warnings);
+        ServerTuning restarted = TuningFiles.load(file, null, id -> true, warnings);
+        for (ServerTuning tuning : new ServerTuning[] {legacy, restarted}) {
+            assertFalse(tuning.isEnabled(ZOMBIE));
+            assertFalse(tuning.isEnabled(SKELETON));
+            assertFalse(tuning.isEnabled(SPECIAL_ZOMBIE));
+            assertFalse(tuning.isEnabled(SPECIAL_SKELETON));
+        }
+    }
+
+    @Test
+    void blacklistRetainsExactAbsentIdsAndReportsEachBadValueOncePerLoad() throws Exception {
+        Path file = directory.resolve("blacklist.cfg");
+        ServerTuning tuning = TuningFiles.load(file, "S:mobBlacklist <\n minecraft:zombie\n minecraft:zombie\n"
+                + " absent:mob\n specialmobs:specialskeleton\n bad\n bad\n >\nS:mobOptIn <\n"
+                + " specialmobs:specialskeleton\n minecraft:creeper\n minecraft:creeper\n >", id -> false, warnings);
+        assertTrue(tuning.isBlacklisted("minecraft:zombie"));
+        assertTrue(tuning.isBlacklisted("specialmobs:specialskeleton"));
+        assertTrue(tuning.isBlacklisted("absent:mob"));
+        assertFalse(tuning.isBlacklisted("bad"));
+        assertFalse(tuning.isBlacklisted("absent:other"));
+        assertTrue(tuning.isEnabled(SPECIAL_SKELETON));
+        assertEquals(2, warnings.size(), warnings.toString());
+        assertTrue(warnings.stream().anyMatch(warning -> warning.contains("mobBlacklist entry 'bad'")));
+        assertTrue(warnings.stream().anyMatch(warning -> warning.contains("mobOptIn entry 'minecraft:creeper'")));
     }
 
     @Test

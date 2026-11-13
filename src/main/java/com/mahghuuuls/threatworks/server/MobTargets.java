@@ -4,10 +4,16 @@ import com.mahghuuuls.threatworks.config.ServerTuning.MobType;
 import com.mahghuuuls.threatworks.threat.Encounter.TargetObservation;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityCreature;
-import net.minecraft.entity.EntityList;
 import net.minecraft.entity.EntityLiving;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.SharedMonsterAttributes;
+import net.minecraft.entity.ai.EntityAIAttackMelee;
+import net.minecraft.entity.ai.EntityAIAttackRangedBow;
+import net.minecraft.entity.ai.EntityAITasks.EntityAITaskEntry;
+import net.minecraft.entity.ai.EntityAIAvoidEntity;
+import net.minecraft.entity.ai.EntityAIFleeSun;
+import net.minecraft.entity.ai.EntityAIZombieAttack;
+import net.minecraft.entity.monster.AbstractSkeleton;
 import net.minecraft.entity.monster.EntitySkeleton;
 import net.minecraft.entity.monster.EntityZombie;
 import net.minecraft.entity.passive.EntityVillager;
@@ -19,31 +25,53 @@ import net.minecraft.pathfinding.Path;
 import net.minecraft.pathfinding.PathFinder;
 import net.minecraft.pathfinding.PathNavigateGround;
 import net.minecraft.pathfinding.WalkNodeProcessor;
-import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.WorldServer;
 
 final class MobTargets {
-    private static final ResourceLocation ZOMBIE_ID = new ResourceLocation(MobType.ZOMBIE.id);
-    private static final ResourceLocation SKELETON_ID = new ResourceLocation(MobType.SKELETON.id);
-
     private MobTargets() {
     }
 
-    static MobType supportedType(EntityLivingBase mob) {
-        if (!(mob.world instanceof WorldServer)) {
-            return null;
+    static boolean matchesBehavior(EntityCreature mob, MobType type) {
+        if (!canControlImmediately(mob, type == MobType.SPECIAL_SKELETON)) {
+            return false;
         }
-        Class<?> type = mob.getClass();
-        if (type == EntityZombie.class && ZOMBIE_ID.equals(EntityList.getKey(mob))) {
-            return MobType.ZOMBIE;
+        boolean bow = usesBow(mob);
+        Class<?> attack = EntityAIZombieAttack.class;
+        int priority = 2;
+        if (mob instanceof EntitySkeleton) {
+            attack = bow ? EntityAIAttackRangedBow.class : EntityAIAttackMelee.class;
+            priority = 4;
         }
-        if (type == EntitySkeleton.class && SKELETON_ID.equals(EntityList.getKey(mob))) {
-            return MobType.SKELETON;
+        boolean matched = false;
+        for (EntityAITaskEntry entry : mob.tasks.taskEntries) {
+            Class<?> goal = entry.action.getClass();
+            boolean vanillaSkeletonMelee = attack == EntityAIAttackMelee.class
+                    && goal.getSuperclass() == attack && goal.getEnclosingClass() == AbstractSkeleton.class;
+            if (goal == attack || vanillaSkeletonMelee) {
+                if (matched || entry.priority != priority || (entry.action.getMutexBits() & 3) != 3) {
+                    return false;
+                }
+                matched = true;
+            } else if (entry.priority > priority ? !entry.action.isInterruptible()
+                    : (entry.action.getMutexBits() & 3) != 0 && !(mob instanceof EntitySkeleton
+                    && (goal == EntityAIFleeSun.class || goal == EntityAIAvoidEntity.class))) {
+                return false;
+            }
         }
-        return null;
+        return matched;
+    }
+
+    static boolean canControlImmediately(EntityCreature mob, boolean bowRequired) {
+        return !mob.isAIDisabled() && mob.getNavigator().getClass() == PathNavigateGround.class
+                && !mob.tasks.isControlFlagDisabled(1) && !mob.tasks.isControlFlagDisabled(2)
+                && (!bowRequired || usesBow(mob));
+    }
+
+    private static boolean usesBow(EntityCreature mob) {
+        return mob instanceof EntitySkeleton && mob.getHeldItemMainhand().getItem() instanceof ItemBow;
     }
 
     static EntityLivingBase resolve(WorldServer world, EntityCreature mob, Entity entity) {
@@ -70,7 +98,7 @@ final class MobTargets {
         }
         Vec3d position = mob.getPositionVector();
         LoadedPathTerrain terrain = new LoadedPathTerrain(world);
-        boolean bow = mob instanceof EntitySkeleton && mob.getHeldItemMainhand().getItem() instanceof ItemBow;
+        boolean bow = usesBow(mob);
         // The zombie's villager goal acquires without sight. Its player and golem goals,
         // and the skeleton's target goals, require sight when acquiring a new target.
         boolean needsSight = !(mob instanceof EntityZombie && target instanceof EntityVillager);

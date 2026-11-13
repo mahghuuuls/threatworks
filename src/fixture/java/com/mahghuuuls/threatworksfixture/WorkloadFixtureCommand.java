@@ -133,6 +133,8 @@ final class WorkloadFixtureCommand extends CommandBase {
             }
             EntityZombie mob = new EntityZombie(world);
             place(world, mob, MOB, mobTag(lane), x + 0.5, z + 0.5);
+            mob.setNoAI(false);
+            mob.getEntityAttribute(SharedMonsterAttributes.MOVEMENT_SPEED).setBaseValue(0);
             mob.getEntityAttribute(SharedMonsterAttributes.FOLLOW_RANGE).setBaseValue(12);
         }
         for (int lane = 0; lane < LANES; lane++) {

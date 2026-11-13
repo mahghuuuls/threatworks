@@ -8,9 +8,11 @@ import electroblob.wizardry.util.MagicDamage;
 import electroblob.wizardry.util.MinionDamage;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.item.EntityArmorStand;
+import net.minecraft.entity.monster.EntityZombie;
 import net.minecraft.entity.projectile.EntityTippedArrow;
 import net.minecraft.init.Bootstrap;
 import net.minecraft.util.DamageSource;
+import net.minecraft.util.EntityDamageSourceIndirect;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
@@ -58,6 +60,16 @@ class DamageAttributionTest {
         arrow.shootingEntity = null;
         assertNull(DamageAttribution.resolve(DamageSource.causeArrowDamage(arrow, arrow), worldSession));
         assertNull(DamageAttribution.resolve(DamageSource.causeArrowDamage(arrow, shooter), worldSession));
+    }
+
+    @Test
+    void ordinaryMobMeleeCreditsTheAttackerWithoutOpeningAndRejectsAnIndirectAlias() {
+        EntityZombie zombie = new EntityZombie(null);
+        DamageAttribution hit = DamageAttribution.resolve(DamageSource.causeMobDamage(zombie), worldSession);
+        assertSame(zombie, hit.attacker);
+        assertFalse(hit.mayOpenEncounter());
+        assertEquals(1.5, hit.multiplier(() -> 1.5));
+        assertNull(DamageAttribution.resolve(new EntityDamageSourceIndirect("mob", shooter, zombie), worldSession));
     }
 
     @Test

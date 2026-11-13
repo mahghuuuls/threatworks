@@ -52,6 +52,7 @@ public final class ThreatworksFixture {
         event.registerServerCommand(new SummonFixtureCommand(this));
         event.registerServerCommand(new EquipmentFixtureCommand());
         event.registerServerCommand(new WorkloadFixtureCommand());
+        event.registerServerCommand(new CoverageFixtureCommand(this));
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)

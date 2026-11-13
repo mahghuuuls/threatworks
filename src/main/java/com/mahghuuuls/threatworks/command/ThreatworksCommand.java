@@ -15,7 +15,7 @@ import org.apache.logging.log4j.Logger;
 public final class ThreatworksCommand extends CommandBase {
     private static final Logger LOGGER = LogManager.getLogger("Threatworks");
     private static final int MAX_SHOWN_SCORES = 16;
-    private static final String SELECT_ONE_MOB = "Select exactly one loaded zombie or skeleton, or use its UUID.";
+    private static final String SELECT_ONE_MOB = "Select exactly one loaded mob, or use its UUID.";
 
     @Override
     public String getName() {
@@ -56,11 +56,9 @@ public final class ThreatworksCommand extends CommandBase {
         } catch (EntityNotFoundException invalidSelection) {
             throw new CommandException(SELECT_ONE_MOB);
         }
-        if (!EncounterCoordinator.supports(mob)) {
-            throw new CommandException(SELECT_ONE_MOB);
-        }
         EncounterCoordinator.Inspection inspection = EncounterCoordinator.INSTANCE.inspect(mob, MAX_SHOWN_SCORES);
         report(sender, "mob=" + mob.getUniqueID()
+                + " type=" + inspection.typeId + " status=" + inspection.status
                 + " tracked=" + inspection.tracked + " target="
                 + (inspection.target == null ? "none" : inspection.target)
                 + " taunt=" + (inspection.taunter == null ? "none" : inspection.taunter)

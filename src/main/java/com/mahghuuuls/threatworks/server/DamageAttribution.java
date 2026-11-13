@@ -1,10 +1,12 @@
 package com.mahghuuuls.threatworks.server;
 
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.EntityLiving;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.entity.projectile.EntityArrow;
 import net.minecraft.util.DamageSource;
+import net.minecraft.util.EntityDamageSource;
 
 import java.util.function.DoubleSupplier;
 
@@ -36,6 +38,11 @@ public final class DamageAttribution {
             Entity actor = source.getTrueSource();
             return actor instanceof EntityPlayerMP && actor == source.getImmediateSource()
                     ? new DamageAttribution((EntityPlayerMP) actor, null, null) : null;
+        }
+        if ("mob".equals(source.getDamageType()) && source.getClass() == EntityDamageSource.class) {
+            Entity actor = source.getTrueSource();
+            return actor instanceof EntityLiving && actor == source.getImmediateSource()
+                    ? new DamageAttribution((EntityLiving) actor, null, null) : null;
         }
         if (!"arrow".equals(source.getDamageType()) || !source.isProjectile()) {
             return null;

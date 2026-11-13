@@ -10,6 +10,8 @@ import java.util.Arrays;
 import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -35,10 +37,13 @@ public final class ServerTuning {
     private static final double RESET_SECONDS = 10.0;
     private static final double SIGHT_SECONDS = 2.0;
     private static final double MAX_SECONDS = (double) Integer.MAX_VALUE / TICKS_PER_SECOND;
-    private static final Pattern ITEM_ID = Pattern.compile("[a-z0-9_.-]+:[a-z0-9_./-]+");
+    private static final Pattern NAMESPACED_ID = Pattern.compile("[a-z0-9_.-]+:[a-z0-9_./-]+");
 
     public enum MobType {
-        ZOMBIE("minecraft:zombie"), SKELETON("minecraft:skeleton");
+        ZOMBIE("minecraft:zombie"),
+        SKELETON("minecraft:skeleton"),
+        SPECIAL_ZOMBIE("specialmobs:specialzombie"),
+        SPECIAL_SKELETON("specialmobs:specialskeleton");
 
         public final String id;
 
@@ -57,19 +62,25 @@ public final class ServerTuning {
     }
 
     private final Set<MobType> enabled;
+    private final Set<String> blacklist;
     private final Map<MobType, Rules> rules;
     private final Map<String, Map<Integer, Double>> assignments;
 
-    private ServerTuning(Set<MobType> enabled, Map<MobType, Rules> rules,
+    private ServerTuning(Set<MobType> enabled, Set<String> blacklist, Map<MobType, Rules> rules,
                          Map<String, Map<Integer, Double>> assignments) {
         // These collections are built exclusively by the loader and never escape.
         this.enabled = enabled;
+        this.blacklist = blacklist;
         this.rules = rules;
         this.assignments = assignments;
     }
 
     public boolean isEnabled(MobType type) {
         return enabled.contains(type);
+    }
+
+    public boolean isBlacklisted(String id) {
+        return blacklist.contains(id);
     }
 
     public Rules rulesFor(MobType type) {
@@ -121,17 +132,9 @@ public final class ServerTuning {
         int sight = duration(config, "sightLossGrace", SIGHT_SECONDS, false,
                 "How long a mob retains its target after losing sight.", warn);
 
-        String[] mobIds = {MobType.ZOMBIE.id, MobType.SKELETON.id};
-        Set<MobType> enabled = EnumSet.noneOf(MobType.class);
-        for (String value : list(config, "enabledMobs", mobIds,
-                "List supported mob IDs to track. Omitted mobs keep normal targeting.", warn)) {
-            MobType type = MobType.find(value.trim());
-            if (type == null) {
-                warn.accept("enabledMobs entry '" + value + "' has no supported mob policy; ignoring it");
-            } else {
-                enabled.add(type);
-            }
-        }
+        Set<MobType> enabled = readMobCoverage(config, warn);
+        Set<String> blacklist = mobIds(config, "mobBlacklist",
+                "Exact entity IDs to exclude from Threatworks control, e.g. minecraft:zombie.", warn);
         Map<MobType, Double> seeds = new EnumMap<>(MobType.class);
         for (String entry : list(config, "openingThreatOverrides", new String[0],
                 "Replace opening threat for one mob, e.g. minecraft:zombie=15.", warn)) {
@@ -159,7 +162,7 @@ public final class ServerTuning {
             Integer metadata = selector.length == 2 ? metadata(selector[1]) : null;
             double points = parts.length == 2 ? parse(parts[1]) : Double.NaN;
             if (selector.length > 2 || (selector.length == 2 && metadata == null)
-                    || !ITEM_ID.matcher(item).matches() || !registeredItem.test(item)) {
+                    || !NAMESPACED_ID.matcher(item).matches() || !registeredItem.test(item)) {
                 warn.accept("Invalid itemThreatPointAssignments selector in '" + entry + "'; ignoring it");
                 continue;
             }
@@ -183,7 +186,60 @@ public final class ServerTuning {
             }
         }
         invalidValues.forEach(Runnable::run);
-        return new ServerTuning(enabled, rules, assignments);
+        return new ServerTuning(enabled, blacklist, rules, assignments);
+    }
+
+    private static Set<MobType> readMobCoverage(Configuration config, Consumer<String> warn) {
+        boolean hasLegacyList = config.hasKey(CATEGORY, "enabledMobs");
+        String fallback = hasLegacyList ? "legacy" : "expanded";
+        Property selection = config.get(CATEGORY, "mobCoverage", fallback,
+                "Use expanded for current defaults and mobOptIn, or legacy to keep the old enabledMobs list.");
+        String mode = selection.isList() ? "<list>" : selection.getString().trim();
+        if (!"legacy".equals(mode) && !"expanded".equals(mode)) {
+            warn.accept("mobCoverage=" + mode + " is invalid; using " + fallback);
+            mode = fallback;
+        }
+        Set<String> optIn = mobIds(config, "mobOptIn",
+                "Exact IDs of verified opt-in mobs in expanded mode, e.g. specialmobs:specialskeleton.", warn);
+        if ("expanded".equals(mode)) {
+            Set<MobType> enabled = EnumSet.of(MobType.ZOMBIE, MobType.SKELETON, MobType.SPECIAL_ZOMBIE);
+            for (String id : optIn) {
+                MobType type = MobType.find(id);
+                if (type == null) {
+                    warn.accept("mobOptIn entry '" + id + "' has no supported mob policy; ignoring it");
+                } else {
+                    enabled.add(type);
+                }
+            }
+            return enabled;
+        }
+
+        Set<MobType> enabled = EnumSet.noneOf(MobType.class);
+        String[] legacyDefaults = {MobType.ZOMBIE.id, MobType.SKELETON.id};
+        for (String value : list(config, "enabledMobs", legacyDefaults,
+                "Legacy allowlist for minecraft:zombie and minecraft:skeleton. Set mobCoverage=expanded to migrate.", warn)) {
+            MobType type = MobType.find(value.trim());
+            if (type == MobType.ZOMBIE || type == MobType.SKELETON) {
+                enabled.add(type);
+            } else {
+                warn.accept("enabledMobs entry '" + value + "' has no legacy mob policy; ignoring it");
+            }
+        }
+        return enabled;
+    }
+
+    private static Set<String> mobIds(Configuration config, String key, String comment, Consumer<String> warn) {
+        Set<String> ids = new LinkedHashSet<>();
+        Set<String> malformed = new HashSet<>();
+        for (String value : list(config, key, new String[0], comment, warn)) {
+            String id = value.trim();
+            if (NAMESPACED_ID.matcher(id).matches()) {
+                ids.add(id);
+            } else if (malformed.add(id)) {
+                warn.accept(key + " entry '" + id + "' is not an exact namespaced entity ID; ignoring it");
+            }
+        }
+        return ids;
     }
 
     public static boolean validItemPoints(double points) {
