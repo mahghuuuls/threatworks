@@ -3,6 +3,7 @@ package com.mahghuuuls.threatworks.server;
 import com.mahghuuuls.threatworks.config.ServerTuning.MobType;
 import com.mahghuuuls.threatworks.compat.DefiledLandsCompatibility;
 import com.mahghuuuls.threatworks.compat.FoliaathCompatibility;
+import com.mahghuuuls.threatworks.compat.GaiaCompatibility;
 import com.mahghuuuls.threatworks.compat.SpecialAiCompatibility;
 import com.mahghuuuls.threatworks.compat.SpecialMobsCompatibility;
 import com.mahghuuuls.threatworks.threat.Encounter.TargetObservation;
@@ -76,9 +77,9 @@ final class MobTargets {
         } else if (mob instanceof EntityEndermite) {
             priority = 2;
         } else {
-            int defiledMelee = DefiledLandsCompatibility.meleePriority(type);
-            if (defiledMelee >= 0) {
-                priority = defiledMelee;
+            int providerMelee = providerMeleePriority(type);
+            if (providerMelee >= 0) {
+                priority = providerMelee;
             }
         }
         boolean matched = false;
@@ -111,7 +112,7 @@ final class MobTargets {
 
     static boolean canControlImmediately(EntityCreature mob, MobType type) {
         boolean providerGoalCheck = SpecialMobsCompatibility.isMeleeZombie(type)
-                || DefiledLandsCompatibility.meleePriority(type) >= 0;
+                || providerMeleePriority(type) >= 0;
         return (providerGoalCheck ? matchesBehavior(mob, type) : hasSupportedState(mob, type))
                 && !inNativePhase(mob);
     }
@@ -121,7 +122,13 @@ final class MobTargets {
         return !mob.isAIDisabled() && !mob.tasks.isControlFlagDisabled(1) && !mob.tasks.isControlFlagDisabled(2)
                 && (mob instanceof EntityShulker || mob.getNavigator().getClass() == navigator)
                 && (!(mob instanceof EntityZombieVillager) || !((EntityZombieVillager) mob).isConverting())
+                && (GaiaCompatibility.meleePriority(type) < 0 || GaiaCompatibility.isHostile(mob))
                 && (type != MobType.SPECIAL_SKELETON || usesBow(mob));
+    }
+
+    private static int providerMeleePriority(MobType type) {
+        int defiled = DefiledLandsCompatibility.meleePriority(type);
+        return defiled >= 0 ? defiled : GaiaCompatibility.meleePriority(type);
     }
 
     static boolean inNativePhase(EntityCreature mob) {

@@ -64,6 +64,10 @@ public final class ServerTuning {
         DEFILED_HOST("defiledlands:host"),
         DEFILED_SHAMBLER("defiledlands:shambler"),
         DEFILED_TWISTED_SHAMBLER("defiledlands:shambler_twisted"),
+        GAIA_MUMMY("grimoireofgaia:mummy"),
+        GAIA_SLUDGE_GIRL("grimoireofgaia:sludge_girl"),
+        GAIA_SUCCUBUS("grimoireofgaia:succubus"),
+        GAIA_WITHER_COW("grimoireofgaia:wither_cow"),
         FOLIAATH("mowziesmobs:foliaath");
 
         public final String id;

@@ -6,6 +6,7 @@ import com.mahghuuuls.threatworks.command.ThreatworksCommand;
 import com.mahghuuuls.threatworks.compat.BaublesCompatibility;
 import com.mahghuuuls.threatworks.compat.DefiledLandsCompatibility;
 import com.mahghuuuls.threatworks.compat.FoliaathCompatibility;
+import com.mahghuuuls.threatworks.compat.GaiaCompatibility;
 import com.mahghuuuls.threatworks.compat.SpecialAiCompatibility;
 import com.mahghuuuls.threatworks.compat.JafsCompatibility;
 import com.mahghuuuls.threatworks.compat.QualityToolsCompatibility;
@@ -77,6 +78,7 @@ public final class ThreatworksMod {
         EncounterCoordinator.INSTANCE.setFoliaathCompatibility(FoliaathCompatibility.load(LOGGER));
         SpecialAiCompatibility.reportVersion(LOGGER);
         DefiledLandsCompatibility.reportVersion(LOGGER);
+        GaiaCompatibility.reportVersion(LOGGER);
     }
 
     @Mod.EventHandler

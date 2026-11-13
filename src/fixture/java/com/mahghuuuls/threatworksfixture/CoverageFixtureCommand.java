@@ -39,6 +39,7 @@ import net.minecraftforge.common.ForgeChunkManager;
 import net.minecraft.util.math.ChunkPos;
 import net.minecraftforge.common.util.FakePlayer;
 import net.minecraftforge.fml.relauncher.ReflectionHelper;
+import net.minecraftforge.fml.common.registry.ForgeRegistries;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -144,7 +145,7 @@ final class CoverageFixtureCommand extends CommandBase {
     }
 
     private static void seed(WorldServer world, String id, boolean solo) throws CommandException {
-        int height = "defiledlands:shambler".equals(id) ? 60 : Y;
+        int height = id.startsWith("grimoireofgaia:") ? 64 : "defiledlands:shambler".equals(id) ? 60 : Y;
         arena(world, height);
         Entity entity = EntityList.createEntityByIDFromName(new ResourceLocation(id), world);
         if (!(entity instanceof EntityCreature)) {
@@ -442,6 +443,27 @@ final class CoverageFixtureCommand extends CommandBase {
                 mob.addTag("tw_l_sight_probe");
                 LOGGER.info("coverage defiledSight mob={} player={} visible={}", mob.getUniqueID(),
                         player.getUniqueID(), mob.canEntityBeSeen(player));
+                break;
+            case "gaia-neutral-feed":
+                if (!mob.getServer().getFolderName().startsWith("TW-Campaign-L") || guard == null
+                        || !guard.isEntityAlive() || mob.getAttackTarget() != player
+                        || !"grimoireofgaia:mummy".equals(String.valueOf(EntityList.getKey(mob)))) {
+                    throw new CommandException("Expected a tracked Campaign L Mummy targeting the player.");
+                }
+                ResourceLocation feed = new ResourceLocation("grimoireofgaia:food_monster_feed_premium");
+                if (!ForgeRegistries.ITEMS.containsKey(feed)) {
+                    throw new CommandException("Gaia premium monster feed was not registered.");
+                }
+                player.setHeldItem(net.minecraft.util.EnumHand.MAIN_HAND, new ItemStack(ForgeRegistries.ITEMS.getValue(feed)));
+                if (!mob.processInitialInteract(player, net.minecraft.util.EnumHand.MAIN_HAND)
+                        || !player.getHeldItemMainhand().isEmpty()) {
+                    throw new CommandException("The Gaia mob did not consume the native feed.");
+                }
+                LOGGER.info("coverage gaiaFeed mob={} item={} consumed=true", mob.getUniqueID(), feed);
+                mob.setAttackTarget(guard);
+                if (mob.getAttackTarget() != guard) {
+                    throw new CommandException("The native setter was blocked after the mob consumed Gaia feed.");
+                }
                 break;
             case "zombie-bow":
                 if (!mob.getServer().getFolderName().startsWith("TW-Campaign-L") || !(mob instanceof EntityZombie)
