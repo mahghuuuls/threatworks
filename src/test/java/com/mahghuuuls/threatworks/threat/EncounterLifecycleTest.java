@@ -17,6 +17,34 @@ class EncounterLifecycleTest {
     private final UUID npc = new UUID(0, 2);
 
     @Test
+    void nativeYieldDropsForcedFocusAndKeepsTheContinuousDeadlineAndScores() {
+        Encounter encounter = Encounter.recordHit(null, player, npc, 5, 18, DEFAULT_RULES);
+        Encounter.tryTaunt(encounter, player, npc, 10, id -> IN_REACH, DEFAULT_RULES);
+        encounter.yieldToNative(11);
+        encounter.yieldToNative(12);
+        assertNull(encounter.getTaunter());
+        assertNull(encounter.getTarget());
+        assertEquals(Integer.valueOf(199), encounter.remainingResetTicks(12));
+        encounter.resumeFromNative(npc, id -> IN_REACH);
+        assertEquals(npc, encounter.getTarget());
+        assertEquals(npc, encounter.selectTarget(20, id -> id.equals(player) ? INELIGIBLE : IN_REACH));
+        assertEquals(10.0, encounter.copyScores().get(npc), 0.0);
+        assertEquals(18.0, encounter.copyScores().get(player), 0.0);
+        assertNull(encounter.remainingResetTicks(20));
+    }
+
+    @Test
+    void preparingATauntLeavesExistingScoresAndFocusUntouchedUntilApplied() {
+        Encounter encounter = Encounter.recordHit(null, player, npc, 5, 18, DEFAULT_RULES);
+        Encounter.Taunt pending = Encounter.prepareTaunt(encounter, npc, npc, 10, id -> IN_REACH, DEFAULT_RULES);
+        assertEquals(10.0, encounter.copyScores().get(npc), 0.0);
+        assertNull(encounter.getTaunter());
+        pending.apply();
+        assertEquals(18.0, encounter.copyScores().get(npc), 0.0);
+        assertEquals(npc, encounter.getTaunter());
+    }
+
+    @Test
     void npcKeepsEncounterOpenWhenPlayerLeavesAndReturningPlayerUsesRetainedScore() {
         Encounter encounter = Encounter.recordHit(null, player, npc, 10, 17, DEFAULT_RULES);
         assertEquals(player, encounter.selectTarget(20, id -> IN_REACH));

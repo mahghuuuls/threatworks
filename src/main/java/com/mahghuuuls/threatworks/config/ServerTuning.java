@@ -43,7 +43,8 @@ public final class ServerTuning {
         ZOMBIE("minecraft:zombie"),
         SKELETON("minecraft:skeleton"),
         SPECIAL_ZOMBIE("specialmobs:specialzombie"),
-        SPECIAL_SKELETON("specialmobs:specialskeleton");
+        SPECIAL_SKELETON("specialmobs:specialskeleton"),
+        FOLIAATH("mowziesmobs:foliaath");
 
         public final String id;
 

@@ -18,6 +18,8 @@ import net.minecraftforge.fml.common.event.FMLInitializationEvent;
 import net.minecraftforge.fml.common.event.FMLServerStartingEvent;
 import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
+import net.minecraftforge.fml.common.gameevent.TickEvent;
+import net.minecraftforge.fml.relauncher.ReflectionHelper;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -108,6 +110,20 @@ public final class ThreatworksFixture {
             return;
         }
         EntityLivingBase target = event.getTarget();
+        if (entity.getTags().contains("tw_i_mob") && entity.getServer().getFolderName().startsWith("TW-Campaign-J")) {
+            boolean coordinated = java.util.Arrays.stream(Thread.currentThread().getStackTrace())
+                    .anyMatch(frame -> frame.getClassName().equals("com.mahghuuuls.threatworks.server.EncounterCoordinator")
+                            && frame.getMethodName().equals("writeTarget"));
+            LOGGER.info("phase_write mob={} requested={} coordinated={} tick={}", entity.getUniqueID(),
+                    target == null ? null : target.getUniqueID(), coordinated, entity.getServer().getTickCounter());
+            if (coordinated && entity.removeTag("tw_j_reject_assignment")) {
+                LOGGER.info("phase_nestedGrant={}", ThreatworksMod.threatActions().grant(entity, target, 100.0));
+                ReflectionHelper.setPrivateValue(EntityLiving.class, (EntityLiving) entity, null,
+                        "attackTarget", "field_70696_bz");
+                LOGGER.info("phase_rejected mob={} requested={}", entity.getUniqueID(),
+                        target == null ? null : target.getUniqueID());
+            }
+        }
         if (target != null && entity.getTags().contains("tw_g_mob_0")) {
             LOGGER.info("work_target mob={} target={} serverTick={}", entity.getUniqueID(), target.getUniqueID(),
                     entity.getServer().getTickCounter());
@@ -134,5 +150,42 @@ public final class ThreatworksFixture {
         LOGGER.info("target_reentry mob={} target={} nestedNotifications={} retained={} worldTick={}",
                 mob.getUniqueID(), target.getUniqueID(), nestedNotifications, mob.getAttackTarget() == target,
                 mob.world.getTotalWorldTime());
+    }
+
+    @SubscribeEvent
+    public void onPhaseTick(TickEvent.WorldTickEvent event) {
+        if (event.phase != TickEvent.Phase.END || event.world.isRemote
+                || !event.world.getMinecraftServer().getFolderName().startsWith("TW-Campaign-J")) {
+            return;
+        }
+        event.world.getEntities(EntityLiving.class, mob -> mob.getTags().contains("tw_i_mob")
+                && mob.getTags().contains("tw_j_observe")).forEach(mob -> {
+            com.mahghuuuls.threatworks.server.EncounterCoordinator.Inspection view =
+                    com.mahghuuuls.threatworks.server.EncounterCoordinator.INSTANCE.inspect(mob, 16);
+            String scores = view.participants.stream().map(p -> p.id + "=" + p.score)
+                    .collect(java.util.stream.Collectors.joining(","));
+            LOGGER.info("phase_state tick={} mob={} status={} target={} taunt={} reset={} scores={} animation={}",
+                    mob.getServer().getTickCounter(), mob.getUniqueID(), view.status, view.target, view.taunter,
+                    view.resetTicks, scores, nativeAnimation(mob));
+        });
+    }
+
+    private static String nativeAnimation(EntityLiving mob) {
+        if (!"mowziesmobs:foliaath".equals(String.valueOf(net.minecraft.entity.EntityList.getKey(mob)))) {
+            return "none";
+        }
+        Class<?> type = mob.getClass();
+        try {
+            Object animation = type.getMethod("getAnimation").invoke(mob);
+            if (animation == type.getField("ATTACK_ANIMATION").get(null)) {
+                return "bite";
+            }
+            if (animation == type.getField("HURT_ANIMATION").get(null)) {
+                return "hurt";
+            }
+            return type.getField("active").getBoolean(mob) ? "ready" : "inactive";
+        } catch (ReflectiveOperationException failure) {
+            throw new IllegalStateException("Foliaath fixture could not read native animation", failure);
+        }
     }
 }

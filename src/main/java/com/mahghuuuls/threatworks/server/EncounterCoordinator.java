@@ -4,6 +4,7 @@ import com.mahghuuuls.threatworks.api.ThreatActions;
 import com.mahghuuuls.threatworks.api.SummonThreatCreditEvent;
 import com.mahghuuuls.threatworks.config.ServerTuning;
 import com.mahghuuuls.threatworks.config.ServerTuning.MobType;
+import com.mahghuuuls.threatworks.compat.FoliaathCompatibility;
 import com.mahghuuuls.threatworks.points.ThreatPoints;
 import com.mahghuuuls.threatworks.threat.Encounter;
 import com.mahghuuuls.threatworks.threat.Encounter.TargetObservation;
@@ -29,6 +30,7 @@ import net.minecraftforge.fml.common.gameevent.TickEvent;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -43,17 +45,46 @@ public final class EncounterCoordinator implements ThreatActions {
 
     private final Map<WorldServer, WorldEncounters> worlds = new IdentityHashMap<>();
     private final Map<EntityPlayerMP, Integer> pendingPlayerDeaths = new IdentityHashMap<>();
+    private final Map<MobType, MobPolicy> policies = new EnumMap<>(MobType.class);
     private ServerTuning tuning;
     private ThreatPoints points;
     private DamageAttribution.SummonSource summons;
+    private FoliaathCompatibility foliaath;
     private TargetWrite targetWrite;
 
     private EncounterCoordinator() {
+        for (MobType type : MobType.values()) {
+            if (type != MobType.FOLIAATH) {
+                policies.put(type, MobPolicy.ground(type));
+            }
+        }
     }
 
     public static boolean supports(EntityLivingBase mob) {
         return mob.world instanceof WorldServer && ((WorldServer) mob.world).getMinecraftServer().isCallingFromMinecraftThread()
-                && MobAdmission.resolve(INSTANCE.tuning, mob).type != null;
+                && INSTANCE.canCredit(mob);
+    }
+
+    private boolean canCredit(EntityLivingBase mob) {
+        MobAdmission admission = admission(mob);
+        WorldEncounters state = worlds.get(mob.world);
+        return admission.type != null && state != null && activeWrite((EntityLiving) mob) == null
+                && !state.rejectedWrites.contains(mob.getUniqueID())
+                && (admission.controls() || admission == MobAdmission.NATIVE_PHASE
+                && state.encounters.containsKey(mob.getUniqueID()));
+    }
+
+    private MobAdmission admission(EntityLivingBase mob) {
+        return MobAdmission.resolve(tuning, foliaath, mob);
+    }
+
+    public void setFoliaathCompatibility(FoliaathCompatibility compatibility) {
+        this.foliaath = compatibility;
+        if (compatibility == null) {
+            policies.remove(MobType.FOLIAATH);
+        } else {
+            policies.put(MobType.FOLIAATH, MobPolicy.stationary(compatibility));
+        }
     }
 
     public void startServer(ServerTuning tuning, ThreatPoints points) {
@@ -169,7 +200,8 @@ public final class EncounterCoordinator implements ThreatActions {
 
     public void onHealthWritten(EntityLivingBase victim, DamageSource source, EntityLivingBase incumbent,
                                 float before, float after) {
-        MobType type = MobAdmission.resolve(tuning, victim).type;
+        MobAdmission admission = admission(victim);
+        MobType type = admission.type;
         if (type == null) {
             return;
         }
@@ -178,40 +210,60 @@ public final class EncounterCoordinator implements ThreatActions {
         WorldServer world = (WorldServer) mob.world;
         WorldEncounters state = worlds.get(world);
         UUID mobId = mob.getUniqueID();
-        if (state == null || world.getEntityFromUuid(mobId) != mob) {
+        if (state == null || world.getEntityFromUuid(mobId) != mob || activeWrite(mob) != null
+                || state.rejectedWrites.contains(mobId)) {
             return;
+        }
+        int tick = world.getMinecraftServer().getTickCounter();
+        Encounter existing = state.encounterForAction(mobId, tick);
+        if (admission == MobAdmission.NATIVE_PHASE) {
+            if (existing == null) {
+                return;
+            }
+            yieldToNative(state, mobId, existing, tick);
         }
 
         DamageAttribution hit = DamageAttribution.resolve(source, state.launchSession, summons);
         if (hit == null || world.getEntityFromUuid(hit.attacker.getUniqueID()) != hit.attacker
-                || !MobTargets.isAttackable(mob, hit.attacker)) {
+                || !validParticipant(mob, type, hit.attacker)) {
             return;
         }
-        state.recordHit(mobId, () -> creditRecipient(world, mob, hit, source), mob.ticksExisted, hit.mayOpenEncounter(),
+        state.recordHit(mobId, () -> creditRecipient(world, mob, type, hit, source), mob.ticksExisted,
+                admission.controls() && hit.mayOpenEncounter(),
                 before, after, tuning.rulesFor(type), () -> hit.multiplier(() -> points.multiplier(hit.attacker, tuning)),
                 () -> incumbent != null && world.getEntityFromUuid(incumbent.getUniqueID()) == incumbent
-                        && MobTargets.observe(world, mob, incumbent).isEligible()
+                        && observe(world, mob, type, incumbent, null).isEligible()
                         ? incumbent.getUniqueID() : null);
         if (state.encounters.containsKey(mobId)) {
             state.coverage.putIfAbsent(mobId, type);
         }
     }
 
-    private static UUID creditRecipient(WorldServer world, EntityCreature victim, DamageAttribution hit,
-                                        DamageSource source) {
+    private UUID creditRecipient(WorldServer world, EntityCreature victim, MobType type, DamageAttribution hit,
+                                 DamageSource source) {
         EntityLivingBase owner = hit.summonOwner;
-        if (owner != null && validOwner(world, victim, owner)) {
+        if (owner != null && world.getEntityFromUuid(owner.getUniqueID()) == owner && validParticipant(victim, type, owner)) {
             SummonThreatCreditEvent decision = new SummonThreatCreditEvent(victim, hit.attacker, owner, source);
             MinecraftForge.EVENT_BUS.post(decision);
-            if (decision.isOwnerCreditRequested() && validOwner(world, victim, owner)) {
+            if (decision.isOwnerCreditRequested() && world.getEntityFromUuid(owner.getUniqueID()) == owner
+                    && validParticipant(victim, type, owner)) {
                 return owner.getUniqueID();
             }
         }
         return hit.attacker.getUniqueID();
     }
 
-    private static boolean validOwner(WorldServer world, EntityCreature victim, EntityLivingBase owner) {
-        return world.getEntityFromUuid(owner.getUniqueID()) == owner && MobTargets.isAttackable(victim, owner);
+    private boolean validParticipant(EntityCreature mob, MobType type, EntityLivingBase target) {
+        return MobTargets.isAttackable(mob, target) && policies.get(type).accepts(target);
+    }
+
+    private EntityLivingBase resolve(WorldServer world, EntityCreature mob, MobType type, Entity candidate) {
+        return policies.get(type).resolve(world, mob, candidate);
+    }
+
+    private TargetObservation observe(WorldServer world, EntityCreature mob, MobType type, Entity candidate,
+                                      WorkSample sample) {
+        return policies.get(type).observe(world, mob, candidate, sample);
     }
 
     public boolean blocksTargetWrite(EntityLiving mob, EntityLivingBase requestedTarget) {
@@ -226,10 +278,11 @@ public final class EncounterCoordinator implements ThreatActions {
         WorldEncounters state = worlds.get(world);
         MobType binding = state == null ? null : state.coverage.get(mob.getUniqueID());
         return binding != null && mob.isEntityAlive()
-                && MobTargets.canControlImmediately((EntityCreature) mob, binding == MobType.SPECIAL_SKELETON)
+                && !state.yielded.contains(mob.getUniqueID()) && !state.rejectedWrites.contains(mob.getUniqueID())
+                && policies.get(binding).controlsImmediately((EntityCreature) mob)
                 && state.blocksTargetWrite(mob.getUniqueID(),
                 mob.getAttackTarget() != requestedTarget,
-                target -> MobTargets.resolve(world, (EntityCreature) mob, world.getEntityFromUuid(target)) != null);
+                target -> resolve(world, (EntityCreature) mob, binding, world.getEntityFromUuid(target)) != null);
     }
 
     @Override
@@ -238,11 +291,16 @@ public final class EncounterCoordinator implements ThreatActions {
         if (rejected != null) {
             return rejected;
         }
-        rejected = checkParticipants(victim, participant, MobAdmission.resolve(tuning, victim));
+        rejected = checkParticipants(victim, participant, admission(victim));
         if (rejected != null) {
             return rejected;
         }
-        Encounter encounter = worlds.get(victim.world).encounters.get(victim.getUniqueID());
+        if (activeWrite((EntityCreature) victim) != null) {
+            return Result.TARGET_WRITE_IN_PROGRESS;
+        }
+        WorldServer world = (WorldServer) victim.world;
+        Encounter encounter = worlds.get(world).encounterForAction(victim.getUniqueID(),
+                world.getMinecraftServer().getTickCounter());
         if (encounter == null) {
             return Result.UNTRACKED;
         }
@@ -264,7 +322,10 @@ public final class EncounterCoordinator implements ThreatActions {
         if (rejected != null) {
             return rejected;
         }
-        MobAdmission admission = MobAdmission.resolve(tuning, victim);
+        MobAdmission admission = admission(victim);
+        if (!admission.controls()) {
+            return Result.UNSUPPORTED_MOB;
+        }
         rejected = checkParticipants(victim, participant, admission);
         if (rejected != null) {
             return rejected;
@@ -276,7 +337,8 @@ public final class EncounterCoordinator implements ThreatActions {
         WorldServer world = (WorldServer) mob.world;
         WorldEncounters state = worlds.get(world);
         UUID mobId = mob.getUniqueID();
-        Encounter encounter = state.encounters.get(mobId);
+        int tick = world.getMinecraftServer().getTickCounter();
+        Encounter encounter = state.encounterForAction(mobId, tick);
         if (encounter == null && !(participant instanceof EntityPlayerMP)) {
             return Result.UNTRACKED;
         }
@@ -285,16 +347,23 @@ public final class EncounterCoordinator implements ThreatActions {
                 ? null : previous.getUniqueID();
         UUID taunter = participant.getUniqueID();
         Map<UUID, TargetObservation> observations = new HashMap<>();
-        Encounter taunted = Encounter.tryTaunt(encounter, taunter, incumbent, world.getMinecraftServer().getTickCounter(),
-                id -> observations.computeIfAbsent(id, key -> MobTargets.observe(world, mob, world.getEntityFromUuid(key))),
+        Encounter.Taunt pending = Encounter.prepareTaunt(encounter, taunter, incumbent, tick,
+                id -> observations.computeIfAbsent(id, key -> observe(world, mob, admission.type,
+                        world.getEntityFromUuid(key), null)),
                 tuning.rulesFor(admission.type));
-        if (taunted == null) {
+        if (pending == null) {
             return Result.INELIGIBLE_TAUNTER;
         }
-        state.encounters.put(mobId, taunted);
+        if (!writeTarget(mob, participant) || !currentEncounter(world, state, mob, encounter)
+                || world.getEntityFromUuid(taunter) != participant
+                || !admission(mob).controls() || resolve(world, mob, admission.type, participant) == null) {
+            rejectWrite(world, state, mob, encounter);
+            return Result.TARGET_ASSIGNMENT_REJECTED;
+        }
+        state.encounters.put(mobId, pending.apply());
         state.coverage.put(mobId, admission.type);
         state.observations.put(mobId, observations);
-        applyTarget(world, state, mob, taunted, taunter, participant, previous);
+        state.yielded.remove(mobId);
         return Result.APPLIED;
     }
 
@@ -316,7 +385,7 @@ public final class EncounterCoordinator implements ThreatActions {
     }
 
     private Result checkParticipants(EntityLivingBase mob, EntityLivingBase participant, MobAdmission admission) {
-        if (admission.type == null) {
+        if (admission.type == null || worlds.get(mob.world).rejectedWrites.contains(mob.getUniqueID())) {
             return Result.UNSUPPORTED_MOB;
         }
         WorldServer world = (WorldServer) mob.world;
@@ -324,7 +393,7 @@ public final class EncounterCoordinator implements ThreatActions {
             return Result.MOB_UNAVAILABLE;
         }
         if (participant == null || world.getEntityFromUuid(participant.getUniqueID()) != participant
-                || !MobTargets.isAttackable((EntityCreature) mob, participant)) {
+                || !validParticipant((EntityCreature) mob, admission.type, participant)) {
             return Result.INVALID_PARTICIPANT;
         }
         return null;
@@ -335,33 +404,40 @@ public final class EncounterCoordinator implements ThreatActions {
         String typeId = registryId == null ? "unregistered" : registryId.toString();
         EntityLivingBase actualTarget = victim instanceof EntityLiving ? ((EntityLiving) victim).getAttackTarget() : null;
         UUID target = actualTarget == null ? null : actualTarget.getUniqueID();
-        MobAdmission admission = MobAdmission.resolve(tuning, victim, registryId);
+        MobAdmission admission = MobAdmission.resolve(tuning, foliaath, victim, registryId);
+        WorldEncounters state = worlds.get(victim.world);
+        UUID mobId = victim.getUniqueID();
+        boolean assignmentRejected = state != null && state.rejectedWrites.contains(mobId);
         if (admission.type == null) {
-            return new Inspection(typeId, admission.name().toLowerCase(Locale.ROOT), target, null, 0, null,
+            return new Inspection(typeId, admission.name().toLowerCase(Locale.ROOT), false, target, null, 0, null,
                     Collections.emptyList(), 0);
         }
         EntityCreature mob = (EntityCreature) victim;
         WorldServer world = (WorldServer) mob.world;
-        WorldEncounters state = worlds.get(world);
         Encounter encounter = state == null || !mob.isEntityAlive() ? null : state.encounters.get(mob.getUniqueID());
+        String phase = assignmentRejected ? "assignment_rejected" : "native_phase";
         if (encounter == null) {
-            return new Inspection(typeId, "supported_inactive", target, null, 0, null, Collections.emptyList(), 0);
+            String status = admission.controls() && !assignmentRejected ? "supported_inactive" : phase;
+            return new Inspection(typeId, status, false, target, null, 0, null, Collections.emptyList(), 0);
         }
 
+        boolean controls = admission.controls() && !assignmentRejected && !state.yielded.contains(mobId);
         int tick = world.getMinecraftServer().getTickCounter();
         List<Participant> participants = new ArrayList<>();
         for (Map.Entry<UUID, Double> score : encounter.copyScores(limit).entrySet()) {
             UUID id = score.getKey();
-            participants.add(new Participant(id, score.getValue(), eligibility(world, mob, encounter, id, tick,
-                    state.observations.get(mob.getUniqueID()))));
+            participants.add(new Participant(id, score.getValue(), controls
+                    ? eligibility(world, mob, admission.type, encounter, id, tick, state.observations.get(mobId))
+                    : phase));
         }
-        int remaining = encounter.remainingTauntTicks(tick);
+        int remaining = controls ? encounter.remainingTauntTicks(tick) : 0;
         UUID taunter = remaining == 0 ? null : encounter.getTaunter();
-        if (taunter != null && MobTargets.resolve(world, mob, world.getEntityFromUuid(taunter)) == null) {
+        if (taunter != null && resolve(world, mob, admission.type, world.getEntityFromUuid(taunter)) == null) {
             taunter = null;
             remaining = 0;
         }
-        return new Inspection(typeId, "tracked", target, taunter, remaining, encounter.remainingResetTicks(tick),
+        return new Inspection(typeId, controls ? "tracked" : phase, true, target, taunter, remaining,
+                encounter.remainingResetTicks(tick),
                 Collections.unmodifiableList(participants),
                 encounter.participantCount() - participants.size());
     }
@@ -385,9 +461,9 @@ public final class EncounterCoordinator implements ThreatActions {
         return report;
     }
 
-    private String eligibility(WorldServer world, EntityCreature mob, Encounter encounter, UUID participant, int tick,
-                               Map<UUID, TargetObservation> observations) {
-        EntityLivingBase candidate = MobTargets.resolve(world, mob, world.getEntityFromUuid(participant));
+    private String eligibility(WorldServer world, EntityCreature mob, MobType type, Encounter encounter,
+                               UUID participant, int tick, Map<UUID, TargetObservation> observations) {
+        EntityLivingBase candidate = resolve(world, mob, type, world.getEntityFromUuid(participant));
         if (candidate == null) {
             return "unavailable_or_outside_engagement";
         }
@@ -421,22 +497,34 @@ public final class EncounterCoordinator implements ThreatActions {
         WorkSample sample = state.activeSample();
         state.tick(serverTick, (id, encounter) -> {
             Entity entity = world.getEntityFromUuid(id);
-            if (!(entity instanceof EntityCreature) || !entity.isEntityAlive()
-                    || MobAdmission.resolve(tuning, (EntityCreature) entity).type == null) {
+            if (!(entity instanceof EntityCreature) || !entity.isEntityAlive()) {
                 return true;
             }
-            reconcileTarget(world, state, (EntityCreature) entity, encounter, serverTick, targetUpdates, sample);
+            EntityCreature mob = (EntityCreature) entity;
+            MobAdmission admission = admission(mob);
+            if (state.rejectedWrites.contains(id) || admission == MobAdmission.NATIVE_PHASE) {
+                yieldToNative(state, id, encounter, serverTick);
+                return encounter.resetDue(serverTick);
+            }
+            if (!admission.controls()) {
+                return true;
+            }
+            if (state.yielded.contains(id) && encounter.resetDue(serverTick)) {
+                return true;
+            }
+            reconcileTarget(world, state, mob, admission.type, encounter, serverTick, targetUpdates, sample);
             return encounter.resetDue(serverTick);
         });
         // The vanilla setter notifies Forge listeners that can change encounter membership.
         targetUpdates.forEach(Runnable::run);
     }
 
-    private void reconcileTarget(WorldServer world, WorldEncounters state, EntityCreature mob, Encounter encounter,
-                                 int serverTick, List<Runnable> updates, WorkSample sample) {
+    private void reconcileTarget(WorldServer world, WorldEncounters state, EntityCreature mob, MobType type,
+                                 Encounter encounter, int serverTick, List<Runnable> updates, WorkSample sample) {
+        boolean returning = state.yielded.remove(mob.getUniqueID());
         UUID previous = encounter.getTarget();
         EntityLivingBase previousTarget = previous == null ? null
-                : MobTargets.resolve(world, mob, world.getEntityFromUuid(previous));
+                : resolve(world, mob, type, world.getEntityFromUuid(previous));
         boolean lostTarget = previous != null && previousTarget == null;
         if (!lostTarget && (encounter.holdsOpeningTarget(mob.ticksExisted)
                 || !encounter.shouldReevaluate(serverTick, mob.getEntityId()))) {
@@ -444,32 +532,66 @@ public final class EncounterCoordinator implements ThreatActions {
         }
         Map<UUID, TargetObservation> observations = new HashMap<>();
         Function<UUID, TargetObservation> observe = id -> observations.computeIfAbsent(id,
-                key -> MobTargets.observe(world, mob, world.getEntityFromUuid(key), sample));
+                key -> observe(world, mob, type, world.getEntityFromUuid(key), sample));
+        EntityLivingBase current = mob.getAttackTarget();
+        if (returning && current != null && world.getEntityFromUuid(current.getUniqueID()) == current) {
+            encounter.resumeFromNative(current.getUniqueID(), observe);
+        }
         UUID selected = state.select(encounter, serverTick, sample, observe);
         state.observations.put(mob.getUniqueID(), observations);
-        EntityLivingBase current = mob.getAttackTarget();
         if (selected == null && (current == null || !current.getUniqueID().equals(previous))) {
             return;
         }
         EntityLivingBase target = selected == null ? null
-                : MobTargets.resolve(world, mob, world.getEntityFromUuid(selected));
+                : resolve(world, mob, type, world.getEntityFromUuid(selected));
         if (target != current && (target != null || selected == null)) {
-            updates.add(() -> applyTarget(world, state, mob, encounter, selected, target, current));
+            updates.add(() -> applyTarget(world, state, mob, type, encounter, selected, target, current));
         }
     }
 
-    private void applyTarget(WorldServer world, WorldEncounters state, EntityCreature mob, Encounter encounter,
-                             UUID selected, EntityLivingBase target, EntityLivingBase previous) {
+    private void applyTarget(WorldServer world, WorldEncounters state, EntityCreature mob, MobType type,
+                             Encounter encounter, UUID selected, EntityLivingBase target, EntityLivingBase previous) {
         UUID mobId = mob.getUniqueID();
-        if (worlds.get(world) != state || state.encounters.get(mobId) != encounter || !mob.isEntityAlive()
-                || world.getEntityFromUuid(mobId) != mob || !Objects.equals(encounter.getTarget(), selected)
-                || MobAdmission.resolve(tuning, mob).type == null
+        if (!currentEncounter(world, state, mob, encounter) || state.yielded.contains(mobId)
+                || state.rejectedWrites.contains(mobId) || !Objects.equals(encounter.getTarget(), selected)
+                || !admission(mob).controls()
                 || mob.getAttackTarget() == target) {
             return;
         }
         if (target == null ? mob.getAttackTarget() != previous
-                : world.getEntityFromUuid(selected) != target || MobTargets.resolve(world, mob, target) == null) {
+                : world.getEntityFromUuid(selected) != target || resolve(world, mob, type, target) == null) {
             return;
+        }
+        if (!writeTarget(mob, target)) {
+            rejectWrite(world, state, mob, encounter);
+        }
+    }
+
+    private boolean currentEncounter(WorldServer world, WorldEncounters state, EntityCreature mob, Encounter expected) {
+        UUID id = mob.getUniqueID();
+        return worlds.get(world) == state && state.encounters.get(id) == expected && mob.isEntityAlive()
+                && world.getEntityFromUuid(id) == mob;
+    }
+
+    private void rejectWrite(WorldServer world, WorldEncounters state, EntityCreature mob, Encounter encounter) {
+        if (currentEncounter(world, state, mob, encounter)) {
+            UUID id = mob.getUniqueID();
+            state.rejectedWrites.add(id);
+            if (encounter != null) {
+                yieldToNative(state, id, encounter, world.getMinecraftServer().getTickCounter());
+            }
+        }
+    }
+
+    private static void yieldToNative(WorldEncounters state, UUID id, Encounter encounter, int tick) {
+        state.yielded.add(id);
+        state.observations.remove(id);
+        encounter.yieldToNative(tick);
+    }
+
+    private boolean writeTarget(EntityCreature mob, EntityLivingBase target) {
+        if (mob.getAttackTarget() == target) {
+            return true;
         }
         TargetWrite saved = targetWrite;
         targetWrite = new TargetWrite(mob, target, saved);
@@ -478,6 +600,7 @@ public final class EncounterCoordinator implements ThreatActions {
         } finally {
             targetWrite = saved;
         }
+        return mob.getAttackTarget() == target;
     }
 
     private TargetWrite activeWrite(EntityLiving mob) {
@@ -521,11 +644,12 @@ public final class EncounterCoordinator implements ThreatActions {
         public final List<Participant> participants;
         public final int omitted;
 
-        private Inspection(String typeId, String status, UUID target, UUID taunter, int tauntTicks, Integer resetTicks,
+        private Inspection(String typeId, String status, boolean tracked, UUID target, UUID taunter, int tauntTicks,
+                           Integer resetTicks,
                            List<Participant> participants, int omitted) {
             this.typeId = typeId;
             this.status = status;
-            this.tracked = "tracked".equals(status);
+            this.tracked = tracked;
             this.target = target;
             this.taunter = taunter;
             this.tauntTicks = tauntTicks;

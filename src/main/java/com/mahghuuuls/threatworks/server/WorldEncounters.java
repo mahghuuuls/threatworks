@@ -14,8 +14,10 @@ import net.minecraft.world.IWorldEventListener;
 import net.minecraft.world.World;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.BiPredicate;
 import java.util.function.DoubleSupplier;
@@ -27,6 +29,8 @@ final class WorldEncounters implements IWorldEventListener {
     final Map<UUID, Encounter> encounters = new HashMap<>();
     final Map<UUID, MobType> coverage = new HashMap<>();
     final Map<UUID, Map<UUID, Encounter.TargetObservation>> observations = new HashMap<>();
+    final Set<UUID> yielded = new HashSet<>();
+    final Set<UUID> rejectedWrites = new HashSet<>();
     // A snapshot can compare world sessions without retaining a world or its encounter table.
     final Object launchSession = new Object();
     WorkSample workSample;
@@ -45,8 +49,7 @@ final class WorldEncounters implements IWorldEventListener {
                     sample.visit();
                 }
                 if (remove.test(entry.getKey(), entry.getValue())) {
-                    coverage.remove(entry.getKey());
-                    observations.remove(entry.getKey());
+                    forgetControl(entry.getKey());
                     entries.remove();
                 }
             }
@@ -54,6 +57,22 @@ final class WorldEncounters implements IWorldEventListener {
         if (sample != null) {
             sample.endTick(serverTick, encounters.size());
         }
+    }
+
+    Encounter encounterForAction(UUID id, int tick) {
+        Encounter encounter = encounters.get(id);
+        if (encounter != null && encounter.resetDue(tick)) {
+            encounters.remove(id);
+            forgetControl(id);
+            return null;
+        }
+        return encounter;
+    }
+
+    private void forgetControl(UUID id) {
+        coverage.remove(id);
+        observations.remove(id);
+        yielded.remove(id);
     }
 
     UUID select(Encounter encounter, int serverTick, WorkSample sample,
@@ -104,8 +123,8 @@ final class WorldEncounters implements IWorldEventListener {
             playerAvailabilityChanged(entity.getUniqueID());
         } else {
             encounters.remove(entity.getUniqueID());
-            coverage.remove(entity.getUniqueID());
-            observations.remove(entity.getUniqueID());
+            forgetControl(entity.getUniqueID());
+            rejectedWrites.remove(entity.getUniqueID());
         }
     }
 

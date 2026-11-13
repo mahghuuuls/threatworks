@@ -1,6 +1,7 @@
 package com.mahghuuuls.threatworks.server;
 
 import com.mahghuuuls.threatworks.config.ServerTuning.MobType;
+import com.mahghuuuls.threatworks.compat.FoliaathCompatibility;
 import com.mahghuuuls.threatworks.threat.Encounter.TargetObservation;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityCreature;
@@ -123,6 +124,22 @@ final class MobTargets {
             return !player.isSpectator() && !player.capabilities.disableDamage;
         }
         return true;
+    }
+
+    static EntityLivingBase resolveStationary(WorldServer world, EntityCreature mob, Entity entity,
+                                               FoliaathCompatibility policy) {
+        EntityLivingBase target = resolve(world, mob, entity);
+        return target != null && policy.accepts(target) && policy.inBiteRange(mob, target) ? target : null;
+    }
+
+    static TargetObservation observeStationary(WorldServer world, EntityCreature mob, Entity entity,
+                                                FoliaathCompatibility policy) {
+        EntityLivingBase target = resolveStationary(world, mob, entity, policy);
+        if (target == null) {
+            return TargetObservation.INELIGIBLE;
+        }
+        return sees(new LoadedPathTerrain(world), mob, target, mob.getPositionVector())
+                ? TargetObservation.IN_REACH : TargetObservation.obscured(true);
     }
 
     private static double followRange(EntityLiving mob) {

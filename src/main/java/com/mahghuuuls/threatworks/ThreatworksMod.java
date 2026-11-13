@@ -4,6 +4,7 @@ import com.mahghuuuls.threatworks.api.ItemThreatPointProvider;
 import com.mahghuuuls.threatworks.api.ThreatActions;
 import com.mahghuuuls.threatworks.command.ThreatworksCommand;
 import com.mahghuuuls.threatworks.compat.BaublesCompatibility;
+import com.mahghuuuls.threatworks.compat.FoliaathCompatibility;
 import com.mahghuuuls.threatworks.compat.JafsCompatibility;
 import com.mahghuuuls.threatworks.compat.QualityToolsCompatibility;
 import com.mahghuuuls.threatworks.compat.SetworksCompatibility;
@@ -71,6 +72,7 @@ public final class ThreatworksMod {
         POINTS.installEquipmentSources(BaublesCompatibility.load(LOGGER), QualityToolsCompatibility.load(LOGGER));
         POINTS.freezeRegistrations();
         EncounterCoordinator.INSTANCE.setSummonSource(WizardryCompatibility.load(LOGGER));
+        EncounterCoordinator.INSTANCE.setFoliaathCompatibility(FoliaathCompatibility.load(LOGGER));
     }
 
     @Mod.EventHandler

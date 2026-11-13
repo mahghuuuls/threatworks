@@ -63,6 +63,12 @@ public final class Encounter {
     /** Returns null on rejection, leaving any existing encounter untouched. */
     public static Encounter tryTaunt(Encounter encounter, UUID participant, UUID incumbent, int tick,
                                      Function<UUID, TargetObservation> observe, Rules rules) {
+        Taunt pending = prepareTaunt(encounter, participant, incumbent, tick, observe, rules);
+        return pending == null ? null : pending.apply();
+    }
+
+    public static Taunt prepareTaunt(Encounter encounter, UUID participant, UUID incumbent, int tick,
+                                     Function<UUID, TargetObservation> observe, Rules rules) {
         TargetObservation taunterObservation = observe.apply(participant);
         if (encounter == null) {
             if (!taunterObservation.isEligible()) {
@@ -82,13 +88,31 @@ public final class Encounter {
                 matchedScore = entry.getValue();
             }
         }
-        encounter.scores.put(participant, matchedScore);
-        encounter.opening = false;
-        encounter.setTarget(participant);
-        encounter.taunter = participant;
-        encounter.tauntedAt = tick;
-        encounter.resetStartedAt = null;
-        return encounter;
+        return new Taunt(encounter, participant, matchedScore, tick);
+    }
+
+    public static final class Taunt {
+        private final Encounter encounter;
+        private final UUID participant;
+        private final double matchedScore;
+        private final int tick;
+
+        private Taunt(Encounter encounter, UUID participant, double matchedScore, int tick) {
+            this.encounter = encounter;
+            this.participant = participant;
+            this.matchedScore = matchedScore;
+            this.tick = tick;
+        }
+
+        public Encounter apply() {
+            encounter.scores.merge(participant, matchedScore, Math::max);
+            encounter.opening = false;
+            encounter.setTarget(participant);
+            encounter.taunter = participant;
+            encounter.tauntedAt = tick;
+            encounter.resetStartedAt = null;
+            return encounter;
+        }
     }
 
     public enum GrantResult {
@@ -101,6 +125,23 @@ public final class Encounter {
 
     public UUID getTarget() {
         return target;
+    }
+
+    public void yieldToNative(int tick) {
+        target = null;
+        taunter = null;
+        sightLostAt = null;
+        opening = false;
+        selectionPending = true;
+        if (resetStartedAt == null) {
+            resetStartedAt = tick;
+        }
+    }
+
+    public void resumeFromNative(UUID incumbent, Function<UUID, TargetObservation> observe) {
+        if (incumbent != null && scores.containsKey(incumbent) && observe.apply(incumbent).isEligible()) {
+            setTarget(incumbent);
+        }
     }
 
     public boolean holdsOpeningTarget(int mobTick) {

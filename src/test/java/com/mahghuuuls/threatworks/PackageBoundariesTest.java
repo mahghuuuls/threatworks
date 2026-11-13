@@ -41,6 +41,8 @@ class PackageBoundariesTest {
                 if (!"compat".equals(area)) {
                     assertFalse(name.startsWith("baubles.") || name.startsWith("electroblob.")
                                     || name.startsWith("com.tmtravlr.qualitytools.")
+                                    || name.startsWith("com.bobmowzie.mowziesmobs.")
+                                    || name.startsWith("net.ilexiconn.llibrary.")
                                     || name.startsWith("com.mahghuuuls.jafs.")
                                     || name.startsWith("com.mahghuuuls.setworks."),
                             relative + ": " + line);

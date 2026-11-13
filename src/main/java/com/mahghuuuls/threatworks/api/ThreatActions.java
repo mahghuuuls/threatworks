@@ -25,7 +25,8 @@ public interface ThreatActions {
         INVALID_AMOUNT(Status.REJECTED),
         SCORE_LIMIT(Status.REJECTED),
         INELIGIBLE_TAUNTER(Status.REJECTED),
-        TARGET_WRITE_IN_PROGRESS(Status.REJECTED);
+        TARGET_WRITE_IN_PROGRESS(Status.REJECTED),
+        TARGET_ASSIGNMENT_REJECTED(Status.REJECTED);
 
         private final Status status;
 

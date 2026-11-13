@@ -15,10 +15,23 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 class WorldEncountersTest {
+    @Test
+    void actionsCannotReviveAnEncounterAtTheNativeResetDeadline() {
+        UUID id = UUID.randomUUID();
+        UUID attacker = UUID.randomUUID();
+        Encounter retained = Encounter.recordHit(null, attacker, null, 1, 4.0, DEFAULT_RULES);
+        world.encounters.put(id, retained);
+        retained.yieldToNative(10);
+        assertSame(retained, world.encounterForAction(id, 209));
+        assertNull(world.encounterForAction(id, 210));
+        assertFalse(world.encounters.containsKey(id));
+    }
+
     private final UUID mob = new UUID(0, 1);
     private final UUID player = new UUID(0, 2);
     private final UUID incumbent = new UUID(0, 3);

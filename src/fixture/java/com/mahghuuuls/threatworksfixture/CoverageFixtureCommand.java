@@ -73,7 +73,8 @@ final class CoverageFixtureCommand extends CommandBase {
 
     @Override
     public void execute(MinecraftServer server, ICommandSender sender, String[] args) throws CommandException {
-        if (args.length == 0 || !server.isDedicatedServer() || !server.getFolderName().startsWith("TW-Campaign-I")) {
+        if (args.length == 0 || !server.isDedicatedServer() || !(server.getFolderName().startsWith("TW-Campaign-I")
+                || server.getFolderName().startsWith("TW-Campaign-J"))) {
             throw new CommandException(getUsage(sender));
         }
         WorldServer world = server.getWorld(0);
@@ -197,6 +198,10 @@ final class CoverageFixtureCommand extends CommandBase {
         if (!solo) {
             EntityIronGolem guard = new EntityIronGolem(world);
             guard.setNoAI(true);
+            if ("mowziesmobs:foliaath".equals(String.valueOf(EntityList.getKey(mob)))) {
+                guard.getEntityAttribute(SharedMonsterAttributes.MAX_HEALTH).setBaseValue(1000);
+                guard.setHealth(1000);
+            }
             double offset = mob instanceof EntitySkeleton ? 9 : 2;
             place(world, guard, "tw_i_guard", X + offset, Z);
         }
@@ -294,6 +299,57 @@ final class CoverageFixtureCommand extends CommandBase {
                 player.hurtResistantTime = 0;
                 player.setPosition(mob.posX - 7, Y, mob.posZ + 2);
                 LOGGER.info("coverage taunt={}", actions.taunt(mob, player));
+                break;
+            case "phase-taunt":
+                LOGGER.info("coverage phaseTaunt={}", actions.taunt(mob, player));
+                break;
+            case "phase-native-grant":
+                if ("native_phase".equals(EncounterCoordinator.INSTANCE.inspect(mob, 0).status)) {
+                    LOGGER.info("coverage phaseNativeGrant={}", actions.grant(mob, player, 1.0));
+                }
+                break;
+            case "phase-open":
+                if (guard == null || mob.getAttackTarget() != guard
+                        || !"supported_inactive".equals(EncounterCoordinator.INSTANCE.inspect(mob, 0).status)) {
+                    LOGGER.info("coverage phaseOpen=WAITING");
+                    break;
+                }
+                guard.setPosition(mob.posX + 2.0, Y, mob.posZ);
+                player.setInvisible(false);
+                attack(mob, player, "hit");
+                player.setPosition(mob.posX - 3.0, Y, mob.posZ);
+                guard.setPosition(mob.posX + 6.0, Y, mob.posZ);
+                break;
+            case "phase-reject":
+                if (!"tracked".equals(EncounterCoordinator.INSTANCE.inspect(mob, 0).status)
+                        || mob.getAttackTarget() == player) {
+                    LOGGER.info("coverage phaseReject=WAITING");
+                    break;
+                }
+                player.capabilities.disableDamage = false;
+                player.setInvisible(false);
+                player.setPosition(mob.posX - 2.0, Y, mob.posZ);
+                if (guard != null && actions.grant(mob, guard, 50) != ThreatActions.Result.APPLIED) {
+                    throw new CommandException("Could not raise the incumbent above the pending taunter.");
+                }
+                mob.addTag("tw_j_reject_assignment");
+                LOGGER.info("coverage phaseReject={}", actions.taunt(mob, player));
+                mob.removeTag("tw_j_reject_assignment");
+                break;
+            case "withdraw-guard":
+                if (guard != null) {
+                    guard.setPosition(X + 13, Y, Z);
+                }
+                break;
+            case "phase-player":
+                player.setInvisible(false);
+                player.capabilities.disableDamage = false;
+                player.setPosition(mob.posX - 3.0, Y, mob.posZ);
+                break;
+            case "illegal":
+                player.setInvisible(true);
+                LOGGER.info("coverage phaseTaunt={}", actions.taunt(mob, player));
+                player.setInvisible(false);
                 break;
             case "grant":
                 LOGGER.info("coverage grant={}", actions.grant(mob, player, 30));
