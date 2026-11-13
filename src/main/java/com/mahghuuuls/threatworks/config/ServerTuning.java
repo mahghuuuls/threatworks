@@ -103,6 +103,8 @@ public final class ServerTuning {
         GRAVEL_CREEPER("specialmobs:gravelcreeper"),
         LIGHTNING_CREEPER("specialmobs:lightningcreeper"),
         SPLITTING_CREEPER("specialmobs:splittingcreeper"),
+        DIRT_CREEPER("specialmobs:dirtcreeper"),
+        DROWNING_CREEPER("specialmobs:drowningcreeper"),
         DEFILED_HOST("defiledlands:host"),
         DEFILED_SHAMBLER("defiledlands:shambler"),
         DEFILED_TWISTED_SHAMBLER("defiledlands:shambler_twisted"),

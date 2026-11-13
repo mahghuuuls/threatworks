@@ -2,6 +2,9 @@ package com.mahghuuuls.threatworksfixture;
 
 import com.mahghuuuls.threatworks.ThreatworksMod;
 import com.mahghuuuls.threatworks.api.SummonThreatCreditEvent;
+import net.minecraft.block.Block;
+import net.minecraft.block.BlockSilverfish;
+import net.minecraft.block.state.IBlockState;
 import net.minecraft.entity.EntityLiving;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityAreaEffectCloud;
@@ -18,6 +21,7 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraft.potion.PotionEffect;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.World;
 import net.minecraftforge.common.ForgeChunkManager;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.entity.living.LivingDamageEvent;
@@ -38,6 +42,8 @@ import net.minecraftforge.fml.relauncher.ReflectionHelper;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 @Mod(modid = "threatworksfixture", name = "Threatworks Verification Fixture", version = "1.0.0",
@@ -57,6 +63,7 @@ public final class ThreatworksFixture {
     private boolean webBeforeImpact;
     private EntityLiving creeperBlastSource;
     private long creeperBlastTick;
+    private CreeperTerrain creeperTerrain;
 
     @Mod.EventHandler
     public void init(FMLInitializationEvent event) {
@@ -134,6 +141,10 @@ public final class ThreatworksFixture {
                 && logsCoverageCombat(owner)) {
             creeperBlastSource = (EntityLiving) owner;
             creeperBlastTick = owner.world.getTotalWorldTime();
+            String id = String.valueOf(EntityList.getKey(owner));
+            if ("specialmobs:dirtcreeper".equals(id) || "specialmobs:drowningcreeper".equals(id)) {
+                creeperTerrain = new CreeperTerrain(creeperBlastSource, creeperBlastTick);
+            }
         }
     }
 
@@ -348,6 +359,10 @@ public final class ThreatworksFixture {
                 && event.world.getTotalWorldTime() - creeperBlastTick > 2) {
             creeperBlastSource = null;
         }
+        if (creeperTerrain != null && creeperTerrain.world == event.world) {
+            creeperTerrain.report();
+            creeperTerrain = null;
+        }
         String folder = event.world.getMinecraftServer().getFolderName();
         if (folder.startsWith("TW-Campaign-L")) {
             event.world.getEntities(EntityCreature.class, mob -> mob.getTags().contains("tw_l_avoidance_probe")
@@ -373,6 +388,55 @@ public final class ThreatworksFixture {
                     mob.getServer().getTickCounter(), mob.getUniqueID(), view.status, view.target, view.taunter,
                     view.resetTicks, scores, nativeAnimation(mob));
         });
+    }
+
+    private static final class CreeperTerrain {
+        private final World world;
+        private final UUID mob;
+        private final String target;
+        private final long tick;
+        private final boolean griefing;
+        private final BlockPos center;
+        private final Block centerBefore;
+        private final List<BlockPos> airBefore = new ArrayList<>();
+
+        CreeperTerrain(EntityLiving source, long tick) {
+            world = source.world;
+            mob = source.getUniqueID();
+            target = ArrowFixtureCommand.identity(source.getAttackTarget());
+            this.tick = tick;
+            griefing = world.getGameRules().getBoolean("mobGriefing");
+            center = source.getPosition();
+            centerBefore = world.getBlockState(center).getBlock();
+            // Include the native enclosure around this uncharged fixture explosion.
+            for (BlockPos pos : BlockPos.getAllInBoxMutable(center.add(-8, -8, -8), center.add(8, 8, 8))) {
+                if (world.getBlockState(pos).getBlock() == Blocks.AIR) {
+                    airBefore.add(pos.toImmutable());
+                }
+            }
+        }
+
+        void report() {
+            int dirt = 0;
+            int water = 0;
+            int shell = 0;
+            for (BlockPos pos : airBefore) {
+                IBlockState state = world.getBlockState(pos);
+                Block block = state.getBlock();
+                if (block == Blocks.DIRT) {
+                    dirt++;
+                } else if (block == Blocks.WATER || block == Blocks.FLOWING_WATER) {
+                    water++;
+                } else if (block == Blocks.COBBLESTONE || block == Blocks.MONSTER_EGG
+                        && state.getValue(BlockSilverfish.VARIANT) == BlockSilverfish.EnumType.COBBLESTONE) {
+                    shell++;
+                }
+            }
+            LOGGER.info("coverage creeperTerrain mob={} target={} tick={} griefing={} center={} "
+                            + "centerBefore={} centerAfter={} newDirt={} newWater={} newShell={}",
+                    mob, target, tick, griefing, center, Block.REGISTRY.getNameForObject(centerBefore),
+                    Block.REGISTRY.getNameForObject(world.getBlockState(center).getBlock()), dirt, water, shell);
+        }
     }
 
     private static String nativeAnimation(EntityLiving mob) {

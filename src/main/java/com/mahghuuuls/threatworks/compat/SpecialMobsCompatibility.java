@@ -219,6 +219,10 @@ public final class SpecialMobsCompatibility {
                 return "creeper.EntityLightningCreeper";
             case SPLITTING_CREEPER:
                 return "creeper.EntitySplittingCreeper";
+            case DIRT_CREEPER:
+                return "creeper.EntityDirtCreeper";
+            case DROWNING_CREEPER:
+                return "creeper.EntityDrowningCreeper";
             default:
                 return null;
         }
