@@ -29,11 +29,24 @@ public final class ThreatworksCommand extends CommandBase {
 
     @Override
     public String getUsage(ICommandSender sender) {
-        return "/threatworks inspect <single mob selector or UUID>";
+        return "/threatworks inspect <single mob selector or UUID> | work <ticks|result>";
     }
 
     @Override
     public void execute(MinecraftServer server, ICommandSender sender, String[] args) throws CommandException {
+        if (args.length == 2 && "work".equals(args[0])) {
+            if ("result".equals(args[1])) {
+                String result = EncounterCoordinator.INSTANCE.takeWorkSample(sender.getEntityWorld());
+                if (result == null) {
+                    throw new CommandException("No completed Threatworks sample in this world.");
+                }
+                report(sender, result);
+            } else if (!EncounterCoordinator.INSTANCE.beginWorkSample(sender.getEntityWorld(),
+                    parseInt(args[1], 1, 1000))) {
+                throw new CommandException("A sample already exists in this world, or the world is unavailable.");
+            }
+            return;
+        }
         if (args.length != 2 || !"inspect".equals(args[0])) {
             throw new WrongUsageException(getUsage(sender));
         }

@@ -9,7 +9,7 @@ import java.util.function.Function;
 public final class Encounter {
     // Vanilla target tasks consider new goals every three mob updates in 1.12.2.
     private static final int OPENING_HOLD_TICKS = 3;
-    private static final int SELECTION_INTERVAL = 5;
+    public static final int SELECTION_INTERVAL = 5;
     private final Rules rules;
     private final Map<UUID, Double> scores = new LinkedHashMap<>();
     private int openedAtMobTick;

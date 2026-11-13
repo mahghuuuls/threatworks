@@ -13,9 +13,12 @@ import net.minecraft.world.IWorldEventListener;
 import net.minecraft.world.World;
 
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.BiPredicate;
 import java.util.function.DoubleSupplier;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
@@ -23,6 +26,43 @@ final class WorldEncounters implements IWorldEventListener {
     final Map<UUID, Encounter> encounters = new HashMap<>();
     // A snapshot can compare world sessions without retaining a world or its encounter table.
     final Object launchSession = new Object();
+    WorkSample workSample;
+
+    WorkSample activeSample() {
+        return workSample == null || workSample.complete() ? null : workSample;
+    }
+
+    void tick(int serverTick, BiPredicate<UUID, Encounter> remove) {
+        WorkSample sample = activeSample();
+        if (!encounters.isEmpty()) {
+            Iterator<Map.Entry<UUID, Encounter>> entries = encounters.entrySet().iterator();
+            while (entries.hasNext()) {
+                Map.Entry<UUID, Encounter> entry = entries.next();
+                if (sample != null) {
+                    sample.visit();
+                }
+                if (remove.test(entry.getKey(), entry.getValue())) {
+                    entries.remove();
+                }
+            }
+        }
+        if (sample != null) {
+            sample.endTick(serverTick, encounters.size());
+        }
+    }
+
+    UUID select(Encounter encounter, int serverTick, WorkSample sample,
+                Function<UUID, Encounter.TargetObservation> observe) {
+        if (sample != null) {
+            sample.selection();
+        }
+        return encounter.selectTarget(serverTick, id -> {
+            if (sample != null) {
+                sample.observation();
+            }
+            return observe.apply(id);
+        });
+    }
 
     void recordHit(UUID mob, Supplier<UUID> recipient, int mobTick, boolean mayOpen, float before, float after, Rules rules,
                    DoubleSupplier multiplier, Supplier<UUID> openingTarget) {

@@ -60,6 +60,10 @@ final class MobTargets {
     }
 
     static TargetObservation observe(WorldServer world, EntityCreature mob, Entity entity) {
+        return observe(world, mob, entity, null);
+    }
+
+    static TargetObservation observe(WorldServer world, EntityCreature mob, Entity entity, WorkSample sample) {
         EntityLivingBase target = resolve(world, mob, entity);
         if (target == null) {
             return TargetObservation.INELIGIBLE;
@@ -72,7 +76,7 @@ final class MobTargets {
         boolean needsSight = !(mob instanceof EntityZombie && target instanceof EntityVillager);
         boolean sightLost = needsSight && !sees(terrain, mob, target, position);
         boolean attackGeometry = canAttackFrom(terrain, mob, target, position, bow);
-        if (!attackGeometry && !canPursue(world, terrain, mob, target, bow)) {
+        if (!attackGeometry && !canPursue(world, terrain, mob, target, bow, sample)) {
             return TargetObservation.INELIGIBLE;
         }
         if (sightLost) {
@@ -98,7 +102,7 @@ final class MobTargets {
     }
 
     private static boolean canPursue(WorldServer world, LoadedPathTerrain terrain, EntityLiving mob,
-                                      EntityLivingBase target, boolean bow) {
+                                      EntityLivingBase target, boolean bow, WorkSample sample) {
         if (!(mob.getNavigator() instanceof PathNavigateGround)) {
             return false;
         }
@@ -109,6 +113,9 @@ final class MobTargets {
         nodes.setCanSwim(navigator.getCanSwim());
         nodes.setCanOpenDoors(mob instanceof EntityZombie && ((EntityZombie) mob).isBreakDoorsTaskSet());
         BlockPos destination = groundDestination(terrain, new BlockPos(target), world.getHeight());
+        if (sample != null) {
+            sample.pathQuery();
+        }
         Path path = new PathFinder(nodes).findPath(terrain, mob, destination, (float) followRange(mob));
         if (path == null) {
             return false;

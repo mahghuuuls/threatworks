@@ -25,6 +25,49 @@ class WorldEncountersTest {
     private final WorldEncounters world = new WorldEncounters();
 
     @Test
+    void samplesOnlyTrackedEntriesInTheWorldTickLoop() {
+        WorkSample sample = new WorkSample(2);
+        world.workSample = sample;
+        world.tick(40, (id, encounter) -> {
+            fail("Idle world must not visit a mob");
+            return false;
+        });
+        world.recordHit(mob, () -> player, 20, true, 20, 19, DEFAULT_RULES, () -> 1, () -> null);
+        world.tick(41, (id, encounter) -> {
+            assertEquals(mob, id);
+            return true;
+        });
+        assertTrue(sample.complete());
+        assertTrue(sample.report().contains("ticks=2 activeMin=0 activeMax=0 visited=1"));
+        world.tick(42, (id, encounter) -> {
+            fail("Removed encounter must not be visited again");
+            return false;
+        });
+        assertTrue(sample.report().contains("lastTick=41"));
+    }
+
+    @Test
+    void selectionSamplesOnlyScoreQualifiedChallengersAndRetainsTheOthers() {
+        UUID belowThreshold = new UUID(0, 4);
+        UUID aboveThreshold = new UUID(0, 5);
+        world.recordHit(mob, () -> player, 20, true, 20, 19, DEFAULT_RULES, () -> 1, () -> incumbent);
+        Encounter encounter = world.encounters.get(mob);
+        encounter.grant(belowThreshold, 11);
+        encounter.grant(aboveThreshold, 30);
+        WorkSample sample = new WorkSample(1);
+        assertEquals(incumbent, world.select(encounter, 50, sample, candidate -> {
+            if (incumbent.equals(candidate)) {
+                return TargetObservation.IN_REACH;
+            }
+            assertEquals(aboveThreshold, candidate, "Lower score must not even reach the mob policy");
+            return TargetObservation.INELIGIBLE;
+        }));
+        sample.endTick(50, 1);
+        assertTrue(sample.report().contains("selections=1 observations=2"));
+        assertEquals(4, encounter.participantCount());
+    }
+
+    @Test
     void nonPlayerDamageCreditsAnExistingFightWithoutOpeningOne() {
         world.recordHit(mob, () -> incumbent, 20, false, 20, 19, DEFAULT_RULES, () -> 1, this::unexpectedOpeningLookup);
         assertFalse(world.encounters.containsKey(mob));

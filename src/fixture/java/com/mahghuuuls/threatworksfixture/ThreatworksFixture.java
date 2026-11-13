@@ -51,6 +51,7 @@ public final class ThreatworksFixture {
         event.registerServerCommand(new ArrowFixtureCommand());
         event.registerServerCommand(new SummonFixtureCommand(this));
         event.registerServerCommand(new EquipmentFixtureCommand());
+        event.registerServerCommand(new WorkloadFixtureCommand());
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
@@ -106,6 +107,10 @@ public final class ThreatworksFixture {
             return;
         }
         EntityLivingBase target = event.getTarget();
+        if (target != null && entity.getTags().contains("tw_g_mob_0")) {
+            LOGGER.info("work_target mob={} target={} serverTick={}", entity.getUniqueID(), target.getUniqueID(),
+                    entity.getServer().getTickCounter());
+        }
         if (target != null && entity.removeTag("threatworks_taunt_during_target_write")) {
             LOGGER.info("nested_taunt mob={} participant={} result={} worldTick={}", entity.getUniqueID(),
                     target.getUniqueID(), ThreatworksMod.threatActions().taunt(entity, target),

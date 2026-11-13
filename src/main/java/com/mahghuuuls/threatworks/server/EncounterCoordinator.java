@@ -28,7 +28,6 @@ import net.minecraftforge.fml.common.gameevent.TickEvent;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.IdentityHashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -336,6 +335,25 @@ public final class EncounterCoordinator implements ThreatActions {
                 encounter.participantCount() - participants.size());
     }
 
+    public boolean beginWorkSample(World world, int ticks) {
+        WorldEncounters state = worlds.get(world);
+        if (state == null || state.workSample != null) {
+            return false;
+        }
+        state.workSample = new WorkSample(ticks);
+        return true;
+    }
+
+    public String takeWorkSample(World world) {
+        WorldEncounters state = worlds.get(world);
+        if (state == null || state.workSample == null || !state.workSample.complete()) {
+            return null;
+        }
+        String report = state.workSample.report();
+        state.workSample = null;
+        return report;
+    }
+
     private String eligibility(WorldServer world, EntityCreature mob, Encounter encounter, UUID participant, int tick) {
         EntityLivingBase candidate = MobTargets.resolve(world, mob, world.getEntityFromUuid(participant));
         if (candidate == null) {
@@ -355,32 +373,31 @@ public final class EncounterCoordinator implements ThreatActions {
         }
         WorldServer world = (WorldServer) event.world;
         WorldEncounters state = worlds.get(world);
-        if (state == null || state.encounters.isEmpty()) {
+        if (state == null || (state.encounters.isEmpty() && state.activeSample() == null)) {
             return;
         }
 
         int serverTick = world.getMinecraftServer().getTickCounter();
-        Iterator<Map.Entry<UUID, Encounter>> entries = state.encounters.entrySet().iterator();
-        List<Runnable> targetUpdates = new ArrayList<>();
-        while (entries.hasNext()) {
-            Map.Entry<UUID, Encounter> entry = entries.next();
-            Entity entity = world.getEntityFromUuid(entry.getKey());
-            if (!(entity instanceof EntityCreature) || !entity.isEntityAlive()) {
-                entries.remove();
-            } else {
-                Encounter encounter = entry.getValue();
-                reconcileTarget(world, state, (EntityCreature) entity, encounter, serverTick, targetUpdates);
-                if (encounter.resetDue(serverTick)) {
-                    entries.remove();
-                }
-            }
+        if (state.encounters.isEmpty()) {
+            state.tick(serverTick, null);
+            return;
         }
+        List<Runnable> targetUpdates = new ArrayList<>();
+        WorkSample sample = state.activeSample();
+        state.tick(serverTick, (id, encounter) -> {
+            Entity entity = world.getEntityFromUuid(id);
+            if (!(entity instanceof EntityCreature) || !entity.isEntityAlive()) {
+                return true;
+            }
+            reconcileTarget(world, state, (EntityCreature) entity, encounter, serverTick, targetUpdates, sample);
+            return encounter.resetDue(serverTick);
+        });
         // The vanilla setter notifies Forge listeners that can change encounter membership.
         targetUpdates.forEach(Runnable::run);
     }
 
     private void reconcileTarget(WorldServer world, WorldEncounters state, EntityCreature mob, Encounter encounter,
-                                 int serverTick, List<Runnable> updates) {
+                                 int serverTick, List<Runnable> updates, WorkSample sample) {
         UUID previous = encounter.getTarget();
         EntityLivingBase previousTarget = previous == null ? null
                 : MobTargets.resolve(world, mob, world.getEntityFromUuid(previous));
@@ -389,8 +406,8 @@ public final class EncounterCoordinator implements ThreatActions {
                 || !encounter.shouldReevaluate(serverTick, mob.getEntityId()))) {
             return;
         }
-        UUID selected = encounter.selectTarget(serverTick,
-                id -> MobTargets.observe(world, mob, world.getEntityFromUuid(id)));
+        UUID selected = state.select(encounter, serverTick, sample,
+                id -> MobTargets.observe(world, mob, world.getEntityFromUuid(id), sample));
         EntityLivingBase current = mob.getAttackTarget();
         if (selected == null && (current == null || !current.getUniqueID().equals(previous))) {
             return;
