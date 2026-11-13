@@ -8,6 +8,7 @@ import com.mahghuuuls.threatworks.compat.DefiledLandsCompatibility;
 import com.mahghuuuls.threatworks.compat.FoliaathCompatibility;
 import com.mahghuuuls.threatworks.compat.GaiaCompatibility;
 import com.mahghuuuls.threatworks.compat.SpecialAiCompatibility;
+import com.mahghuuuls.threatworks.compat.SpecialMobsCompatibility;
 import com.mahghuuuls.threatworks.compat.JafsCompatibility;
 import com.mahghuuuls.threatworks.compat.QualityToolsCompatibility;
 import com.mahghuuuls.threatworks.compat.SetworksCompatibility;
@@ -77,6 +78,7 @@ public final class ThreatworksMod {
         EncounterCoordinator.INSTANCE.setSummonSource(WizardryCompatibility.load(LOGGER));
         EncounterCoordinator.INSTANCE.setFoliaathCompatibility(FoliaathCompatibility.load(LOGGER));
         SpecialAiCompatibility.reportVersion(LOGGER);
+        SpecialMobsCompatibility.reportSilverfishVersion(LOGGER);
         DefiledLandsCompatibility.reportVersion(LOGGER);
         GaiaCompatibility.reportVersion(LOGGER);
     }

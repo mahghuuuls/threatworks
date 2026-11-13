@@ -22,6 +22,7 @@ import net.minecraft.entity.monster.EntityZombie;
 import net.minecraft.entity.projectile.EntityArrow;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.init.Blocks;
+import net.minecraft.init.MobEffects;
 import net.minecraft.inventory.EntityEquipmentSlot;
 import net.minecraft.item.ItemStack;
 import net.minecraft.network.EnumPacketDirection;
@@ -271,6 +272,15 @@ final class CoverageFixtureCommand extends CommandBase {
         ThreatActions actions = ThreatworksMod.threatActions();
         switch (operation) {
             case "read":
+                break;
+            case "silverfish-effects":
+                if (!mob.getServer().getFolderName().startsWith("TW-Campaign-L") || guard == null) {
+                    throw new CommandException("Expected Campaign L combat actors.");
+                }
+                LOGGER.info("coverage silverfishEffects mob={} guard={} guardBlind={} guardPoison={} player={} playerBlind={} playerPoison={}",
+                        mob.getUniqueID(), guard.getUniqueID(), guard.isPotionActive(MobEffects.BLINDNESS),
+                        guard.isPotionActive(MobEffects.POISON), player.getUniqueID(), player.isPotionActive(MobEffects.BLINDNESS),
+                        player.isPotionActive(MobEffects.POISON));
                 break;
             case "absorb":
                 mob.setAbsorptionAmount(40);

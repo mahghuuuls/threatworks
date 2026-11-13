@@ -111,7 +111,7 @@ final class MobTargets {
     }
 
     static boolean canControlImmediately(EntityCreature mob, MobType type) {
-        boolean providerGoalCheck = SpecialMobsCompatibility.isMeleeZombie(type)
+        boolean providerGoalCheck = SpecialMobsCompatibility.requiresLiveMeleeContract(type)
                 || providerMeleePriority(type) >= 0;
         return (providerGoalCheck ? matchesBehavior(mob, type) : hasSupportedState(mob, type))
                 && !inNativePhase(mob);
