@@ -4,6 +4,7 @@ import com.mahghuuuls.threatworks.config.ServerTuning.MobType;
 import net.minecraft.entity.EntityCreature;
 import net.minecraft.entity.ai.EntityAIAttackMelee;
 import net.minecraft.entity.monster.AbstractSkeleton;
+import net.minecraft.entity.monster.EntityBlaze;
 import net.minecraft.entity.monster.EntityCreeper;
 import net.minecraft.entity.monster.EntitySkeleton;
 import net.minecraft.entity.monster.EntitySilverfish;
@@ -14,26 +15,34 @@ import net.minecraftforge.fml.common.Loader;
 import net.minecraftforge.fml.common.ModContainer;
 import net.minecraftforge.fml.common.versioning.ComparableVersion;
 import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 
 public final class SpecialMobsCompatibility {
     private static final String ZOMBIE_PACKAGE = "fathertoast.specialmobs.entity.zombie.";
     private static final String SILVERFISH_PACKAGE = "fathertoast.specialmobs.entity.silverfish.";
     private static final String ENTITY_PACKAGE = "fathertoast.specialmobs.entity.";
     private static final String VARIANT_MINIMUM = "1.0.4";
+    private static final Logger LOGGER = LogManager.getLogger("threatworks");
 
     private SpecialMobsCompatibility() {
     }
 
     public static void reportVariantVersion(Logger logger) {
         if (Installed.MOD != null && !Installed.VARIANTS_SUPPORTED) {
-            logger.warn("Special Mobs silverfish, skeleton, spider and creeper variant targeting unavailable for version {}. Update to at least {}.",
+            logger.warn("Special Mobs silverfish, skeleton, spider, creeper and blaze variant targeting unavailable for version {}. Update to at least {}.",
                     Installed.MOD.getVersion(), VARIANT_MINIMUM);
+        } else if (Installed.VARIANTS_SUPPORTED && BlazeRange.ACCESS == null) {
+            logger.warn("Special Mobs blaze targeting unavailable because its native ranged attack distance could not be bound.");
         }
     }
 
     public static boolean requiresLiveGoalContract(MobType type) {
         return zombieClass(type) != null || silverfishClass(type) != null || skeletonClass(type) != null
-                || isVariantSpider(type) || creeperClass(type) != null;
+                || isVariantSpider(type) || creeperClass(type) != null || isVariantBlaze(type);
     }
 
     public static boolean matches(MobType type, EntityCreature mob) {
@@ -61,6 +70,11 @@ public final class SpecialMobsCompatibility {
             return Installed.VARIANTS_SUPPORTED && mob instanceof EntityCreeper
                     && mob.getClass().getName().equals(ENTITY_PACKAGE + creeperClass);
         }
+        String blazeClass = blazeClass(type);
+        if (blazeClass != null) {
+            return Installed.VARIANTS_SUPPORTED && mob instanceof EntityBlaze
+                    && mob.getClass().getName().equals(ENTITY_PACKAGE + blazeClass);
+        }
         return type == MobType.SPECIAL_SKELETON && mob instanceof EntitySkeleton && mob.getClass().getName().equals(
                 "fathertoast.specialmobs.entity.skeleton.Entity_SpecialSkeleton");
     }
@@ -76,6 +90,29 @@ public final class SpecialMobsCompatibility {
 
     public static boolean isVariantSpider(MobType type) {
         return spiderClass(type) != null;
+    }
+
+    public static boolean isVariantBlaze(MobType type) {
+        return blazeClass(type) != null;
+    }
+
+    public static boolean isVariantBlazeAttack(Class<?> goal) {
+        return goal.getName().equals("fathertoast.specialmobs.ai.EntityAISpecialAttackBlaze");
+    }
+
+    public static float blazeRange(EntityCreature mob) {
+        BlazeRange access = BlazeRange.ACCESS;
+        if (access == null || access.readFailed) {
+            return 0.0F;
+        }
+        try {
+            float range = access.range.getFloat(access.specialData.invoke(mob));
+            return Float.isFinite(range) && range >= 2.0F ? range : 0.0F;
+        } catch (ReflectiveOperationException | LinkageError | RuntimeException failure) {
+            access.readFailed = true;
+            LOGGER.warn("Disabling Special Mobs blaze targeting because its native range read failed.", failure);
+            return 0.0F;
+        }
     }
 
     public static boolean hasSupportedSkeletonWeapon(MobType type, EntityCreature mob, boolean usesBow) {
@@ -227,6 +264,46 @@ public final class SpecialMobsCompatibility {
                 return "creeper.EntityJumpingCreeper";
             default:
                 return null;
+        }
+    }
+
+    private static String blazeClass(MobType type) {
+        switch (type) {
+            case SPECIAL_BLAZE:
+                return "blaze.Entity_SpecialBlaze";
+            case INFERNO_BLAZE:
+                return "blaze.EntityInfernoBlaze";
+            default:
+                return null;
+        }
+    }
+
+    private static final class BlazeRange {
+        private static final BlazeRange ACCESS = Installed.VARIANTS_SUPPORTED ? bind() : null;
+        private final Method specialData;
+        private final Field range;
+        private boolean readFailed;
+
+        private BlazeRange(Method specialData, Field range) {
+            this.specialData = specialData;
+            this.range = range;
+        }
+
+        private static BlazeRange bind() {
+            try {
+                Class<?> blaze = Class.forName(ENTITY_PACKAGE + "blaze.Entity_SpecialBlaze", false,
+                        Loader.instance().getModClassLoader()).asSubclass(EntityBlaze.class);
+                Method specialData = blaze.getMethod("getSpecialData");
+                Class<?> data = specialData.getReturnType();
+                if (!data.getName().equals(ENTITY_PACKAGE + "SpecialMobData") || Modifier.isStatic(specialData.getModifiers())) {
+                    return null;
+                }
+                Field range = data.getField("rangedAttackMaxRange");
+                return range.getType() == float.class && !Modifier.isStatic(range.getModifiers())
+                        ? new BlazeRange(specialData, range) : null;
+            } catch (ReflectiveOperationException | LinkageError | RuntimeException failure) {
+                return null;
+            }
         }
     }
 

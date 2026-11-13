@@ -87,6 +87,7 @@ final class MobTargets {
         }
         boolean matched = false;
         boolean creeper = mob instanceof EntityCreeper;
+        boolean specialBlaze = SpecialMobsCompatibility.isVariantBlaze(type);
         boolean foundSwell = false;
         for (EntityAITaskEntry entry : mob.tasks.taskEntries) {
             Class<?> goal = entry.action.getClass();
@@ -98,9 +99,12 @@ final class MobTargets {
                     : goal.getEnclosingClass() == declaringMob && goal.getSimpleName().equals(nestedAttack);
             if (type == MobType.DEFILED_SCUTTLER) {
                 matchesAttack = DefiledLandsCompatibility.matchesScuttlerAttack(type, goal);
+            } else if (specialBlaze) {
+                matchesAttack = SpecialMobsCompatibility.isVariantBlazeAttack(goal);
             }
             if (matchesAttack) {
-                if (matched || entry.priority != priority || (entry.action.getMutexBits() & 3) != 3) {
+                int mutex = entry.action.getMutexBits();
+                if (matched || entry.priority != priority || (specialBlaze ? mutex != 3 : (mutex & 3) != 3)) {
                     return false;
                 }
                 matched = true;
@@ -148,6 +152,8 @@ final class MobTargets {
                 && (GaiaCompatibility.meleePriority(type) < 0 || GaiaCompatibility.isHostile(mob))
                 && (!SpecialMobsCompatibility.isVariantSkeleton(type) || !mob.isRiding()
                 && SpecialMobsCompatibility.hasSupportedSkeletonWeapon(type, mob, usesBow(mob)))
+                && (!SpecialMobsCompatibility.isVariantBlaze(type) || !mob.isRiding() && !mob.isBeingRidden()
+                && SpecialMobsCompatibility.blazeRange(mob) > 0.0F)
                 && (!(SpecialMobsCompatibility.isVariantSpider(type) || DungeonMobsCompatibility.meleePriority(type) >= 0
                 || mob instanceof EntityCreeper || type == MobType.GAIA_DULLAHAN || type == MobType.DEFILED_SCUTTLER)
                 || !mob.isRiding() && !mob.isBeingRidden())
@@ -206,13 +212,16 @@ final class MobTargets {
         return mob instanceof AbstractSkeleton && mob.getHeldItemMainhand().getItem() instanceof ItemBow;
     }
 
-    static EntityLivingBase resolve(WorldServer world, EntityCreature mob, Entity entity) {
+    static EntityLivingBase resolve(WorldServer world, EntityCreature mob, Entity entity, MobType type) {
         if (!(entity instanceof EntityLivingBase)) {
             return null;
         }
         EntityLivingBase target = (EntityLivingBase) entity;
         BlockPos position = new BlockPos(target);
         double range = followRange(mob);
+        if (SpecialMobsCompatibility.isVariantBlaze(type)) {
+            range = Math.min(range, SpecialMobsCompatibility.blazeRange(mob));
+        }
         return isAttackable(mob, target) && target.world == world && world.isBlockLoaded(position)
                 && world.getWorldBorder().contains(position)
                 && mob.isWithinHomeDistanceFromPosition(position)
@@ -222,7 +231,7 @@ final class MobTargets {
     }
 
     static TargetObservation observe(WorldServer world, EntityCreature mob, Entity entity, WorkSample sample, MobType type) {
-        EntityLivingBase target = resolve(world, mob, entity);
+        EntityLivingBase target = resolve(world, mob, entity, type);
         if (target == null) {
             return TargetObservation.INELIGIBLE;
         }
@@ -309,7 +318,7 @@ final class MobTargets {
 
     static EntityLivingBase resolveStationary(WorldServer world, EntityCreature mob, Entity entity,
                                                FoliaathCompatibility policy) {
-        EntityLivingBase target = resolve(world, mob, entity);
+        EntityLivingBase target = resolve(world, mob, entity, MobType.FOLIAATH);
         return target != null && policy.accepts(target) && policy.inBiteRange(mob, target) ? target : null;
     }
 

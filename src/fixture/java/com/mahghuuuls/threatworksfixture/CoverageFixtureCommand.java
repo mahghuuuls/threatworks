@@ -2,6 +2,7 @@ package com.mahghuuuls.threatworksfixture;
 
 import com.mahghuuuls.threatworks.ThreatworksMod;
 import com.mahghuuuls.threatworks.api.ThreatActions;
+import com.mahghuuuls.threatworks.compat.SpecialMobsCompatibility;
 import com.mahghuuuls.threatworks.server.EncounterCoordinator;
 import com.mahghuuuls.threatworks.server.EncounterCoordinator.Inspection;
 import com.mahghuuuls.threatworks.threat.Encounter;
@@ -20,6 +21,7 @@ import net.minecraft.entity.ai.EntityAIWander;
 import net.minecraft.entity.SharedMonsterAttributes;
 import net.minecraft.entity.monster.EntityIronGolem;
 import net.minecraft.entity.monster.AbstractSkeleton;
+import net.minecraft.entity.monster.EntityBlaze;
 import net.minecraft.entity.monster.EntityCreeper;
 import net.minecraft.entity.monster.EntitySkeleton;
 import net.minecraft.entity.monster.EntitySpider;
@@ -245,12 +247,17 @@ final class CoverageFixtureCommand extends CommandBase {
                 guard.getEntityAttribute(SharedMonsterAttributes.MAX_HEALTH).setBaseValue(1000);
                 guard.setHealth(1000);
             }
-            double offset = mob instanceof EntityCreeper || mob instanceof AbstractSkeleton
+            double offset = mob instanceof EntityCreeper || mob instanceof EntityBlaze || mob instanceof AbstractSkeleton
                     && mob.getHeldItemMainhand().getItem() instanceof net.minecraft.item.ItemBow ? 9 : 2;
             if ("specialmobs:jumpingcreeper".equals(String.valueOf(EntityList.getKey(mob)))) {
                 offset = 5.5;
             }
-            place(world, guard, "tw_i_guard", X + offset, mob.posY, Z);
+            double guardY = mob.posY;
+            if (mob instanceof EntityBlaze) {
+                guardY += 5;
+                world.setBlockState(new BlockPos(X + offset, guardY - 1, Z), Blocks.STONE.getDefaultState(), 2);
+            }
+            place(world, guard, "tw_i_guard", X + offset, guardY, Z);
         }
         FakePlayer player = new FakePlayer(world, new GameProfile(UUID.randomUUID(), "CampaignI")) {
             @Override
@@ -516,6 +523,65 @@ final class CoverageFixtureCommand extends CommandBase {
                 break;
             case "legal-player":
                 restorePlayer(player);
+                break;
+            case "blaze-opening":
+                if (!(mob instanceof EntityBlaze) || guard == null || mob.getAttackTarget() != guard) {
+                    throw new CommandException("Expected a blaze targeting the guard before the opening hit.");
+                }
+                restorePlayer(player);
+                attack(mob, player, "hit");
+                player.setPosition(mob.posX - 6, mob.posY, mob.posZ);
+                break;
+            case "blaze-range-outside":
+            case "blaze-range-edge":
+            case "blaze-range-inside":
+            case "blaze-range-resistant":
+                String blazeId = String.valueOf(EntityList.getKey(mob));
+                if (!"specialmobs:infernoblaze".equals(blazeId) && !"specialmobs:specialblaze".equals(blazeId)) {
+                    throw new CommandException("Expected a supported Special Mobs Blaze.");
+                }
+                double gap = "blaze-range-outside".equals(operation) ? 24 : "blaze-range-edge".equals(operation) ? 20 : 8;
+                restorePlayer(player);
+                player.setPosition(mob.posX - gap, mob.posY, mob.posZ);
+                if ("blaze-range-resistant".equals(operation)) {
+                    player.addPotionEffect(new PotionEffect(MobEffects.FIRE_RESISTANCE, 100, 0));
+                } else {
+                    player.removePotionEffect(MobEffects.FIRE_RESISTANCE);
+                }
+                LOGGER.info("coverage blazeRange mob={} player={} distance={} range={} followRange={} resistant={} result={}",
+                        mob.getUniqueID(), player.getUniqueID(), mob.getDistance(player),
+                        SpecialMobsCompatibility.blazeRange(mob),
+                        mob.getEntityAttribute(SharedMonsterAttributes.FOLLOW_RANGE).getAttributeValue(),
+                        player.isPotionActive(MobEffects.FIRE_RESISTANCE),
+                        actions.taunt(mob, player));
+                break;
+            case "blaze-range-release":
+            case "blaze-range-return":
+                if (!"specialmobs:infernoblaze".equals(String.valueOf(EntityList.getKey(mob))) || guard == null) {
+                    throw new CommandException("Expected a tracked Inferno Blaze and its guard.");
+                }
+                boolean release = "blaze-range-release".equals(operation);
+                if (release && mob.getAttackTarget() != player) {
+                    throw new CommandException("Expected the coordinated player immediately before range exit.");
+                }
+                if (release) {
+                    mob.setAttackTarget(guard);
+                    if (mob.getAttackTarget() != player) {
+                        throw new CommandException("The in-range player did not retain coordinated targeting.");
+                    }
+                    LOGGER.info("coverage blazeRangeHeld mob={} player={} distance={}", mob.getUniqueID(),
+                            player.getUniqueID(), mob.getDistance(player));
+                }
+                player.setPosition(mob.posX - (release ? 24 : 6), mob.posY, mob.posZ);
+                if (release) {
+                    mob.setAttackTarget(guard);
+                    if (mob.getAttackTarget() != guard) {
+                        throw new CommandException("The native setter was blocked after the incumbent left fireball range.");
+                    }
+                }
+                LOGGER.info("coverage blazeRangeTransition mob={} player={} step={} distance={} range={} target={}",
+                        mob.getUniqueID(), player.getUniqueID(), operation, mob.getDistance(player),
+                        SpecialMobsCompatibility.blazeRange(mob), identity(mob.getAttackTarget()));
                 break;
             case "creeper-opening":
                 if (!(mob instanceof EntityCreeper) || guard == null || mob.getAttackTarget() != guard

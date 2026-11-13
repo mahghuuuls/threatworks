@@ -15,6 +15,7 @@ import net.minecraft.entity.item.EntityFallingBlock;
 import net.minecraft.entity.monster.EntityIronGolem;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.entity.projectile.EntityArrow;
+import net.minecraft.entity.projectile.EntitySmallFireball;
 import net.minecraft.init.Items;
 import net.minecraft.init.Blocks;
 import net.minecraft.nbt.NBTTagCompound;
@@ -107,6 +108,10 @@ public final class ThreatworksFixture {
                 && event.getAmount() > 0) {
             LOGGER.info("coverage nativeImpact mob={} target={} source={} amount={}", source.getUniqueID(),
                     victim.getUniqueID(), event.getSource().getDamageType(), event.getAmount());
+            if (immediate instanceof EntitySmallFireball) {
+                LOGGER.info("coverage blazeImpact mob={} target={} shot={} tick={}", source.getUniqueID(),
+                        victim.getUniqueID(), immediate.getUniqueID(), victim.world.getTotalWorldTime());
+            }
             String id = String.valueOf(EntityList.getKey(source));
             if (victim.getTags().contains("tw_i_player")
                     && ("specialmobs:webspider".equals(id) || "specialmobs:webcavespider".equals(id))
@@ -184,6 +189,17 @@ public final class ThreatworksFixture {
         }
         if (spawned instanceof EntityAreaEffectCloud) {
             reportCreeperCloud((EntityAreaEffectCloud) spawned);
+        }
+        if (spawned instanceof EntitySmallFireball) {
+            EntityLivingBase shooter = ((EntitySmallFireball) spawned).shootingEntity;
+            if (shooter instanceof EntityLiving && shooter.getTags().contains("tw_i_mob") && logsCoverageCombat(shooter)) {
+                spawned.addTag(CoverageFixtureCommand.TAG);
+                EntityLivingBase target = ((EntityLiving) shooter).getAttackTarget();
+                LOGGER.info("coverage blazeLaunch mob={} target={} shot={} tick={} onGround={} y={} distance={}",
+                        shooter.getUniqueID(), ArrowFixtureCommand.identity(target), spawned.getUniqueID(),
+                        shooter.world.getTotalWorldTime(), shooter.onGround, shooter.posY,
+                        target == null ? -1 : shooter.getDistance(target));
+            }
         }
     }
 

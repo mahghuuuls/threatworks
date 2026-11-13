@@ -32,7 +32,7 @@ interface MobPolicy {
 
             @Override
             public EntityLivingBase resolve(WorldServer world, EntityCreature mob, Entity candidate) {
-                return MobTargets.resolve(world, mob, candidate);
+                return MobTargets.resolve(world, mob, candidate, type);
             }
 
             @Override
