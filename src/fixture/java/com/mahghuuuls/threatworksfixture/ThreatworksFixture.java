@@ -15,7 +15,8 @@ import net.minecraft.entity.item.EntityFallingBlock;
 import net.minecraft.entity.monster.EntityIronGolem;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.entity.projectile.EntityArrow;
-import net.minecraft.entity.projectile.EntitySmallFireball;
+import net.minecraft.entity.projectile.EntityFireball;
+import net.minecraft.entity.projectile.EntityLargeFireball;
 import net.minecraft.init.Items;
 import net.minecraft.init.Blocks;
 import net.minecraft.nbt.NBTTagCompound;
@@ -47,6 +48,7 @@ import org.apache.logging.log4j.Logger;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Mod(modid = "threatworksfixture", name = "Threatworks Verification Fixture", version = "1.0.0",
         acceptedMinecraftVersions = "[1.12.2]", acceptableRemoteVersions = "*",
@@ -66,6 +68,8 @@ public final class ThreatworksFixture {
     private EntityLiving creeperBlastSource;
     private long creeperBlastTick;
     private CreeperTerrain creeperTerrain;
+    private EntityLargeFireball largeFireballImpact;
+    private long largeFireballImpactTick;
 
     @Mod.EventHandler
     public void init(FMLInitializationEvent event) {
@@ -108,9 +112,10 @@ public final class ThreatworksFixture {
                 && event.getAmount() > 0) {
             LOGGER.info("coverage nativeImpact mob={} target={} source={} amount={}", source.getUniqueID(),
                     victim.getUniqueID(), event.getSource().getDamageType(), event.getAmount());
-            if (immediate instanceof EntitySmallFireball) {
-                LOGGER.info("coverage blazeImpact mob={} target={} shot={} tick={}", source.getUniqueID(),
-                        victim.getUniqueID(), immediate.getUniqueID(), victim.world.getTotalWorldTime());
+            if (immediate instanceof EntityFireball) {
+                LOGGER.info("coverage blazeImpact mob={} target={} shot={} tick={} projectile={}", source.getUniqueID(),
+                        victim.getUniqueID(), immediate.getUniqueID(), victim.world.getTotalWorldTime(),
+                        EntityList.getKey(immediate));
             }
             String id = String.valueOf(EntityList.getKey(source));
             if (victim.getTags().contains("tw_i_player")
@@ -155,6 +160,31 @@ public final class ThreatworksFixture {
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
+    public void onLargeFireballImpact(ProjectileImpactEvent.Fireball event) {
+        EntityFireball projectile = event.getFireball();
+        if (projectile instanceof EntityLargeFireball && !projectile.world.isRemote
+                && projectile.getTags().contains(CoverageFixtureCommand.TAG)) {
+            largeFireballImpact = (EntityLargeFireball) projectile;
+            largeFireballImpactTick = projectile.world.getTotalWorldTime();
+        }
+    }
+
+    @SubscribeEvent
+    public void onLargeFireballBlast(ExplosionEvent.Detonate event) {
+        EntityLargeFireball projectile = largeFireballImpact;
+        if (projectile == null || projectile.world != event.getWorld()
+                || projectile.world.getTotalWorldTime() != largeFireballImpactTick
+                || !projectile.getPositionVector().equals(event.getExplosion().getPosition())) {
+            return;
+        }
+        largeFireballImpact = null;
+        LOGGER.info("coverage blazeExplosion shot={} tick={} power={} source={} affected={}", projectile.getUniqueID(),
+                largeFireballImpactTick, projectile.explosionPower,
+                ArrowFixtureCommand.identity(event.getExplosion().getExplosivePlacedBy()),
+                event.getAffectedEntities().stream().map(Entity::getUniqueID).collect(Collectors.toList()));
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOWEST)
     public void onSplittingShot(ProjectileImpactEvent.Arrow event) {
         EntityArrow arrow = event.getArrow();
         Entity hit = event.getRayTraceResult().entityHit;
@@ -190,15 +220,15 @@ public final class ThreatworksFixture {
         if (spawned instanceof EntityAreaEffectCloud) {
             reportCreeperCloud((EntityAreaEffectCloud) spawned);
         }
-        if (spawned instanceof EntitySmallFireball) {
-            EntityLivingBase shooter = ((EntitySmallFireball) spawned).shootingEntity;
+        if (spawned instanceof EntityFireball) {
+            EntityLivingBase shooter = ((EntityFireball) spawned).shootingEntity;
             if (shooter instanceof EntityLiving && shooter.getTags().contains("tw_i_mob") && logsCoverageCombat(shooter)) {
                 spawned.addTag(CoverageFixtureCommand.TAG);
                 EntityLivingBase target = ((EntityLiving) shooter).getAttackTarget();
-                LOGGER.info("coverage blazeLaunch mob={} target={} shot={} tick={} onGround={} y={} distance={}",
+                LOGGER.info("coverage blazeLaunch mob={} target={} shot={} tick={} onGround={} y={} distance={} projectile={}",
                         shooter.getUniqueID(), ArrowFixtureCommand.identity(target), spawned.getUniqueID(),
                         shooter.world.getTotalWorldTime(), shooter.onGround, shooter.posY,
-                        target == null ? -1 : shooter.getDistance(target));
+                        target == null ? -1 : shooter.getDistance(target), EntityList.getKey(spawned));
             }
         }
     }
@@ -379,6 +409,9 @@ public final class ThreatworksFixture {
         if (creeperTerrain != null && creeperTerrain.world == event.world) {
             creeperTerrain.report();
             creeperTerrain = null;
+        }
+        if (largeFireballImpact != null && largeFireballImpact.world == event.world) {
+            largeFireballImpact = null;
         }
         String folder = event.world.getMinecraftServer().getFolderName();
         if (folder.startsWith("TW-Campaign-L")) {

@@ -271,6 +271,10 @@ public final class SpecialMobsCompatibility {
         switch (type) {
             case SPECIAL_BLAZE:
                 return "blaze.Entity_SpecialBlaze";
+            case CONFLAGRATION_BLAZE:
+                return "blaze.EntityConflagrationBlaze";
+            case HELLFIRE_BLAZE:
+                return "blaze.EntityHellfireBlaze";
             case INFERNO_BLAZE:
                 return "blaze.EntityInfernoBlaze";
             default:

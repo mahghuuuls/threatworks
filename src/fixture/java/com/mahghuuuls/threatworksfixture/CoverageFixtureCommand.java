@@ -35,6 +35,7 @@ import net.minecraft.init.Items;
 import net.minecraft.init.MobEffects;
 import net.minecraft.inventory.EntityEquipmentSlot;
 import net.minecraft.item.ItemStack;
+import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.network.EnumPacketDirection;
 import net.minecraft.network.NetHandlerPlayServer;
 import net.minecraft.network.NetworkManager;
@@ -53,6 +54,7 @@ import net.minecraft.world.WorldServer;
 import net.minecraftforge.common.ForgeChunkManager;
 import net.minecraft.util.math.ChunkPos;
 import net.minecraftforge.common.util.FakePlayer;
+import net.minecraftforge.common.util.Constants;
 import net.minecraftforge.fml.relauncher.ReflectionHelper;
 import net.minecraftforge.fml.common.registry.ForgeRegistries;
 import org.apache.logging.log4j.LogManager;
@@ -529,7 +531,13 @@ final class CoverageFixtureCommand extends CommandBase {
                     throw new CommandException("Expected a blaze targeting the guard before the opening hit.");
                 }
                 restorePlayer(player);
+                boolean conflagration = "specialmobs:conflagrationblaze".equals(String.valueOf(EntityList.getKey(mob)));
+                byte feedBefore = conflagration ? blazeFeedLevel(mob) : 0;
                 attack(mob, player, "hit");
+                if (conflagration) {
+                    LOGGER.info("coverage blazeFeeding mob={} player={} before={} after={}", mob.getUniqueID(),
+                            player.getUniqueID(), feedBefore, blazeFeedLevel(mob));
+                }
                 player.setPosition(mob.posX - 6, mob.posY, mob.posZ);
                 break;
             case "blaze-range-outside":
@@ -1066,6 +1074,15 @@ final class CoverageFixtureCommand extends CommandBase {
         }
         view.participants.forEach(participant -> LOGGER.info("coverage score mob={} participant={} score={} eligibility={}",
                 mob.getUniqueID(), participant.id, participant.score, participant.eligibility));
+    }
+
+    private static byte blazeFeedLevel(EntityCreature mob) throws CommandException {
+        NBTTagCompound data = mob.writeToNBT(new NBTTagCompound()).getCompoundTag("ForgeData")
+                .getCompoundTag("SpecialMobsData");
+        if (!data.hasKey("FeedLevel", Constants.NBT.TAG_BYTE)) {
+            throw new CommandException("Expected a native Conflagration Blaze feeding level.");
+        }
+        return data.getByte("FeedLevel");
     }
 
     private static String identity(Entity entity) {
