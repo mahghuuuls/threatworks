@@ -58,6 +58,7 @@ public final class ThreatworksFixture {
     private static final String CANCEL_NEXT = "threatworks_cancel_next";
     private static final String REENTER_PLAYER = "threatworks_reenter_next_player";
     private static final String REENTER_GOLEM = "threatworks_reenter_next_golem";
+    private static final String WILDFIRE_SPAWN = "tw_l_wildfire_spawn";
 
     private EntityLiving probingMob;
     private int nestedNotifications;
@@ -195,7 +196,7 @@ public final class ThreatworksFixture {
     }
 
     @SubscribeEvent
-    public void onCreeperSpawn(EntityJoinWorldEvent event) {
+    public void onCoverageSpawn(EntityJoinWorldEvent event) {
         Entity spawned = event.getEntity();
         if (event.getWorld().isRemote) {
             return;
@@ -220,6 +221,9 @@ public final class ThreatworksFixture {
         if (spawned instanceof EntityAreaEffectCloud) {
             reportCreeperCloud((EntityAreaEffectCloud) spawned);
         }
+        if (spawned instanceof EntityLiving && "specialmobs:cinderblaze".equals(String.valueOf(EntityList.getKey(spawned)))) {
+            reportWildfireOffspring((EntityLiving) spawned);
+        }
         if (spawned instanceof EntityFireball) {
             EntityLivingBase shooter = ((EntityFireball) spawned).shootingEntity;
             if (shooter instanceof EntityLiving && shooter.getTags().contains("tw_i_mob") && logsCoverageCombat(shooter)) {
@@ -231,6 +235,41 @@ public final class ThreatworksFixture {
                         target == null ? -1 : shooter.getDistance(target), EntityList.getKey(spawned));
             }
         }
+    }
+
+    private static void reportWildfireOffspring(EntityLiving child) {
+        if (!logsCoverageCombat(child)) {
+            return;
+        }
+        List<EntityLiving> parents = child.world.getEntitiesWithinAABB(EntityLiving.class, child.getEntityBoundingBox().grow(1),
+                parent -> parent.getTags().contains("tw_i_mob") && parent.getDistanceSq(child) < 0.0001
+                        && "specialmobs:wildfireblaze".equals(String.valueOf(EntityList.getKey(parent))));
+        if (parents.size() != 1) {
+            return;
+        }
+        EntityLiving parent = parents.get(0);
+        for (StackTraceElement frame : Thread.currentThread().getStackTrace()) {
+            if (parent.getClass().getName().equals(frame.getClassName())) {
+                String method = frame.getMethodName();
+                if ("attackEntityWithRangedAttack".equals(method) || "func_82196_d".equals(method)) {
+                    recordWildfireOffspring(parent, child, "ranged");
+                } else if ("onDeath".equals(method) || "func_70645_a".equals(method)) {
+                    recordWildfireOffspring(parent, child, "death");
+                }
+                return;
+            }
+        }
+    }
+
+    private static void recordWildfireOffspring(EntityLiving parent, EntityLiving child, String phase) {
+        child.addTag(CoverageFixtureCommand.TAG);
+        child.addTag(WILDFIRE_SPAWN);
+        EntityLivingBase target = child.getAttackTarget();
+        double toward = target == null ? 0 : child.motionX * (target.posX - child.posX)
+                + child.motionZ * (target.posZ - child.posZ);
+        LOGGER.info("coverage wildfireOffspring mob={} child={} entityId={} parentTarget={} target={} phase={} tick={} toward={}",
+                parent.getUniqueID(), child.getUniqueID(), child.getEntityId(), ArrowFixtureCommand.identity(parent.getAttackTarget()),
+                ArrowFixtureCommand.identity(target), phase, child.world.getTotalWorldTime(), toward);
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
@@ -415,6 +454,12 @@ public final class ThreatworksFixture {
         }
         String folder = event.world.getMinecraftServer().getFolderName();
         if (folder.startsWith("TW-Campaign-L")) {
+            event.world.getEntities(EntityLiving.class, child -> child.getTags().contains(WILDFIRE_SPAWN))
+                    .forEach(child -> {
+                        child.removeTag(WILDFIRE_SPAWN);
+                        LOGGER.info("coverage wildfirePresent child={} entityId={} tick={} alive={}",
+                                child.getUniqueID(), child.getEntityId(), event.world.getTotalWorldTime(), child.isEntityAlive());
+                    });
             event.world.getEntities(EntityCreature.class, mob -> mob.getTags().contains("tw_l_jumping_pursuit"))
                     .forEach(mob -> CoverageFixtureCommand.observeJumpingPursuit((WorldServer) event.world, mob));
             event.world.getEntities(EntityCreature.class, mob -> mob.getTags().contains("tw_l_jumping_probe")

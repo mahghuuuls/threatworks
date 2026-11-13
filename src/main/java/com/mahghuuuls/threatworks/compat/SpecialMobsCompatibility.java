@@ -277,6 +277,8 @@ public final class SpecialMobsCompatibility {
                 return "blaze.EntityHellfireBlaze";
             case INFERNO_BLAZE:
                 return "blaze.EntityInfernoBlaze";
+            case WILDFIRE_BLAZE:
+                return "blaze.EntityWildfireBlaze";
             default:
                 return null;
         }

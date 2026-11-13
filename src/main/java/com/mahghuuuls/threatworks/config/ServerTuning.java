@@ -110,6 +110,7 @@ public final class ServerTuning {
         CONFLAGRATION_BLAZE("specialmobs:conflagrationblaze"),
         HELLFIRE_BLAZE("specialmobs:hellfireblaze"),
         INFERNO_BLAZE("specialmobs:infernoblaze"),
+        WILDFIRE_BLAZE("specialmobs:wildfireblaze"),
         DEFILED_HOST("defiledlands:host"),
         DEFILED_SHAMBLER("defiledlands:shambler"),
         DEFILED_TWISTED_SHAMBLER("defiledlands:shambler_twisted"),

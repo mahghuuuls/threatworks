@@ -531,21 +531,41 @@ final class CoverageFixtureCommand extends CommandBase {
                     throw new CommandException("Expected a blaze targeting the guard before the opening hit.");
                 }
                 restorePlayer(player);
-                boolean conflagration = "specialmobs:conflagrationblaze".equals(String.valueOf(EntityList.getKey(mob)));
+                String openingId = String.valueOf(EntityList.getKey(mob));
+                boolean conflagration = "specialmobs:conflagrationblaze".equals(openingId);
                 byte feedBefore = conflagration ? blazeFeedLevel(mob) : 0;
                 attack(mob, player, "hit");
                 if (conflagration) {
                     LOGGER.info("coverage blazeFeeding mob={} player={} before={} after={}", mob.getUniqueID(),
                             player.getUniqueID(), feedBefore, blazeFeedLevel(mob));
                 }
-                player.setPosition(mob.posX - 6, mob.posY, mob.posZ);
+                // Give Wildfire's long ranged cycle an elevated target to follow throughout the fight.
+                double playerHeight = "specialmobs:wildfireblaze".equals(openingId) ? 5 : 0;
+                player.setPosition(mob.posX - 6, mob.posY + playerHeight, mob.posZ);
+                break;
+            case "wildfire-finish":
+                if (!"specialmobs:wildfireblaze".equals(String.valueOf(EntityList.getKey(mob)))
+                        || mob.getAttackTarget() != player) {
+                    throw new CommandException("Expected a Wildfire Blaze targeting the player before the finishing hit.");
+                }
+                NBTTagCompound wildfireData = specialMobData(mob);
+                if (!wildfireData.hasKey("BabiesOnDeath", Constants.NBT.TAG_INT)) {
+                    throw new CommandException("Expected a native Wildfire Blaze death spawn count.");
+                }
+                int deathSpawns = wildfireData.getInteger("BabiesOnDeath");
+                mob.setHealth(3);
+                mob.hurtResistantTime = 0;
+                attack(mob, player, "wildfire-finish");
+                LOGGER.info("coverage wildfireFinish mob={} player={} dead={} tick={} expectedChildren={}", mob.getUniqueID(),
+                        player.getUniqueID(), !mob.isEntityAlive(), world.getTotalWorldTime(), deathSpawns);
                 break;
             case "blaze-range-outside":
             case "blaze-range-edge":
             case "blaze-range-inside":
             case "blaze-range-resistant":
                 String blazeId = String.valueOf(EntityList.getKey(mob));
-                if (!"specialmobs:infernoblaze".equals(blazeId) && !"specialmobs:specialblaze".equals(blazeId)) {
+                if (!"specialmobs:infernoblaze".equals(blazeId) && !"specialmobs:specialblaze".equals(blazeId)
+                        && !"specialmobs:wildfireblaze".equals(blazeId)) {
                     throw new CommandException("Expected a supported Special Mobs Blaze.");
                 }
                 double gap = "blaze-range-outside".equals(operation) ? 24 : "blaze-range-edge".equals(operation) ? 20 : 8;
@@ -1077,12 +1097,15 @@ final class CoverageFixtureCommand extends CommandBase {
     }
 
     private static byte blazeFeedLevel(EntityCreature mob) throws CommandException {
-        NBTTagCompound data = mob.writeToNBT(new NBTTagCompound()).getCompoundTag("ForgeData")
-                .getCompoundTag("SpecialMobsData");
+        NBTTagCompound data = specialMobData(mob);
         if (!data.hasKey("FeedLevel", Constants.NBT.TAG_BYTE)) {
             throw new CommandException("Expected a native Conflagration Blaze feeding level.");
         }
         return data.getByte("FeedLevel");
+    }
+
+    private static NBTTagCompound specialMobData(EntityCreature mob) {
+        return mob.writeToNBT(new NBTTagCompound()).getCompoundTag("ForgeData").getCompoundTag("SpecialMobsData");
     }
 
     private static String identity(Entity entity) {
