@@ -22,6 +22,7 @@ import net.minecraft.nbt.NBTTagList;
 import net.minecraft.potion.PotionEffect;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
+import net.minecraft.world.WorldServer;
 import net.minecraftforge.common.ForgeChunkManager;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.entity.living.LivingDamageEvent;
@@ -365,6 +366,21 @@ public final class ThreatworksFixture {
         }
         String folder = event.world.getMinecraftServer().getFolderName();
         if (folder.startsWith("TW-Campaign-L")) {
+            event.world.getEntities(EntityCreature.class, mob -> mob.getTags().contains("tw_l_jumping_pursuit"))
+                    .forEach(mob -> CoverageFixtureCommand.observeJumpingPursuit((WorldServer) event.world, mob));
+            event.world.getEntities(EntityCreature.class, mob -> mob.getTags().contains("tw_l_jumping_probe")
+                    && !mob.onGround && mob.motionY > 0.5 && mob.getAttackTarget() != null).forEach(mob -> {
+                EntityLivingBase target = mob.getAttackTarget();
+                double dx = target.posX - mob.posX;
+                double dz = target.posZ - mob.posZ;
+                double toward = (dx * mob.motionX + dz * mob.motionZ) / Math.hypot(dx, dz);
+                if (toward > 0.6) {
+                    mob.removeTag("tw_l_jumping_probe");
+                    LOGGER.info("coverage creeperJump mob={} target={} tick={} vy={} toward={} x={} y={} z={}",
+                            mob.getUniqueID(), target.getUniqueID(), event.world.getTotalWorldTime(), mob.motionY,
+                            toward, mob.posX, mob.posY, mob.posZ);
+                }
+            });
             event.world.getEntities(EntityCreature.class, mob -> mob.getTags().contains("tw_l_avoidance_probe")
                     && mob.tasks.taskEntries.stream().anyMatch(entry -> entry.using && entry.action.getClass().getName()
                     .equals("fathertoast.specialai.ai.react.EntityAIAvoidExplosions"))).forEach(mob -> {

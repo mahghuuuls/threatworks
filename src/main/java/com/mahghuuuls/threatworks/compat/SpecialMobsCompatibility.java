@@ -223,6 +223,8 @@ public final class SpecialMobsCompatibility {
                 return "creeper.EntityDirtCreeper";
             case DROWNING_CREEPER:
                 return "creeper.EntityDrowningCreeper";
+            case JUMPING_CREEPER:
+                return "creeper.EntityJumpingCreeper";
             default:
                 return null;
         }

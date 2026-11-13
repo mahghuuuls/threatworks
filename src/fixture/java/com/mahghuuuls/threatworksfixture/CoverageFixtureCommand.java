@@ -41,6 +41,8 @@ import net.minecraft.pathfinding.Path;
 import net.minecraft.pathfinding.PathPoint;
 import net.minecraft.potion.PotionEffect;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.entity.ai.EntityAIAttackMelee;
+import net.minecraft.util.DamageSource;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraft.util.math.BlockPos;
@@ -229,6 +231,9 @@ final class CoverageFixtureCommand extends CommandBase {
             ((EntityZombie) mob).setChild(false);
         }
         mob.getEntityAttribute(SharedMonsterAttributes.MAX_HEALTH).setBaseValue(80);
+        if ("specialmobs:jumpingcreeper".equals(String.valueOf(EntityList.getKey(mob)))) {
+            mob.getEntityAttribute(SharedMonsterAttributes.KNOCKBACK_RESISTANCE).setBaseValue(1.0);
+        }
         mob.setHealth(80);
     }
 
@@ -242,6 +247,9 @@ final class CoverageFixtureCommand extends CommandBase {
             }
             double offset = mob instanceof EntityCreeper || mob instanceof AbstractSkeleton
                     && mob.getHeldItemMainhand().getItem() instanceof net.minecraft.item.ItemBow ? 9 : 2;
+            if ("specialmobs:jumpingcreeper".equals(String.valueOf(EntityList.getKey(mob)))) {
+                offset = 5.5;
+            }
             place(world, guard, "tw_i_guard", X + offset, mob.posY, Z);
         }
         FakePlayer player = new FakePlayer(world, new GameProfile(UUID.randomUUID(), "CampaignI")) {
@@ -490,12 +498,21 @@ final class CoverageFixtureCommand extends CommandBase {
                 attack(mob, player, operation);
                 break;
             case "guard-retaliation":
+            case "creeper-jump-retaliation":
                 if (guard == null) {
                     throw new CommandException("Missing native retaliation guard.");
                 }
                 player.setPosition(X, mob.posY, Z + 13);
                 player.capabilities.disableDamage = true;
-                guard.attackEntityAsMob(mob);
+                if ("specialmobs:jumpingcreeper".equals(String.valueOf(EntityList.getKey(mob)))) {
+                    // The golem's normal attack adds lift even when its victim resists knockback.
+                    mob.attackEntityFrom(DamageSource.causeMobDamage(guard), 1.0F);
+                    if ("creeper-jump-retaliation".equals(operation)) {
+                        mob.addTag("tw_l_jumping_pursuit");
+                    }
+                } else {
+                    guard.attackEntityAsMob(mob);
+                }
                 break;
             case "legal-player":
                 restorePlayer(player);
@@ -508,6 +525,20 @@ final class CoverageFixtureCommand extends CommandBase {
                 restorePlayer(player);
                 attack(mob, player, "hit");
                 player.setPosition(mob.posX - 5.0, mob.posY, mob.posZ);
+                break;
+            case "creeper-jump-space":
+                if (!(mob instanceof EntityCreeper) || guard == null || mob.getAttackTarget() != player
+                        || ((EntityCreeper) mob).getCreeperState() > 0 || ((EntityCreeper) mob).hasIgnited()
+                        || !mob.onGround || Math.abs(mob.motionY) > 0.1
+                        || !"specialmobs:jumpingcreeper".equals(String.valueOf(EntityList.getKey(mob)))) {
+                    throw new CommandException("Expected a grounded Jumping Creeper pursuing the player before swelling.");
+                }
+                player.setPosition(mob.posX - 8.5, mob.posY, mob.posZ);
+                guard.setPosition(mob.posX + 10, mob.posY, mob.posZ);
+                mob.addTag("tw_l_jumping_probe");
+                LOGGER.info("coverage creeperJumpSpace mob={} target={} distance={} guardDistance={} y={} grounded=true vy={}",
+                        mob.getUniqueID(), player.getUniqueID(), mob.getDistance(player), mob.getDistance(guard),
+                        mob.posY, mob.motionY);
                 break;
             case "creeper-short-blast":
                 if (!(mob instanceof EntityCreeper) || mob.getAttackTarget() != player
@@ -897,6 +928,31 @@ final class CoverageFixtureCommand extends CommandBase {
             default:
                 throw new CommandException("Unknown coverage operation " + operation);
         }
+        report(mob, world);
+    }
+
+    static void observeJumpingPursuit(WorldServer world, EntityCreature mob) {
+        EntityIronGolem guard = get(world, EntityIronGolem.class, "tw_i_guard");
+        EntityPlayerMP player = get(world, EntityPlayerMP.class, "tw_i_player");
+        if (guard == null || player == null || mob.getAttackTarget() != guard || !mob.onGround || mob.posX <= X + 0.15
+                || mob.getDistanceSq(guard) <= 9.0 || ((EntityCreeper) mob).getCreeperState() > 0
+                || !mob.tasks.taskEntries.stream().anyMatch(entry -> entry.using && entry.action instanceof EntityAIAttackMelee)) {
+            return;
+        }
+        Path path = mob.getNavigator().getPath();
+        PathPoint destination = path == null ? null : path.getFinalPathPoint();
+        if (destination == null || Math.abs(destination.x + 0.5 - guard.posX) > 0.5 || destination.z + 0.5 != guard.posZ) {
+            return;
+        }
+        mob.removeTag("tw_l_jumping_pursuit");
+        LOGGER.info("coverage creeperJumpPursuit mob={} target={} x={} distance={} pathX={} pathZ={}",
+                mob.getUniqueID(), guard.getUniqueID(), mob.posX, mob.getDistance(guard),
+                destination.x + 0.5, destination.z + 0.5);
+        report(mob, world);
+        restorePlayer(player);
+        attack(mob, player, "hit");
+        guard.setPosition(mob.posX + 5, mob.posY, mob.posZ);
+        player.setPosition(mob.posX - 4, mob.posY, mob.posZ);
         report(mob, world);
     }
 
