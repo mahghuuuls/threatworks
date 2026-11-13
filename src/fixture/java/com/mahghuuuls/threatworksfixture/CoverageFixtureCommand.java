@@ -11,6 +11,7 @@ import net.minecraft.command.CommandException;
 import net.minecraft.command.ICommandSender;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityCreature;
+import net.minecraft.entity.item.EntityTNTPrimed;
 import net.minecraft.entity.EntityList;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.SharedMonsterAttributes;
@@ -27,6 +28,8 @@ import net.minecraft.network.EnumPacketDirection;
 import net.minecraft.network.NetHandlerPlayServer;
 import net.minecraft.network.NetworkManager;
 import net.minecraft.network.Packet;
+import net.minecraft.pathfinding.Path;
+import net.minecraft.pathfinding.PathPoint;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.AxisAlignedBB;
@@ -75,7 +78,8 @@ final class CoverageFixtureCommand extends CommandBase {
     @Override
     public void execute(MinecraftServer server, ICommandSender sender, String[] args) throws CommandException {
         if (args.length == 0 || !server.isDedicatedServer() || !(server.getFolderName().startsWith("TW-Campaign-I")
-                || server.getFolderName().startsWith("TW-Campaign-J") || server.getFolderName().startsWith("TW-Campaign-K"))) {
+                || server.getFolderName().startsWith("TW-Campaign-J") || server.getFolderName().startsWith("TW-Campaign-K")
+                || server.getFolderName().startsWith("TW-Campaign-L"))) {
             throw new CommandException(getUsage(sender));
         }
         WorldServer world = server.getWorld(0);
@@ -398,6 +402,45 @@ final class CoverageFixtureCommand extends CommandBase {
                     }
                 });
                 break;
+            case "zombie-bow":
+                if (!mob.getServer().getFolderName().startsWith("TW-Campaign-L") || !(mob instanceof EntityZombie)
+                        || guard == null || !guard.isEntityAlive() || mob.getAttackTarget() != player) {
+                    throw new CommandException("Expected a Campaign L zombie targeting the player with a live guard.");
+                }
+                mob.setItemStackToSlot(EntityEquipmentSlot.MAINHAND, new ItemStack(net.minecraft.init.Items.BOW));
+                mob.setAttackTarget(guard);
+                if (mob.getAttackTarget() != guard) {
+                    throw new CommandException("The native setter was blocked after changing weapon modes.");
+                }
+                guard.setPosition(mob.posX + 6, Y, mob.posZ);
+                break;
+            case "threatening-tnt":
+                if (!mob.getServer().getFolderName().startsWith("TW-Campaign-L")) {
+                    throw new CommandException("Expected a Campaign L world.");
+                }
+                // Leave the native retreat lane clear of the player currently in melee range.
+                player.setPosition(mob.posX + 7, mob.posY, mob.posZ + 1);
+                EntityTNTPrimed tnt = new EntityTNTPrimed(world, mob.posX, mob.posY, mob.posZ + 3, null);
+                tnt.setFuse(400);
+                tnt.setNoGravity(true);
+                tnt.motionX = 0;
+                tnt.motionY = 0;
+                tnt.motionZ = 0;
+                tnt.addTag(TAG);
+                tnt.addTag("tw_l_tnt");
+                if (!world.spawnEntity(tnt)) {
+                    throw new CommandException("Could not spawn the native avoidance stimulus.");
+                }
+                mob.addTag("tw_l_avoidance_probe");
+                LOGGER.info("coverage avoidanceStimulus x={} z={}", tnt.posX, tnt.posZ);
+                break;
+            case "remove-tnt":
+                EntityTNTPrimed activeTnt = get(world, EntityTNTPrimed.class, "tw_l_tnt");
+                if (activeTnt == null) {
+                    throw new CommandException("The native avoidance stimulus is missing.");
+                }
+                activeTnt.setDead();
+                break;
             case "unsupported":
                 if (!(mob instanceof EntitySkeleton)) {
                     throw new CommandException("Expected a skeleton");
@@ -468,7 +511,7 @@ final class CoverageFixtureCommand extends CommandBase {
                 operation, player.getUniqueID(), mob.getUniqueID(), hp, mob.getHealth(), absorption, mob.getAbsorptionAmount());
     }
 
-    private static void report(EntityCreature mob, WorldServer world) {
+    static void report(EntityCreature mob, WorldServer world) {
         Inspection view = EncounterCoordinator.INSTANCE.inspect(mob, 16);
         EntityLivingBase guard = get(world, EntityIronGolem.class, "tw_i_guard");
         EntityLivingBase player = get(world, EntityPlayerMP.class, "tw_i_player");
@@ -480,6 +523,16 @@ final class CoverageFixtureCommand extends CommandBase {
                 mob.posY, mob.isAIDisabled(), mob.tasks.taskEntries.stream()
                         .map(entry -> entry.priority + ":" + entry.action.getClass().getName() + ":" + entry.action.getMutexBits())
                         .collect(java.util.stream.Collectors.joining(",")));
+        if (world.getMinecraftServer().getFolderName().startsWith("TW-Campaign-L")) {
+            LOGGER.info("coverage activeGoals mob={} goals={}", mob.getUniqueID(), mob.tasks.taskEntries.stream()
+                    .filter(entry -> entry.using).map(entry -> entry.action.getClass().getName())
+                    .collect(java.util.stream.Collectors.joining(",")));
+            Path path = mob.getNavigator().getPath();
+            PathPoint destination = path == null ? null : path.getFinalPathPoint();
+            if (destination != null) {
+                LOGGER.info("coverage path mob={} x={} z={}", mob.getUniqueID(), destination.x + 0.5, destination.z + 0.5);
+            }
+        }
         view.participants.forEach(participant -> LOGGER.info("coverage score mob={} participant={} score={} eligibility={}",
                 mob.getUniqueID(), participant.id, participant.score, participant.eligibility));
     }

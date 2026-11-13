@@ -54,6 +54,12 @@ public final class ServerTuning {
         BLAZE("minecraft:blaze", true),
         SHULKER("minecraft:shulker", true),
         SPECIAL_ZOMBIE("specialmobs:specialzombie", true),
+        BRUTE_ZOMBIE("specialmobs:brutezombie"),
+        FIRE_ZOMBIE("specialmobs:firezombie"),
+        GIANT_ZOMBIE("specialmobs:giantzombie"),
+        HUNGRY_ZOMBIE("specialmobs:hungryzombie"),
+        HUSK_ZOMBIE("specialmobs:huskzombie"),
+        PLAGUE_ZOMBIE("specialmobs:plaguezombie"),
         SPECIAL_SKELETON("specialmobs:specialskeleton"),
         FOLIAATH("mowziesmobs:foliaath");
 

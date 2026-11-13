@@ -2,6 +2,8 @@ package com.mahghuuuls.threatworks.server;
 
 import com.mahghuuuls.threatworks.config.ServerTuning.MobType;
 import com.mahghuuuls.threatworks.compat.FoliaathCompatibility;
+import com.mahghuuuls.threatworks.compat.SpecialAiCompatibility;
+import com.mahghuuuls.threatworks.compat.SpecialMobsCompatibility;
 import com.mahghuuuls.threatworks.threat.Encounter.TargetObservation;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityCreature;
@@ -85,8 +87,10 @@ final class MobTargets {
                     return false;
                 }
                 matched = true;
-            } else if (entry.priority > priority ? !entry.action.isInterruptible()
-                    : (entry.action.getMutexBits() & 3) != 0 && !nativeCompetingGoal(mob, goal)) {
+            } else if (SpecialAiCompatibility.hasUnknownCombatGoal(entry)
+                    || !SpecialAiCompatibility.isCombatReaction(entry)
+                    && (entry.priority > priority ? !entry.action.isInterruptible()
+                    : (entry.action.getMutexBits() & 3) != 0 && !nativeCompetingGoal(mob, goal))) {
                 return false;
             }
         }
@@ -100,7 +104,8 @@ final class MobTargets {
     }
 
     static boolean canControlImmediately(EntityCreature mob, MobType type) {
-        return hasSupportedState(mob, type) && !inNativePhase(mob);
+        return (SpecialMobsCompatibility.isMeleeZombie(type) ? matchesBehavior(mob, type) : hasSupportedState(mob, type))
+                && !inNativePhase(mob);
     }
 
     private static boolean hasSupportedState(EntityCreature mob, MobType type) {
@@ -112,8 +117,17 @@ final class MobTargets {
     }
 
     static boolean inNativePhase(EntityCreature mob) {
-        return mob instanceof EntitySpider && mob.getBrightness() >= 0.5F
-                || mob instanceof EntityShulker && !canAttackWhileAttached((EntityShulker) mob);
+        if (mob instanceof EntitySpider && mob.getBrightness() >= 0.5F
+                || mob instanceof EntityShulker && !canAttackWhileAttached((EntityShulker) mob)) {
+            return true;
+        }
+        for (EntityAITaskEntry entry : mob.tasks.taskEntries) {
+            if (entry.using && (SpecialAiCompatibility.isCombatReaction(entry)
+                    || SpecialAiCompatibility.isBlockGriefing(entry))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean canAttackWhileAttached(EntityShulker shulker) {

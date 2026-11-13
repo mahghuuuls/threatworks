@@ -24,72 +24,62 @@ import net.minecraft.util.ResourceLocation;
 import net.minecraft.world.WorldServer;
 
 import java.util.HashMap;
+import java.util.EnumMap;
 import java.util.Map;
 
-enum MobAdmission {
-    ZOMBIE(MobType.ZOMBIE, EntityZombie.class),
-    HUSK(MobType.HUSK, EntityHusk.class),
-    ZOMBIE_VILLAGER(MobType.ZOMBIE_VILLAGER, EntityZombieVillager.class),
-    SKELETON(MobType.SKELETON, EntitySkeleton.class),
-    STRAY(MobType.STRAY, EntityStray.class),
-    WITHER_SKELETON(MobType.WITHER_SKELETON, EntityWitherSkeleton.class),
-    SPIDER(MobType.SPIDER, EntitySpider.class),
-    CAVE_SPIDER(MobType.CAVE_SPIDER, EntityCaveSpider.class),
-    SILVERFISH(MobType.SILVERFISH, EntitySilverfish.class),
-    ENDERMITE(MobType.ENDERMITE, EntityEndermite.class),
-    VINDICATOR(MobType.VINDICATOR, EntityVindicator.class),
-    BLAZE(MobType.BLAZE, EntityBlaze.class),
-    SHULKER(MobType.SHULKER, EntityShulker.class),
-    SPECIAL_ZOMBIE(MobType.SPECIAL_ZOMBIE),
-    SPECIAL_SKELETON(MobType.SPECIAL_SKELETON),
-    FOLIAATH(MobType.FOLIAATH),
-    FOLIAATH_NATIVE(MobType.FOLIAATH, true),
-    SPIDER_NATIVE(MobType.SPIDER, true),
-    CAVE_SPIDER_NATIVE(MobType.CAVE_SPIDER, true),
-    SHULKER_NATIVE(MobType.SHULKER, true),
-    BLACKLISTED(null),
-    DISABLED(null),
-    UNSUPPORTED_TYPE(null),
-    UNSUPPORTED_STATE(null);
+final class MobAdmission {
+    private enum State {
+        CONTROL, NATIVE_PHASE, BLACKLISTED, DISABLED, UNSUPPORTED_TYPE, UNSUPPORTED_STATE
+    }
 
-    private static final Map<ResourceLocation, MobAdmission> BINDINGS = new HashMap<>();
+    private static final MobAdmission BLACKLISTED = new MobAdmission(null, State.BLACKLISTED);
+    private static final MobAdmission DISABLED = new MobAdmission(null, State.DISABLED);
+    private static final MobAdmission UNSUPPORTED_TYPE = new MobAdmission(null, State.UNSUPPORTED_TYPE);
+    private static final MobAdmission UNSUPPORTED_STATE = new MobAdmission(null, State.UNSUPPORTED_STATE);
+    private static final Map<ResourceLocation, MobType> TYPES = new HashMap<>();
+    private static final Map<MobType, Class<? extends EntityCreature>> VANILLA_CLASSES = new EnumMap<>(MobType.class);
+    private static final Map<MobType, MobAdmission> CONTROL = new EnumMap<>(MobType.class);
+    private static final Map<MobType, MobAdmission> NATIVE = new EnumMap<>(MobType.class);
 
     static {
-        for (MobAdmission binding : values()) {
-            if (binding.controls()) {
-                BINDINGS.put(new ResourceLocation(binding.type.id), binding);
-            }
+        VANILLA_CLASSES.put(MobType.ZOMBIE, EntityZombie.class);
+        VANILLA_CLASSES.put(MobType.HUSK, EntityHusk.class);
+        VANILLA_CLASSES.put(MobType.ZOMBIE_VILLAGER, EntityZombieVillager.class);
+        VANILLA_CLASSES.put(MobType.SKELETON, EntitySkeleton.class);
+        VANILLA_CLASSES.put(MobType.STRAY, EntityStray.class);
+        VANILLA_CLASSES.put(MobType.WITHER_SKELETON, EntityWitherSkeleton.class);
+        VANILLA_CLASSES.put(MobType.SPIDER, EntitySpider.class);
+        VANILLA_CLASSES.put(MobType.CAVE_SPIDER, EntityCaveSpider.class);
+        VANILLA_CLASSES.put(MobType.SILVERFISH, EntitySilverfish.class);
+        VANILLA_CLASSES.put(MobType.ENDERMITE, EntityEndermite.class);
+        VANILLA_CLASSES.put(MobType.VINDICATOR, EntityVindicator.class);
+        VANILLA_CLASSES.put(MobType.BLAZE, EntityBlaze.class);
+        VANILLA_CLASSES.put(MobType.SHULKER, EntityShulker.class);
+        for (MobType type : MobType.values()) {
+            TYPES.put(new ResourceLocation(type.id), type);
+            CONTROL.put(type, new MobAdmission(type, State.CONTROL));
+            NATIVE.put(type, new MobAdmission(type, State.NATIVE_PHASE));
         }
     }
 
     final MobType type;
-    private final Class<? extends EntityCreature> entityClass;
-    private final boolean nativePhase;
+    private final State state;
 
-    MobAdmission(MobType type) {
-        this(type, null);
-    }
-
-    MobAdmission(MobType type, Class<? extends EntityCreature> entityClass) {
-        this(type, entityClass, false);
-    }
-
-    MobAdmission(MobType type, boolean nativePhase) {
-        this(type, null, nativePhase);
-    }
-
-    MobAdmission(MobType type, Class<? extends EntityCreature> entityClass, boolean nativePhase) {
+    private MobAdmission(MobType type, State state) {
         this.type = type;
-        this.entityClass = entityClass;
-        this.nativePhase = nativePhase;
+        this.state = state;
     }
 
     boolean controls() {
-        return type != null && !nativePhase;
+        return state == State.CONTROL;
     }
 
     boolean yieldsToNative() {
-        return nativePhase;
+        return state == State.NATIVE_PHASE;
+    }
+
+    String status() {
+        return state.name().toLowerCase(java.util.Locale.ROOT);
     }
 
     static MobAdmission resolve(ServerTuning tuning, FoliaathCompatibility foliaath, EntityLivingBase entity) {
@@ -104,53 +94,42 @@ enum MobAdmission {
         if (id != null && tuning != null && tuning.isBlacklisted(id.toString())) {
             return BLACKLISTED;
         }
-        MobAdmission binding = BINDINGS.get(id);
-        if (binding == null || !(entity instanceof EntityCreature) || !binding.matches((EntityCreature) entity, foliaath)) {
+        MobType type = TYPES.get(id);
+        if (type == null || !(entity instanceof EntityCreature) || !matches(type, (EntityCreature) entity, foliaath)) {
             return UNSUPPORTED_TYPE;
         }
-        if (tuning == null || !tuning.isEnabled(binding.type)) {
+        if (tuning == null || !tuning.isEnabled(type)) {
             return DISABLED;
         }
         EntityCreature mob = (EntityCreature) entity;
         if (!(mob.world instanceof WorldServer)) {
             return UNSUPPORTED_STATE;
         }
-        if (binding == FOLIAATH) {
+        if (type == MobType.FOLIAATH) {
             if (!foliaath.matchesGoals(mob)) {
                 return UNSUPPORTED_STATE;
             }
             switch (foliaath.phase(mob)) {
                 case CONTROL:
-                    return FOLIAATH;
+                    return CONTROL.get(type);
                 case NATIVE:
-                    return FOLIAATH_NATIVE;
+                    return NATIVE.get(type);
                 default:
                     return UNSUPPORTED_STATE;
             }
         }
-        if (!MobTargets.matchesBehavior(mob, binding.type)) {
+        if (!MobTargets.matchesBehavior(mob, type)) {
             return UNSUPPORTED_STATE;
         }
-        if (MobTargets.inNativePhase(mob)) {
-            switch (binding) {
-                case SPIDER:
-                    return SPIDER_NATIVE;
-                case CAVE_SPIDER:
-                    return CAVE_SPIDER_NATIVE;
-                case SHULKER:
-                    return SHULKER_NATIVE;
-                default:
-                    throw new IllegalStateException("Missing native phase binding for " + binding);
-            }
-        }
-        return binding;
+        return MobTargets.inNativePhase(mob) ? NATIVE.get(type) : CONTROL.get(type);
     }
 
-    private boolean matches(EntityCreature mob, FoliaathCompatibility foliaath) {
+    private static boolean matches(MobType type, EntityCreature mob, FoliaathCompatibility foliaath) {
+        Class<? extends EntityCreature> entityClass = VANILLA_CLASSES.get(type);
         if (entityClass != null) {
             return mob.getClass() == entityClass;
         }
-        return this == FOLIAATH ? foliaath != null && foliaath.matches(mob)
+        return type == MobType.FOLIAATH ? foliaath != null && foliaath.matches(mob)
                 : SpecialMobsCompatibility.matches(type, mob);
     }
 }

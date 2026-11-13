@@ -34,7 +34,6 @@ import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -409,7 +408,7 @@ public final class EncounterCoordinator implements ThreatActions {
         UUID mobId = victim.getUniqueID();
         boolean assignmentRejected = state != null && state.rejectedWrites.contains(mobId);
         if (admission.type == null) {
-            return new Inspection(typeId, admission.name().toLowerCase(Locale.ROOT), false, target, null, 0, null,
+            return new Inspection(typeId, admission.status(), false, target, null, 0, null,
                     Collections.emptyList(), 0);
         }
         EntityCreature mob = (EntityCreature) victim;

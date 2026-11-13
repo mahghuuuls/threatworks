@@ -41,6 +41,23 @@ class ServerTuningTest {
     }
 
     @Test
+    void specialZombieVariantsRequireAnExactOptInInExpandedMode() throws Exception {
+        ServerTuning fresh = TuningFiles.load(directory.resolve("fresh.cfg"), null, id -> true, warnings);
+        String optIn = "S:mobOptIn <\n specialmobs:brutezombie\n specialmobs:plaguezombie\n >";
+        ServerTuning expanded = TuningFiles.load(directory.resolve("expanded.cfg"), optIn, id -> true, warnings);
+        ServerTuning legacy = TuningFiles.load(directory.resolve("legacy-zombies.cfg"),
+                "S:enabledMobs <\n minecraft:zombie\n specialmobs:brutezombie\n >\n" + optIn, id -> true, warnings);
+
+        assertFalse(fresh.isEnabled(MobType.BRUTE_ZOMBIE));
+        assertTrue(expanded.isEnabled(MobType.BRUTE_ZOMBIE));
+        assertTrue(expanded.isEnabled(MobType.PLAGUE_ZOMBIE));
+        assertFalse(expanded.isEnabled(MobType.GIANT_ZOMBIE));
+        assertTrue(legacy.isEnabled(ZOMBIE));
+        assertFalse(legacy.isEnabled(MobType.BRUTE_ZOMBIE));
+        assertFalse(legacy.isEnabled(MobType.PLAGUE_ZOMBIE));
+    }
+
+    @Test
     void freshFileAndReloadUseApprovedDefaults() throws Exception {
         Path file = directory.resolve("threatworks.cfg");
         ServerTuning created = TuningFiles.load(file, null, id -> true, warnings);

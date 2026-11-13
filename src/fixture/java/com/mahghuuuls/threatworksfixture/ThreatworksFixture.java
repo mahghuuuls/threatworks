@@ -4,6 +4,7 @@ import com.mahghuuuls.threatworks.ThreatworksMod;
 import com.mahghuuuls.threatworks.api.SummonThreatCreditEvent;
 import net.minecraft.entity.EntityLiving;
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.EntityCreature;
 import net.minecraft.entity.EntityList;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.monster.EntityIronGolem;
@@ -72,7 +73,7 @@ public final class ThreatworksFixture {
                     source.getUniqueID(), victim.getUniqueID(), EntityList.getKey(immediate),
                     event.getSource().getDamageType(), event.getAmount(), victim.dimension);
         }
-        if (!victim.world.isRemote && victim.getServer().getFolderName().startsWith("TW-Campaign-K")
+        if (!victim.world.isRemote && logsCoverageCombat(victim)
                 && source instanceof EntityLiving && source.getTags().contains("tw_i_mob")
                 && (victim.getTags().contains("tw_i_guard") || victim.getTags().contains("tw_i_player"))
                 && event.getAmount() > 0) {
@@ -141,7 +142,7 @@ public final class ThreatworksFixture {
                         target == null ? null : target.getUniqueID());
             }
         }
-        if (entity.getServer().getFolderName().startsWith("TW-Campaign-K")
+        if (logsCoverageCombat(entity)
                 && (entity.getTags().contains("tw_i_mob") || entity.getTags().contains(DimensionCoverageCommand.TAG))) {
             LOGGER.info("coverage targetWrite mob={} requested={} coordinated={} tick={}", entity.getUniqueID(),
                     target == null ? null : target.getUniqueID(), coordinatedTargetWrite(), entity.getServer().getTickCounter());
@@ -180,10 +181,29 @@ public final class ThreatworksFixture {
                         && frame.getMethodName().equals("writeTarget"));
     }
 
+    private static boolean logsCoverageCombat(EntityLivingBase entity) {
+        String folder = entity.getServer().getFolderName();
+        return folder.startsWith("TW-Campaign-K") || folder.startsWith("TW-Campaign-L");
+    }
+
     @SubscribeEvent
     public void onPhaseTick(TickEvent.WorldTickEvent event) {
-        if (event.phase != TickEvent.Phase.END || event.world.isRemote
-                || !event.world.getMinecraftServer().getFolderName().startsWith("TW-Campaign-J")) {
+        if (event.phase != TickEvent.Phase.END || event.world.isRemote) {
+            return;
+        }
+        String folder = event.world.getMinecraftServer().getFolderName();
+        if (folder.startsWith("TW-Campaign-L")) {
+            event.world.getEntities(EntityCreature.class, mob -> mob.getTags().contains("tw_l_avoidance_probe")
+                    && mob.tasks.taskEntries.stream().anyMatch(entry -> entry.using && entry.action.getClass().getName()
+                    .equals("fathertoast.specialai.ai.react.EntityAIAvoidExplosions"))).forEach(mob -> {
+                mob.removeTag("tw_l_avoidance_probe");
+                CoverageFixtureCommand.report(mob, (net.minecraft.world.WorldServer) event.world);
+                EntityLivingBase participant = mob.getAttackTarget();
+                LOGGER.info("coverage avoidanceTaunt={}", ThreatworksMod.threatActions().taunt(mob, participant));
+            });
+            return;
+        }
+        if (!folder.startsWith("TW-Campaign-J")) {
             return;
         }
         event.world.getEntities(EntityLiving.class, mob -> mob.getTags().contains("tw_i_mob")
