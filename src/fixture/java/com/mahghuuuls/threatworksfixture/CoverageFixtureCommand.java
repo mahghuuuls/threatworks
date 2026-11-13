@@ -15,6 +15,7 @@ import net.minecraft.entity.EntityList;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.SharedMonsterAttributes;
 import net.minecraft.entity.monster.EntityIronGolem;
+import net.minecraft.entity.monster.AbstractSkeleton;
 import net.minecraft.entity.monster.EntitySkeleton;
 import net.minecraft.entity.monster.EntityZombie;
 import net.minecraft.entity.projectile.EntityArrow;
@@ -74,7 +75,7 @@ final class CoverageFixtureCommand extends CommandBase {
     @Override
     public void execute(MinecraftServer server, ICommandSender sender, String[] args) throws CommandException {
         if (args.length == 0 || !server.isDedicatedServer() || !(server.getFolderName().startsWith("TW-Campaign-I")
-                || server.getFolderName().startsWith("TW-Campaign-J"))) {
+                || server.getFolderName().startsWith("TW-Campaign-J") || server.getFolderName().startsWith("TW-Campaign-K"))) {
             throw new CommandException(getUsage(sender));
         }
         WorldServer world = server.getWorld(0);
@@ -202,7 +203,8 @@ final class CoverageFixtureCommand extends CommandBase {
                 guard.getEntityAttribute(SharedMonsterAttributes.MAX_HEALTH).setBaseValue(1000);
                 guard.setHealth(1000);
             }
-            double offset = mob instanceof EntitySkeleton ? 9 : 2;
+            double offset = mob instanceof AbstractSkeleton && mob.getHeldItemMainhand().getItem() instanceof net.minecraft.item.ItemBow
+                    ? 9 : 2;
             place(world, guard, "tw_i_guard", X + offset, Z);
         }
         FakePlayer player = new FakePlayer(world, new GameProfile(UUID.randomUUID(), "CampaignI")) {
@@ -265,6 +267,19 @@ final class CoverageFixtureCommand extends CommandBase {
                 break;
             case "hit":
                 attack(mob, player, operation);
+                break;
+            case "guard-retaliation":
+                if (guard == null) {
+                    throw new CommandException("Missing native retaliation guard.");
+                }
+                player.setPosition(X, Y, Z + 13);
+                player.capabilities.disableDamage = true;
+                guard.attackEntityAsMob(mob);
+                break;
+            case "legal-player":
+                player.capabilities.disableDamage = false;
+                player.setInvisible(false);
+                player.hurtResistantTime = 0;
                 break;
             case "opening":
                 if (guard == null || mob.getAttackTarget() != guard) {
@@ -439,8 +454,8 @@ final class CoverageFixtureCommand extends CommandBase {
         report(mob, world);
     }
 
-    private static void attack(EntityCreature mob, EntityPlayerMP player, String operation) {
-        player.setPosition(mob.posX - 1.3, Y, mob.posZ);
+    static void attack(EntityCreature mob, EntityPlayerMP player, String operation) {
+        player.setPosition(mob.posX - 1.3, mob.posY, mob.posZ);
         player.resetCooldown();
         for (int tick = 0; tick < 30; tick++) {
             player.onUpdateEntity();

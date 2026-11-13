@@ -3,6 +3,8 @@ package com.mahghuuuls.threatworksfixture;
 import com.mahghuuuls.threatworks.ThreatworksMod;
 import com.mahghuuuls.threatworks.api.SummonThreatCreditEvent;
 import net.minecraft.entity.EntityLiving;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.EntityList;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.monster.EntityIronGolem;
 import net.minecraft.entity.player.EntityPlayerMP;
@@ -55,11 +57,28 @@ public final class ThreatworksFixture {
         event.registerServerCommand(new EquipmentFixtureCommand());
         event.registerServerCommand(new WorkloadFixtureCommand());
         event.registerServerCommand(new CoverageFixtureCommand(this));
+        event.registerServerCommand(new DimensionCoverageCommand(this));
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public void onLivingDamage(LivingDamageEvent event) {
         EntityLivingBase victim = event.getEntityLiving();
+        Entity source = event.getSource().getTrueSource();
+        Entity immediate = event.getSource().getImmediateSource();
+        if (!victim.world.isRemote && victim.getTags().contains(DimensionCoverageCommand.TAG)
+                && source instanceof EntityLiving && source.getTags().contains(DimensionCoverageCommand.TAG)
+                && immediate != null && event.getAmount() > 0) {
+            LOGGER.info("dimension impact mob={} target={} projectile={} source={} amount={} dimension={}",
+                    source.getUniqueID(), victim.getUniqueID(), EntityList.getKey(immediate),
+                    event.getSource().getDamageType(), event.getAmount(), victim.dimension);
+        }
+        if (!victim.world.isRemote && victim.getServer().getFolderName().startsWith("TW-Campaign-K")
+                && source instanceof EntityLiving && source.getTags().contains("tw_i_mob")
+                && (victim.getTags().contains("tw_i_guard") || victim.getTags().contains("tw_i_player"))
+                && event.getAmount() > 0) {
+            LOGGER.info("coverage nativeImpact mob={} target={} source={} amount={}", source.getUniqueID(),
+                    victim.getUniqueID(), event.getSource().getDamageType(), event.getAmount());
+        }
         if (!victim.world.isRemote && victim.getTags().contains("tw_summon_probe")) {
             SummonFixtureCommand.reportImpact(victim, event.getSource(), event.getAmount());
         }
@@ -111,9 +130,7 @@ public final class ThreatworksFixture {
         }
         EntityLivingBase target = event.getTarget();
         if (entity.getTags().contains("tw_i_mob") && entity.getServer().getFolderName().startsWith("TW-Campaign-J")) {
-            boolean coordinated = java.util.Arrays.stream(Thread.currentThread().getStackTrace())
-                    .anyMatch(frame -> frame.getClassName().equals("com.mahghuuuls.threatworks.server.EncounterCoordinator")
-                            && frame.getMethodName().equals("writeTarget"));
+            boolean coordinated = coordinatedTargetWrite();
             LOGGER.info("phase_write mob={} requested={} coordinated={} tick={}", entity.getUniqueID(),
                     target == null ? null : target.getUniqueID(), coordinated, entity.getServer().getTickCounter());
             if (coordinated && entity.removeTag("tw_j_reject_assignment")) {
@@ -123,6 +140,11 @@ public final class ThreatworksFixture {
                 LOGGER.info("phase_rejected mob={} requested={}", entity.getUniqueID(),
                         target == null ? null : target.getUniqueID());
             }
+        }
+        if (entity.getServer().getFolderName().startsWith("TW-Campaign-K")
+                && (entity.getTags().contains("tw_i_mob") || entity.getTags().contains(DimensionCoverageCommand.TAG))) {
+            LOGGER.info("coverage targetWrite mob={} requested={} coordinated={} tick={}", entity.getUniqueID(),
+                    target == null ? null : target.getUniqueID(), coordinatedTargetWrite(), entity.getServer().getTickCounter());
         }
         if (target != null && entity.getTags().contains("tw_g_mob_0")) {
             LOGGER.info("work_target mob={} target={} serverTick={}", entity.getUniqueID(), target.getUniqueID(),
@@ -150,6 +172,12 @@ public final class ThreatworksFixture {
         LOGGER.info("target_reentry mob={} target={} nestedNotifications={} retained={} worldTick={}",
                 mob.getUniqueID(), target.getUniqueID(), nestedNotifications, mob.getAttackTarget() == target,
                 mob.world.getTotalWorldTime());
+    }
+
+    private static boolean coordinatedTargetWrite() {
+        return java.util.Arrays.stream(Thread.currentThread().getStackTrace())
+                .anyMatch(frame -> frame.getClassName().equals("com.mahghuuuls.threatworks.server.EncounterCoordinator")
+                        && frame.getMethodName().equals("writeTarget"));
     }
 
     @SubscribeEvent

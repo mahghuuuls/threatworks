@@ -1,5 +1,6 @@
 package com.mahghuuuls.threatworks.config;
 
+import com.mahghuuuls.threatworks.config.ServerTuning.MobType;
 import com.mahghuuuls.threatworks.threat.Encounter;
 import com.mahghuuuls.threatworks.threat.Encounter.Rules;
 import org.junit.jupiter.api.Test;
@@ -8,8 +9,13 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import static com.mahghuuuls.threatworks.config.ServerTuning.MobType.SKELETON;
 import static com.mahghuuuls.threatworks.config.ServerTuning.MobType.SPECIAL_SKELETON;
@@ -23,6 +29,16 @@ import static org.junit.jupiter.api.Assertions.*;
 class ServerTuningTest {
     @TempDir Path directory;
     private final List<String> warnings = new ArrayList<>();
+    private static final Set<String> VANILLA_DEFAULTS = new HashSet<>(Arrays.asList(
+            "minecraft:zombie", "minecraft:husk", "minecraft:zombie_villager", "minecraft:skeleton",
+            "minecraft:stray", "minecraft:wither_skeleton", "minecraft:spider", "minecraft:cave_spider",
+            "minecraft:silverfish", "minecraft:endermite", "minecraft:vindication_illager", "minecraft:blaze",
+            "minecraft:shulker"));
+
+    private static Set<String> enabledVanilla(ServerTuning tuning) {
+        return Arrays.stream(MobType.values()).filter(tuning::isEnabled).map(type -> type.id)
+                .filter(id -> id.startsWith("minecraft:")).collect(Collectors.toSet());
+    }
 
     @Test
     void freshFileAndReloadUseApprovedDefaults() throws Exception {
@@ -31,8 +47,7 @@ class ServerTuningTest {
         assertTrue(Files.isRegularFile(file));
         ServerTuning reloaded = TuningFiles.load(file, null, id -> true, warnings);
         for (ServerTuning tuning : new ServerTuning[] {created, reloaded}) {
-            assertTrue(tuning.isEnabled(ZOMBIE));
-            assertTrue(tuning.isEnabled(SKELETON));
+            assertEquals(VANILLA_DEFAULTS, enabledVanilla(tuning));
             assertTrue(tuning.isEnabled(SPECIAL_ZOMBIE));
             assertFalse(tuning.isEnabled(SPECIAL_SKELETON));
             assertNull(tuning.assignedPoints("minecraft:stick", null));
@@ -53,8 +68,7 @@ class ServerTuningTest {
                 id -> true, warnings);
         ServerTuning restarted = TuningFiles.load(file, null, id -> true, warnings);
         for (ServerTuning tuning : new ServerTuning[] {legacy, restarted}) {
-            assertTrue(tuning.isEnabled(ZOMBIE));
-            assertFalse(tuning.isEnabled(SKELETON));
+            assertEquals(Collections.singleton("minecraft:zombie"), enabledVanilla(tuning));
             assertFalse(tuning.isEnabled(SPECIAL_ZOMBIE));
             assertFalse(tuning.isEnabled(SPECIAL_SKELETON));
             assertEquals(16, tuning.rulesFor(SPECIAL_ZOMBIE).openingThreat);
@@ -64,7 +78,7 @@ class ServerTuningTest {
         Files.write(file, saved.replace("S:mobCoverage=legacy", "S:mobCoverage=expanded")
                 .getBytes(java.nio.charset.StandardCharsets.UTF_8));
         ServerTuning expanded = TuningFiles.load(file, null, id -> true, warnings);
-        assertTrue(expanded.isEnabled(SKELETON));
+        assertEquals(VANILLA_DEFAULTS, enabledVanilla(expanded));
         assertTrue(expanded.isEnabled(SPECIAL_ZOMBIE));
         assertTrue(expanded.isEnabled(SPECIAL_SKELETON));
         assertEquals(16, expanded.rulesFor(SPECIAL_ZOMBIE).openingThreat);

@@ -55,7 +55,7 @@ public final class EncounterCoordinator implements ThreatActions {
     private EncounterCoordinator() {
         for (MobType type : MobType.values()) {
             if (type != MobType.FOLIAATH) {
-                policies.put(type, MobPolicy.ground(type));
+                policies.put(type, MobPolicy.builtIn(type));
             }
         }
     }
@@ -70,7 +70,7 @@ public final class EncounterCoordinator implements ThreatActions {
         WorldEncounters state = worlds.get(mob.world);
         return admission.type != null && state != null && activeWrite((EntityLiving) mob) == null
                 && !state.rejectedWrites.contains(mob.getUniqueID())
-                && (admission.controls() || admission == MobAdmission.NATIVE_PHASE
+                && (admission.controls() || admission.yieldsToNative()
                 && state.encounters.containsKey(mob.getUniqueID()));
     }
 
@@ -216,7 +216,7 @@ public final class EncounterCoordinator implements ThreatActions {
         }
         int tick = world.getMinecraftServer().getTickCounter();
         Encounter existing = state.encounterForAction(mobId, tick);
-        if (admission == MobAdmission.NATIVE_PHASE) {
+        if (admission.yieldsToNative()) {
             if (existing == null) {
                 return;
             }
@@ -502,7 +502,7 @@ public final class EncounterCoordinator implements ThreatActions {
             }
             EntityCreature mob = (EntityCreature) entity;
             MobAdmission admission = admission(mob);
-            if (state.rejectedWrites.contains(id) || admission == MobAdmission.NATIVE_PHASE) {
+            if (state.rejectedWrites.contains(id) || admission.yieldsToNative()) {
                 yieldToNative(state, id, encounter, serverTick);
                 return encounter.resetDue(serverTick);
             }

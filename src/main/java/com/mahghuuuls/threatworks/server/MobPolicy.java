@@ -18,11 +18,11 @@ interface MobPolicy {
 
     TargetObservation observe(WorldServer world, EntityCreature mob, Entity candidate, WorkSample sample);
 
-    static MobPolicy ground(MobType type) {
+    static MobPolicy builtIn(MobType type) {
         return new MobPolicy() {
             @Override
             public boolean controlsImmediately(EntityCreature mob) {
-                return MobTargets.canControlImmediately(mob, type == MobType.SPECIAL_SKELETON);
+                return MobTargets.canControlImmediately(mob, type);
             }
 
             @Override

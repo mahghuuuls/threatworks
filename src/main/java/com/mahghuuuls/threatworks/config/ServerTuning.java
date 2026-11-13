@@ -40,16 +40,33 @@ public final class ServerTuning {
     private static final Pattern NAMESPACED_ID = Pattern.compile("[a-z0-9_.-]+:[a-z0-9_./-]+");
 
     public enum MobType {
-        ZOMBIE("minecraft:zombie"),
-        SKELETON("minecraft:skeleton"),
-        SPECIAL_ZOMBIE("specialmobs:specialzombie"),
+        ZOMBIE("minecraft:zombie", true),
+        HUSK("minecraft:husk", true),
+        ZOMBIE_VILLAGER("minecraft:zombie_villager", true),
+        SKELETON("minecraft:skeleton", true),
+        STRAY("minecraft:stray", true),
+        WITHER_SKELETON("minecraft:wither_skeleton", true),
+        SPIDER("minecraft:spider", true),
+        CAVE_SPIDER("minecraft:cave_spider", true),
+        SILVERFISH("minecraft:silverfish", true),
+        ENDERMITE("minecraft:endermite", true),
+        VINDICATOR("minecraft:vindication_illager", true),
+        BLAZE("minecraft:blaze", true),
+        SHULKER("minecraft:shulker", true),
+        SPECIAL_ZOMBIE("specialmobs:specialzombie", true),
         SPECIAL_SKELETON("specialmobs:specialskeleton"),
         FOLIAATH("mowziesmobs:foliaath");
 
         public final String id;
+        private final boolean defaultEnabled;
 
         MobType(String id) {
+            this(id, false);
+        }
+
+        MobType(String id, boolean defaultEnabled) {
             this.id = id;
+            this.defaultEnabled = defaultEnabled;
         }
 
         private static MobType find(String id) {
@@ -203,7 +220,12 @@ public final class ServerTuning {
         Set<String> optIn = mobIds(config, "mobOptIn",
                 "Exact IDs of verified opt-in mobs in expanded mode, e.g. specialmobs:specialskeleton.", warn);
         if ("expanded".equals(mode)) {
-            Set<MobType> enabled = EnumSet.of(MobType.ZOMBIE, MobType.SKELETON, MobType.SPECIAL_ZOMBIE);
+            Set<MobType> enabled = EnumSet.noneOf(MobType.class);
+            for (MobType type : MobType.values()) {
+                if (type.defaultEnabled) {
+                    enabled.add(type);
+                }
+            }
             for (String id : optIn) {
                 MobType type = MobType.find(id);
                 if (type == null) {

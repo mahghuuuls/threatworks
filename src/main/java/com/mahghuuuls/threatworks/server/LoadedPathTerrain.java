@@ -29,9 +29,14 @@ final class LoadedPathTerrain implements IBlockAccess {
 
     @Override
     public IBlockState getBlockState(BlockPos pos) {
+        Chunk chunk = readableShapeChunk(pos);
+        return chunk == null ? Blocks.BARRIER.getDefaultState() : chunk.getBlockState(pos);
+    }
+
+    private Chunk readableShapeChunk(BlockPos pos) {
         Chunk chunk = readableChunk(pos.getX() >> 4, pos.getZ() >> 4);
         if (chunk == null || !world.getWorldBorder().contains(pos)) {
-            return Blocks.BARRIER.getDefaultState();
+            return null;
         }
         int localX = pos.getX() & 15;
         int localZ = pos.getZ() & 15;
@@ -39,9 +44,9 @@ final class LoadedPathTerrain implements IBlockAccess {
         int margin = PATH_COLLISION_NEIGHBORS;
         if ((localX < margin || localX >= 16 - margin || localZ < margin || localZ >= 16 - margin)
                 && !readableArea(pos.getX() - margin, pos.getZ() - margin, pos.getX() + margin, pos.getZ() + margin)) {
-            return Blocks.BARRIER.getDefaultState();
+            return null;
         }
-        return chunk.getBlockState(pos);
+        return chunk;
     }
 
     @Override
@@ -84,6 +89,15 @@ final class LoadedPathTerrain implements IBlockAccess {
     boolean seesSky(BlockPos pos) {
         Chunk chunk = readableChunk(pos.getX() >> 4, pos.getZ() >> 4);
         return chunk != null && chunk.canSeeSky(pos);
+    }
+
+    boolean isNormalCube(BlockPos pos, boolean unreadable) {
+        Chunk chunk = readableShapeChunk(pos);
+        if (chunk == null) {
+            return unreadable;
+        }
+        IBlockState state = chunk.getBlockState(pos);
+        return state.getBlock().isNormalCube(state, this, pos);
     }
 
     boolean clearLine(Vec3d from, Vec3d to) {
