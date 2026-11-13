@@ -97,6 +97,7 @@ public final class ServerTuning {
         DEFILED_HOST("defiledlands:host"),
         DEFILED_SHAMBLER("defiledlands:shambler"),
         DEFILED_TWISTED_SHAMBLER("defiledlands:shambler_twisted"),
+        DEFILED_SCUTTLER("defiledlands:scuttler"),
         DUNGEON_GHOUL("dungeonmobs:dmghoul"),
         DUNGEON_HOOK_HORROR("dungeonmobs:dmhookhorror"),
         DUNGEON_UMBER_HULK("dungeonmobs:dmumberhulk"),

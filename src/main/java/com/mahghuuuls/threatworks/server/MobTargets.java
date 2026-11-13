@@ -92,6 +92,9 @@ final class MobTargets {
                     && SpecialMobsCompatibility.isVariantSkeletonMelee(type, goal);
             boolean matchesAttack = nestedAttack == null ? goal == attack || vanillaSkeletonMelee || providerSkeletonMelee
                     : goal.getEnclosingClass() == declaringMob && goal.getSimpleName().equals(nestedAttack);
+            if (type == MobType.DEFILED_SCUTTLER) {
+                matchesAttack = DefiledLandsCompatibility.matchesScuttlerAttack(type, goal);
+            }
             if (matchesAttack) {
                 if (matched || entry.priority != priority || (entry.action.getMutexBits() & 3) != 3) {
                     return false;
@@ -130,7 +133,7 @@ final class MobTargets {
                 && (!SpecialMobsCompatibility.isVariantSkeleton(type) || !mob.isRiding()
                 && SpecialMobsCompatibility.hasSupportedSkeletonWeapon(type, mob, usesBow(mob)))
                 && (!(SpecialMobsCompatibility.isVariantSpider(type) || DungeonMobsCompatibility.meleePriority(type) >= 0
-                || type == MobType.GAIA_DULLAHAN)
+                || type == MobType.GAIA_DULLAHAN || type == MobType.DEFILED_SCUTTLER)
                 || !mob.isRiding() && !mob.isBeingRidden())
                 && (type != MobType.SPECIAL_SKELETON || usesBow(mob));
     }
@@ -145,7 +148,7 @@ final class MobTargets {
     }
 
     static boolean inNativePhase(EntityCreature mob, MobType type) {
-        if (mob instanceof EntitySpider && mob.getBrightness() >= 0.5F
+        if (mob instanceof EntitySpider && type != MobType.DEFILED_SCUTTLER && mob.getBrightness() >= 0.5F
                 || mob instanceof EntityShulker && !canAttackWhileAttached((EntityShulker) mob)) {
             return true;
         }

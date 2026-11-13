@@ -586,10 +586,11 @@ final class CoverageFixtureCommand extends CommandBase {
             case "competing-goal":
             case "defiled-native-goal":
                 boolean probeSetter = "defiled-native-goal".equals(operation);
+                String defiledId = String.valueOf(EntityList.getKey(mob));
                 if (probeSetter && (!mob.getServer().getFolderName().startsWith("TW-Campaign-L") || guard == null
                         || !guard.isEntityAlive() || mob.getAttackTarget() != player
-                        || !"defiledlands:host".equals(String.valueOf(EntityList.getKey(mob))))) {
-                    throw new CommandException("Expected a tracked Campaign L Host targeting the player.");
+                        || !("defiledlands:host".equals(defiledId) || "defiledlands:scuttler".equals(defiledId)))) {
+                    throw new CommandException("Expected a tracked Campaign L Host or Scuttler targeting the player.");
                 }
                 mob.tasks.addTask(0, new net.minecraft.entity.ai.EntityAIBase() {
                     {
@@ -609,10 +610,11 @@ final class CoverageFixtureCommand extends CommandBase {
                 }
                 break;
             case "defiled-covered-opening":
+                String coveredId = String.valueOf(EntityList.getKey(mob));
                 if (!mob.getServer().getFolderName().startsWith("TW-Campaign-L") || guard == null
                         || mob.getAttackTarget() != guard
-                        || !"defiledlands:shambler_twisted".equals(String.valueOf(EntityList.getKey(mob)))) {
-                    throw new CommandException("Expected a Campaign L Twisted Shambler targeting the guard.");
+                        || !("defiledlands:shambler_twisted".equals(coveredId) || "defiledlands:scuttler".equals(coveredId))) {
+                    throw new CommandException("Expected a Campaign L Twisted Shambler or Scuttler targeting the guard.");
                 }
                 restorePlayer(player);
                 attack(mob, player, "hit");
@@ -622,8 +624,8 @@ final class CoverageFixtureCommand extends CommandBase {
                 }
                 player.setPosition(mob.posX - 5.0, mob.posY, mob.posZ);
                 mob.addTag("tw_l_sight_probe");
-                LOGGER.info("coverage defiledSight mob={} player={} visible={}", mob.getUniqueID(),
-                        player.getUniqueID(), mob.canEntityBeSeen(player));
+                LOGGER.info("coverage defiledSight mob={} player={} visible={} brightness={}", mob.getUniqueID(),
+                        player.getUniqueID(), mob.canEntityBeSeen(player), mob.getBrightness());
                 break;
             case "gaia-neutral-feed":
                 if (!mob.getServer().getFolderName().startsWith("TW-Campaign-L") || guard == null

@@ -26,6 +26,7 @@ public final class DefiledLandsCompatibility {
     public static int meleePriority(MobType type) {
         switch (type) {
             case DEFILED_HOST:
+            case DEFILED_SCUTTLER:
                 return 4;
             case DEFILED_SHAMBLER:
             case DEFILED_TWISTED_SHAMBLER:
@@ -36,7 +37,14 @@ public final class DefiledLandsCompatibility {
     }
 
     public static boolean canAcquireWithoutSight(MobType type, EntityLivingBase candidate) {
-        return type == MobType.DEFILED_TWISTED_SHAMBLER && candidate instanceof EntityPlayer && Installed.EXACT_PIN;
+        return (type == MobType.DEFILED_TWISTED_SHAMBLER || type == MobType.DEFILED_SCUTTLER)
+                && candidate instanceof EntityPlayer && Installed.EXACT_PIN;
+    }
+
+    public static boolean matchesScuttlerAttack(MobType type, Class<?> goal) {
+        return type == MobType.DEFILED_SCUTTLER
+                && goal.getName().equals(ENTITY_PACKAGE + "EntityScuttler$AISpiderAttack")
+                && goal.getSuperclass().getName().equals("lykrast.defiledlands.common.entity.ai.EntityAIAttackMeleeStrafe");
     }
 
     public static boolean matches(MobType type, EntityCreature mob) {
@@ -50,6 +58,9 @@ public final class DefiledLandsCompatibility {
                 break;
             case DEFILED_TWISTED_SHAMBLER:
                 entityClass = "EntityShamblerTwisted";
+                break;
+            case DEFILED_SCUTTLER:
+                entityClass = "EntityScuttler";
                 break;
             default:
                 return false;
