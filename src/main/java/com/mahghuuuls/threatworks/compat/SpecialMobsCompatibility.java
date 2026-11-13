@@ -6,6 +6,7 @@ import net.minecraft.entity.ai.EntityAIAttackMelee;
 import net.minecraft.entity.monster.AbstractSkeleton;
 import net.minecraft.entity.monster.EntitySkeleton;
 import net.minecraft.entity.monster.EntitySilverfish;
+import net.minecraft.entity.monster.EntitySpider;
 import net.minecraft.entity.monster.EntityZombie;
 import net.minecraft.init.Items;
 import net.minecraftforge.fml.common.Loader;
@@ -24,13 +25,14 @@ public final class SpecialMobsCompatibility {
 
     public static void reportVariantVersion(Logger logger) {
         if (Installed.MOD != null && !Installed.VARIANTS_SUPPORTED) {
-            logger.warn("Special Mobs silverfish and skeleton variant targeting unavailable for version {}. Update to at least {}.",
+            logger.warn("Special Mobs silverfish, skeleton and spider variant targeting unavailable for version {}. Update to at least {}.",
                     Installed.MOD.getVersion(), VARIANT_MINIMUM);
         }
     }
 
     public static boolean requiresLiveMeleeContract(MobType type) {
-        return zombieClass(type) != null || silverfishClass(type) != null || skeletonClass(type) != null;
+        return zombieClass(type) != null || silverfishClass(type) != null || skeletonClass(type) != null
+                || isVariantSpider(type);
     }
 
     public static boolean matches(MobType type, EntityCreature mob) {
@@ -48,6 +50,11 @@ public final class SpecialMobsCompatibility {
             return Installed.VARIANTS_SUPPORTED && mob instanceof AbstractSkeleton
                     && mob.getClass().getName().equals(ENTITY_PACKAGE + skeletonClass);
         }
+        String spiderClass = spiderClass(type);
+        if (spiderClass != null) {
+            return Installed.VARIANTS_SUPPORTED && mob instanceof EntitySpider
+                    && mob.getClass().getName().equals(ENTITY_PACKAGE + spiderClass);
+        }
         return type == MobType.SPECIAL_SKELETON && mob instanceof EntitySkeleton && mob.getClass().getName().equals(
                 "fathertoast.specialmobs.entity.skeleton.Entity_SpecialSkeleton");
     }
@@ -59,6 +66,10 @@ public final class SpecialMobsCompatibility {
 
     public static boolean isVariantSkeleton(MobType type) {
         return skeletonClass(type) != null;
+    }
+
+    public static boolean isVariantSpider(MobType type) {
+        return spiderClass(type) != null;
     }
 
     public static boolean hasSupportedSkeletonWeapon(MobType type, EntityCreature mob, boolean usesBow) {
@@ -119,6 +130,33 @@ public final class SpecialMobsCompatibility {
                 return "EntityPoisonSilverfish";
             case TOUGH_SILVERFISH:
                 return "EntityToughSilverfish";
+            default:
+                return null;
+        }
+    }
+
+    private static String spiderClass(MobType type) {
+        switch (type) {
+            case SPECIAL_SPIDER:
+                return "spider.Entity_SpecialSpider";
+            case SPECIAL_CAVE_SPIDER:
+                return "cavespider.Entity_SpecialCaveSpider";
+            case BABY_SPIDER:
+                return "spider.EntityBabySpider";
+            case BABY_CAVE_SPIDER:
+                return "cavespider.EntityBabyCaveSpider";
+            case DESERT_SPIDER:
+                return "spider.EntityDesertSpider";
+            case GIANT_SPIDER:
+                return "spider.EntityGiantSpider";
+            case PALE_SPIDER:
+                return "spider.EntityPaleSpider";
+            case POISON_SPIDER:
+                return "spider.EntityPoisonSpider";
+            case WITCH_SPIDER:
+                return "spider.EntityWitchSpider";
+            case WITCH_CAVE_SPIDER:
+                return "cavespider.EntityWitchCaveSpider";
             default:
                 return null;
         }

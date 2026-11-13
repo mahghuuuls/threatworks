@@ -18,6 +18,7 @@ import net.minecraft.entity.SharedMonsterAttributes;
 import net.minecraft.entity.monster.EntityIronGolem;
 import net.minecraft.entity.monster.AbstractSkeleton;
 import net.minecraft.entity.monster.EntitySkeleton;
+import net.minecraft.entity.monster.EntitySpider;
 import net.minecraft.entity.monster.EntityZombie;
 import net.minecraft.entity.projectile.EntityArrow;
 import net.minecraft.entity.player.EntityPlayerMP;
@@ -31,6 +32,7 @@ import net.minecraft.network.NetworkManager;
 import net.minecraft.network.Packet;
 import net.minecraft.pathfinding.Path;
 import net.minecraft.pathfinding.PathPoint;
+import net.minecraft.potion.PotionEffect;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.AxisAlignedBB;
@@ -155,6 +157,7 @@ final class CoverageFixtureCommand extends CommandBase {
         EntityCreature mob = (EntityCreature) entity;
         mob.setPosition(X, height, Z);
         mob.onInitialSpawn(world.getDifficultyForLocation(mob.getPosition()), null);
+        mob.getRecursivePassengers().forEach(passenger -> passenger.addTag(TAG));
         // Keep exact-ID fixtures separate from the natural replacement probe.
         if (id.startsWith("minecraft:")) {
             mob.getEntityData().setBoolean("SpecialMobsInit", true);
@@ -281,6 +284,32 @@ final class CoverageFixtureCommand extends CommandBase {
                         mob.getUniqueID(), guard.getUniqueID(), guard.isPotionActive(MobEffects.BLINDNESS),
                         guard.isPotionActive(MobEffects.POISON), player.getUniqueID(), player.isPotionActive(MobEffects.BLINDNESS),
                         player.isPotionActive(MobEffects.POISON));
+                break;
+            case "spider-effects":
+                LOGGER.info("coverage spiderEffects mob={} player={} slow={} weak={} poison={} playerJump={} mobJump={}",
+                        mob.getUniqueID(), player.getUniqueID(), player.isPotionActive(MobEffects.SLOWNESS),
+                        player.isPotionActive(MobEffects.WEAKNESS), player.isPotionActive(MobEffects.POISON),
+                        player.isPotionActive(MobEffects.JUMP_BOOST), mob.isPotionActive(MobEffects.JUMP_BOOST));
+                break;
+            case "witch-spider-prepare":
+                player.addPotionEffect(new PotionEffect(MobEffects.JUMP_BOOST, 1200));
+                LOGGER.info("coverage witchSpiderPrepare mob={} player={} playerJump={} mobJump={}",
+                        mob.getUniqueID(), player.getUniqueID(), player.isPotionActive(MobEffects.JUMP_BOOST),
+                        mob.isPotionActive(MobEffects.JUMP_BOOST));
+                break;
+            case "spider-daylight-target":
+                if (!(mob instanceof EntitySpider) || mob.getBrightness() < 0.5F || guard == null
+                        || !guard.isEntityAlive()) {
+                    throw new CommandException("Expected a spider in daylight with a live guard.");
+                }
+                EntityLivingBase previous = mob.getAttackTarget();
+                EntityLivingBase next = previous == guard ? player : guard;
+                mob.setAttackTarget(next);
+                if (mob.getAttackTarget() != next) {
+                    throw new CommandException("The native setter was blocked in daylight.");
+                }
+                LOGGER.info("coverage spiderDaylightTarget mob={} previous={} next={}", mob.getUniqueID(),
+                        previous == null ? null : previous.getUniqueID(), next.getUniqueID());
                 break;
             case "absorb":
                 mob.setAbsorptionAmount(40);
@@ -628,8 +657,8 @@ final class CoverageFixtureCommand extends CommandBase {
                 world.getMinecraftServer().getTickCounter(), mob.getUniqueID(), view.typeId, view.status, view.target,
                 guard == null ? -1 : guard.getHealth(), player == null ? -1 : player.getHealth(), mob.posX, mob.posZ,
                 mob.getHeldItemMainhand(), mob.getNavigator().getClass().getName());
-        LOGGER.info("coverage behavior mob={} age={} y={} noAi={} goals={}", mob.getUniqueID(), mob.ticksExisted,
-                mob.posY, mob.isAIDisabled(), mob.tasks.taskEntries.stream()
+        LOGGER.info("coverage behavior mob={} age={} y={} noAi={} riding={} ridden={} goals={}", mob.getUniqueID(),
+                mob.ticksExisted, mob.posY, mob.isAIDisabled(), mob.isRiding(), mob.isBeingRidden(), mob.tasks.taskEntries.stream()
                         .map(entry -> entry.priority + ":" + entry.action.getClass().getName() + ":" + entry.action.getMutexBits())
                         .collect(java.util.stream.Collectors.joining(",")));
         if (world.getMinecraftServer().getFolderName().startsWith("TW-Campaign-L")) {
