@@ -158,6 +158,13 @@ final class CoverageFixtureCommand extends CommandBase {
                 world.setBlockState(roof, Blocks.STONE.getDefaultState(), 2);
             }
         }
+        if (id.equals("specialmobs:webspider") || id.equals("specialmobs:webcavespider")) {
+            for (BlockPos pos : BlockPos.getAllInBox(new BlockPos(0, height, 0), new BlockPos(27, height + 3, 27))) {
+                if (world.getBlockState(pos).getBlock() == Blocks.WEB) {
+                    world.setBlockToAir(pos);
+                }
+            }
+        }
         Entity entity = EntityList.createEntityByIDFromName(new ResourceLocation(id), world);
         if (!(entity instanceof EntityCreature)) {
             throw new CommandException("Unknown coverage fixture mob " + id);
@@ -279,7 +286,7 @@ final class CoverageFixtureCommand extends CommandBase {
         }
     }
 
-    private static void act(WorldServer world, String operation) throws CommandException {
+    private void act(WorldServer world, String operation) throws CommandException {
         EntityCreature mob = get(world, EntityCreature.class, "tw_i_mob");
         EntityPlayerMP player = get(world, EntityPlayerMP.class, "tw_i_player");
         EntityIronGolem guard = get(world, EntityIronGolem.class, "tw_i_guard");
@@ -310,6 +317,33 @@ final class CoverageFixtureCommand extends CommandBase {
                 LOGGER.info("coverage witchSpiderPrepare mob={} player={} playerJump={} mobJump={}",
                         mob.getUniqueID(), player.getUniqueID(), player.isPotionActive(MobEffects.JUMP_BOOST),
                         mob.isPotionActive(MobEffects.JUMP_BOOST));
+                break;
+            case "hungry-spider-prepare":
+                player.inventory.setInventorySlotContents(1, new ItemStack(Items.APPLE));
+                LOGGER.info("coverage hungrySpiderPrepare mob={} player={} apples={}", mob.getUniqueID(),
+                        player.getUniqueID(), player.inventory.getStackInSlot(1).getCount());
+                break;
+            case "hungry-spider-effect":
+                LOGGER.info("coverage hungrySpiderEffect mob={} player={} apples={}", mob.getUniqueID(),
+                        player.getUniqueID(), player.inventory.getStackInSlot(1).getCount());
+                break;
+            case "web-spider-effect":
+                fixture.reportSpiderWeb(mob, player);
+                break;
+            case "mother-spider-finish":
+                mob.setHealth(3);
+                mob.hurtResistantTime = 0;
+                attack(mob, player, "mother-spider-finish");
+                String baby = String.valueOf(EntityList.getKey(mob)).equals("specialmobs:mothercavespider")
+                        ? "specialmobs:babycavespider" : "specialmobs:babyspider";
+                world.getEntitiesWithinAABB(EntityCreature.class, mob.getEntityBoundingBox().grow(2),
+                        child -> baby.equals(String.valueOf(EntityList.getKey(child))) && child.ticksExisted == 0)
+                        .forEach(child -> {
+                            child.addTag(TAG);
+                            child.getRecursivePassengers().forEach(passenger -> passenger.addTag(TAG));
+                        });
+                LOGGER.info("coverage motherSpiderFinish mob={} player={} dead={}", mob.getUniqueID(),
+                        player.getUniqueID(), !mob.isEntityAlive());
                 break;
             case "spider-daylight-target":
                 if (!(mob instanceof EntitySpider) || mob.getBrightness() < 0.5F || guard == null

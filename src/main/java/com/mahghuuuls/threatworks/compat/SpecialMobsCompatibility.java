@@ -157,6 +157,16 @@ public final class SpecialMobsCompatibility {
                 return "spider.EntityWitchSpider";
             case WITCH_CAVE_SPIDER:
                 return "cavespider.EntityWitchCaveSpider";
+            case HUNGRY_SPIDER:
+                return "spider.EntityHungrySpider";
+            case MOTHER_SPIDER:
+                return "spider.EntityMotherSpider";
+            case MOTHER_CAVE_SPIDER:
+                return "cavespider.EntityMotherCaveSpider";
+            case WEB_SPIDER:
+                return "spider.EntityWebSpider";
+            case WEB_CAVE_SPIDER:
+                return "cavespider.EntityWebCaveSpider";
             default:
                 return null;
         }

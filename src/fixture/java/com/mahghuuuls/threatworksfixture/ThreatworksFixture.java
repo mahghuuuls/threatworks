@@ -11,6 +11,8 @@ import net.minecraft.entity.monster.EntityIronGolem;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.entity.projectile.EntityArrow;
 import net.minecraft.init.Items;
+import net.minecraft.init.Blocks;
+import net.minecraft.util.math.BlockPos;
 import net.minecraftforge.common.ForgeChunkManager;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.entity.living.LivingDamageEvent;
@@ -27,6 +29,8 @@ import net.minecraftforge.fml.relauncher.ReflectionHelper;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.util.UUID;
+
 @Mod(modid = "threatworksfixture", name = "Threatworks Verification Fixture", version = "1.0.0",
         acceptedMinecraftVersions = "[1.12.2]", acceptableRemoteVersions = "*",
         dependencies = "required-after:threatworks")
@@ -38,6 +42,10 @@ public final class ThreatworksFixture {
 
     private EntityLiving probingMob;
     private int nestedNotifications;
+    private UUID webSpider;
+    private UUID webVictim;
+    private BlockPos webImpact;
+    private boolean webBeforeImpact;
 
     @Mod.EventHandler
     public void init(FMLInitializationEvent event) {
@@ -80,6 +88,15 @@ public final class ThreatworksFixture {
                 && event.getAmount() > 0) {
             LOGGER.info("coverage nativeImpact mob={} target={} source={} amount={}", source.getUniqueID(),
                     victim.getUniqueID(), event.getSource().getDamageType(), event.getAmount());
+            String id = String.valueOf(EntityList.getKey(source));
+            if (victim.getTags().contains("tw_i_player")
+                    && ("specialmobs:webspider".equals(id) || "specialmobs:webcavespider".equals(id))
+                    && (!source.getUniqueID().equals(webSpider) || !victim.getUniqueID().equals(webVictim))) {
+                webSpider = source.getUniqueID();
+                webVictim = victim.getUniqueID();
+                webImpact = victim.getPosition();
+                webBeforeImpact = hasWeb(victim, webImpact);
+            }
         }
         if (!victim.world.isRemote && victim.getTags().contains("tw_summon_probe")) {
             SummonFixtureCommand.reportImpact(victim, event.getSource(), event.getAmount());
@@ -97,6 +114,17 @@ public final class ThreatworksFixture {
             event.setCanceled(true);
             LOGGER.info("canceled_player_damage victim={} amount={}", victim.getUniqueID(), event.getAmount());
         }
+    }
+
+    void reportSpiderWeb(EntityCreature mob, EntityPlayerMP player) {
+        boolean matches = mob.getUniqueID().equals(webSpider) && player.getUniqueID().equals(webVictim);
+        LOGGER.info("coverage webSpiderEffect mob={} player={} before={} web={}", mob.getUniqueID(),
+                player.getUniqueID(), matches && webBeforeImpact, matches && hasWeb(player, webImpact));
+    }
+
+    private static boolean hasWeb(EntityLivingBase victim, BlockPos position) {
+        return victim.world.getBlockState(position).getBlock() == Blocks.WEB
+                || victim.world.getBlockState(position.up()).getBlock() == Blocks.WEB;
     }
 
     @SubscribeEvent
