@@ -70,6 +70,7 @@ final class CoverageFixtureCommand extends CommandBase {
     static final String TAG = "tw_coverage";
     private static final double X = 12.5;
     private static final int Y = 20;
+    private static final String WILDFIRE = "specialmobs:wildfireblaze";
     private static final double Z = 12.5;
     private final ThreatworksFixture fixture;
     private ForgeChunkManager.Ticket ticket;
@@ -261,7 +262,16 @@ final class CoverageFixtureCommand extends CommandBase {
             }
             place(world, guard, "tw_i_guard", X + offset, guardY, Z);
         }
+        boolean wildfireFight = WILDFIRE.equals(String.valueOf(EntityList.getKey(mob)));
         FakePlayer player = new FakePlayer(world, new GameProfile(UUID.randomUUID(), "CampaignI")) {
+            @Override
+            public void onUpdate() {
+                // FakePlayer skips the countdown a connected player gets in EntityPlayerMP.
+                if (wildfireFight && hurtResistantTime > 0) {
+                    --hurtResistantTime;
+                }
+            }
+
             @Override
             public net.minecraft.util.math.Vec3d getPositionVector() {
                 return new net.minecraft.util.math.Vec3d(posX, posY, posZ);
@@ -540,11 +550,11 @@ final class CoverageFixtureCommand extends CommandBase {
                             player.getUniqueID(), feedBefore, blazeFeedLevel(mob));
                 }
                 // Give Wildfire's long ranged cycle an elevated target to follow throughout the fight.
-                double playerHeight = "specialmobs:wildfireblaze".equals(openingId) ? 5 : 0;
+                double playerHeight = WILDFIRE.equals(openingId) ? 5 : 0;
                 player.setPosition(mob.posX - 6, mob.posY + playerHeight, mob.posZ);
                 break;
             case "wildfire-finish":
-                if (!"specialmobs:wildfireblaze".equals(String.valueOf(EntityList.getKey(mob)))
+                if (!WILDFIRE.equals(String.valueOf(EntityList.getKey(mob)))
                         || mob.getAttackTarget() != player) {
                     throw new CommandException("Expected a Wildfire Blaze targeting the player before the finishing hit.");
                 }
@@ -565,7 +575,7 @@ final class CoverageFixtureCommand extends CommandBase {
             case "blaze-range-resistant":
                 String blazeId = String.valueOf(EntityList.getKey(mob));
                 if (!"specialmobs:infernoblaze".equals(blazeId) && !"specialmobs:specialblaze".equals(blazeId)
-                        && !"specialmobs:wildfireblaze".equals(blazeId)) {
+                        && !WILDFIRE.equals(blazeId)) {
                     throw new CommandException("Expected a supported Special Mobs Blaze.");
                 }
                 double gap = "blaze-range-outside".equals(operation) ? 24 : "blaze-range-edge".equals(operation) ? 20 : 8;
