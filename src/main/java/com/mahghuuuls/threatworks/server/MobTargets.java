@@ -2,6 +2,7 @@ package com.mahghuuuls.threatworks.server;
 
 import com.mahghuuuls.threatworks.config.ServerTuning.MobType;
 import com.mahghuuuls.threatworks.compat.DefiledLandsCompatibility;
+import com.mahghuuuls.threatworks.compat.DungeonMobsCompatibility;
 import com.mahghuuuls.threatworks.compat.FoliaathCompatibility;
 import com.mahghuuuls.threatworks.compat.GaiaCompatibility;
 import com.mahghuuuls.threatworks.compat.SpecialAiCompatibility;
@@ -127,11 +128,16 @@ final class MobTargets {
                 && (GaiaCompatibility.meleePriority(type) < 0 || GaiaCompatibility.isHostile(mob))
                 && (!SpecialMobsCompatibility.isVariantSkeleton(type) || !mob.isRiding()
                 && SpecialMobsCompatibility.hasSupportedSkeletonWeapon(type, mob, usesBow(mob)))
-                && (!SpecialMobsCompatibility.isVariantSpider(type) || !mob.isRiding() && !mob.isBeingRidden())
+                && (!(SpecialMobsCompatibility.isVariantSpider(type) || DungeonMobsCompatibility.meleePriority(type) >= 0)
+                || !mob.isRiding() && !mob.isBeingRidden())
                 && (type != MobType.SPECIAL_SKELETON || usesBow(mob));
     }
 
     private static int providerMeleePriority(MobType type) {
+        int dungeon = DungeonMobsCompatibility.meleePriority(type);
+        if (dungeon >= 0) {
+            return dungeon;
+        }
         int defiled = DefiledLandsCompatibility.meleePriority(type);
         return defiled >= 0 ? defiled : GaiaCompatibility.meleePriority(type);
     }

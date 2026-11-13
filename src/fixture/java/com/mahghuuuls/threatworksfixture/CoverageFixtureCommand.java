@@ -23,6 +23,7 @@ import net.minecraft.entity.monster.EntityZombie;
 import net.minecraft.entity.projectile.EntityArrow;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.init.Blocks;
+import net.minecraft.init.Items;
 import net.minecraft.init.MobEffects;
 import net.minecraft.inventory.EntityEquipmentSlot;
 import net.minecraft.item.ItemStack;
@@ -150,6 +151,11 @@ final class CoverageFixtureCommand extends CommandBase {
     private static void seed(WorldServer world, String id, boolean solo) throws CommandException {
         int height = id.startsWith("grimoireofgaia:") ? 64 : "defiledlands:shambler".equals(id) ? 60 : Y;
         arena(world, height);
+        if (id.startsWith("dungeonmobs:")) {
+            for (BlockPos roof : BlockPos.getAllInBox(new BlockPos(0, height + 6, 0), new BlockPos(28, height + 6, 28))) {
+                world.setBlockState(roof, Blocks.STONE.getDefaultState(), 2);
+            }
+        }
         Entity entity = EntityList.createEntityByIDFromName(new ResourceLocation(id), world);
         if (!(entity instanceof EntityCreature)) {
             throw new CommandException("Unknown coverage fixture mob " + id);
@@ -310,6 +316,45 @@ final class CoverageFixtureCommand extends CommandBase {
                 }
                 LOGGER.info("coverage spiderDaylightTarget mob={} previous={} next={}", mob.getUniqueID(),
                         previous == null ? null : previous.getUniqueID(), next.getUniqueID());
+                break;
+            case "dungeon-hook-prepare":
+                player.setItemStackToSlot(EntityEquipmentSlot.FEET, new ItemStack(Items.DIAMOND_BOOTS));
+                LOGGER.info("coverage dungeonHookPrepare mob={} player={} bootsDamage={}", mob.getUniqueID(),
+                        player.getUniqueID(), player.getItemStackFromSlot(EntityEquipmentSlot.FEET).getItemDamage());
+                break;
+            case "dungeon-effects":
+                PotionEffect slowness = player.getActivePotionEffect(MobEffects.SLOWNESS);
+                LOGGER.info("coverage dungeonEffects mob={} player={} slowness={} bootsDamage={} nausea={} roof={}",
+                        mob.getUniqueID(), player.getUniqueID(), slowness == null ? -1 : slowness.getAmplifier(),
+                        player.getItemStackFromSlot(EntityEquipmentSlot.FEET).getItemDamage(),
+                        player.isPotionActive(MobEffects.NAUSEA), !world.canSeeSky(mob.getPosition()));
+                break;
+            case "umber-aura-prepare":
+                if (guard == null || mob.getAttackTarget() != guard) {
+                    throw new CommandException("Expected a native guard target for the Umber Hulk aura probe.");
+                }
+                player.capabilities.disableDamage = false;
+                player.removePotionEffect(MobEffects.NAUSEA);
+                player.setPosition(mob.posX, mob.posY, mob.posZ + 4);
+                LOGGER.info("coverage umberAura mob={} player={} guard={} nausea={} playerHp={}",
+                        mob.getUniqueID(), player.getUniqueID(), guard.getUniqueID(),
+                        player.isPotionActive(MobEffects.NAUSEA), player.getHealth());
+                break;
+            case "dungeon-ghoul-mount":
+                if (guard == null || mob.getAttackTarget() != player
+                        || !"dungeonmobs:dmghoul".equals(String.valueOf(EntityList.getKey(mob)))) {
+                    throw new CommandException("Expected a tracked Ghoul targeting the player.");
+                }
+                net.minecraft.entity.passive.EntityChicken chicken = new net.minecraft.entity.passive.EntityChicken(world);
+                chicken.enablePersistence();
+                place(world, chicken, "tw_l_ghoul_mount", mob.posX, mob.posY, mob.posZ);
+                if (!mob.startRiding(chicken, true)) {
+                    throw new CommandException("Could not mount the Ghoul.");
+                }
+                mob.setAttackTarget(guard);
+                if (mob.getAttackTarget() != guard) {
+                    throw new CommandException("The native setter was blocked after the Ghoul mounted.");
+                }
                 break;
             case "absorb":
                 mob.setAbsorptionAmount(40);

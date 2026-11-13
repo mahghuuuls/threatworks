@@ -1,6 +1,7 @@
 package com.mahghuuuls.threatworks.server;
 
 import com.mahghuuuls.threatworks.compat.DefiledLandsCompatibility;
+import com.mahghuuuls.threatworks.compat.DungeonMobsCompatibility;
 import com.mahghuuuls.threatworks.compat.FoliaathCompatibility;
 import com.mahghuuuls.threatworks.compat.GaiaCompatibility;
 import com.mahghuuuls.threatworks.compat.SpecialMobsCompatibility;
@@ -133,6 +134,6 @@ final class MobAdmission {
         }
         return type == MobType.FOLIAATH ? foliaath != null && foliaath.matches(mob)
                 : SpecialMobsCompatibility.matches(type, mob) || DefiledLandsCompatibility.matches(type, mob)
-                || GaiaCompatibility.matches(type, mob);
+                || GaiaCompatibility.matches(type, mob) || DungeonMobsCompatibility.matches(type, mob);
     }
 }

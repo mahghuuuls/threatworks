@@ -5,6 +5,7 @@ import com.mahghuuuls.threatworks.api.ThreatActions;
 import com.mahghuuuls.threatworks.command.ThreatworksCommand;
 import com.mahghuuuls.threatworks.compat.BaublesCompatibility;
 import com.mahghuuuls.threatworks.compat.DefiledLandsCompatibility;
+import com.mahghuuuls.threatworks.compat.DungeonMobsCompatibility;
 import com.mahghuuuls.threatworks.compat.FoliaathCompatibility;
 import com.mahghuuuls.threatworks.compat.GaiaCompatibility;
 import com.mahghuuuls.threatworks.compat.SpecialAiCompatibility;
@@ -80,6 +81,7 @@ public final class ThreatworksMod {
         SpecialAiCompatibility.reportVersion(LOGGER);
         SpecialMobsCompatibility.reportVariantVersion(LOGGER);
         DefiledLandsCompatibility.reportVersion(LOGGER);
+        DungeonMobsCompatibility.reportVersion(LOGGER);
         GaiaCompatibility.reportVersion(LOGGER);
     }
 
