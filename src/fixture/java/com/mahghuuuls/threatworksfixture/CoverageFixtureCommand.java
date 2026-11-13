@@ -28,6 +28,7 @@ import net.minecraft.entity.monster.EntitySpider;
 import net.minecraft.entity.monster.EntityZombie;
 import net.minecraft.entity.passive.EntityOcelot;
 import net.minecraft.entity.projectile.EntityArrow;
+import net.minecraft.entity.projectile.EntityFireball;
 import net.minecraft.entity.projectile.EntityTippedArrow;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.init.Blocks;
@@ -71,6 +72,7 @@ final class CoverageFixtureCommand extends CommandBase {
     private static final double X = 12.5;
     private static final int Y = 20;
     private static final String WILDFIRE = "specialmobs:wildfireblaze";
+    static final String CINDER = "specialmobs:cinderblaze";
     private static final double Z = 12.5;
     private final ThreatworksFixture fixture;
     private ForgeChunkManager.Ticket ticket;
@@ -125,7 +127,11 @@ final class CoverageFixtureCommand extends CommandBase {
                 natural(world, "skeleton".equals(args[1]));
                 break;
             case "adopt":
-                adopt(world, args[1]);
+                if (CINDER.equals(args[1])) {
+                    adoptCinder(world);
+                } else {
+                    adopt(world, args[1]);
+                }
                 break;
             case "cleanup":
                 cleanup(world);
@@ -242,6 +248,29 @@ final class CoverageFixtureCommand extends CommandBase {
         mob.setHealth(80);
     }
 
+    private static void adoptCinder(WorldServer world) throws CommandException {
+        EntityCreature parent = get(world, EntityCreature.class, "tw_i_mob");
+        EntityIronGolem guard = get(world, EntityIronGolem.class, "tw_i_guard");
+        EntityPlayerMP player = get(world, EntityPlayerMP.class, "tw_i_player");
+        if (parent == null || !WILDFIRE.equals(String.valueOf(EntityList.getKey(parent))) || guard == null || player == null) {
+            throw new CommandException("Expected a Wildfire and its native Cinder offspring.");
+        }
+        EntityCreature child = get(world, EntityCreature.class, ThreatworksFixture.CINDER_OFFSPRING);
+        if (child == null || child.getAttackTarget() != guard) {
+            throw new CommandException("Expected a live Cinder with the inherited guard target.");
+        }
+        parent.setDead();
+        world.getEntities(Entity.class, entity -> (entity != child && entity.getTags().contains(ThreatworksFixture.CINDER_OFFSPRING))
+                || (entity instanceof EntityFireball && ((EntityFireball) entity).shootingEntity == parent))
+                .forEach(Entity::setDead);
+        player.capabilities.disableDamage = true;
+        player.addTag("tw_l_cinder_player");
+        child.addTag("tw_i_mob");
+        LOGGER.info("coverage cinderAdopt mob={} parent={} guard={} tick={}", child.getUniqueID(),
+                parent.getUniqueID(), guard.getUniqueID(), world.getTotalWorldTime());
+        report(child, world);
+    }
+
     private static void actors(WorldServer world, EntityCreature mob, boolean solo) throws CommandException {
         if (!solo) {
             EntityIronGolem guard = new EntityIronGolem(world);
@@ -262,12 +291,12 @@ final class CoverageFixtureCommand extends CommandBase {
             }
             place(world, guard, "tw_i_guard", X + offset, guardY, Z);
         }
-        boolean wildfireFight = WILDFIRE.equals(String.valueOf(EntityList.getKey(mob)));
+        String id = String.valueOf(EntityList.getKey(mob));
         FakePlayer player = new FakePlayer(world, new GameProfile(UUID.randomUUID(), "CampaignI")) {
             @Override
             public void onUpdate() {
                 // FakePlayer skips the countdown a connected player gets in EntityPlayerMP.
-                if (wildfireFight && hurtResistantTime > 0) {
+                if ((WILDFIRE.equals(id) || getTags().contains("tw_l_cinder_player")) && hurtResistantTime > 0) {
                     --hurtResistantTime;
                 }
             }
@@ -543,15 +572,48 @@ final class CoverageFixtureCommand extends CommandBase {
                 restorePlayer(player);
                 String openingId = String.valueOf(EntityList.getKey(mob));
                 boolean conflagration = "specialmobs:conflagrationblaze".equals(openingId);
+                boolean cinder = CINDER.equals(openingId);
                 byte feedBefore = conflagration ? blazeFeedLevel(mob) : 0;
+                if (cinder) {
+                    // Keep the native incumbent in melee reach through the opening hit.
+                    guard.setPosition(mob.posX + 1.25, mob.posY, mob.posZ);
+                }
                 attack(mob, player, "hit");
                 if (conflagration) {
                     LOGGER.info("coverage blazeFeeding mob={} player={} before={} after={}", mob.getUniqueID(),
                             player.getUniqueID(), feedBefore, blazeFeedLevel(mob));
                 }
                 // Give Wildfire's long ranged cycle an elevated target to follow throughout the fight.
-                double playerHeight = WILDFIRE.equals(openingId) ? 5 : 0;
+                double playerHeight = WILDFIRE.equals(openingId) ? 5 : cinder ? 4 : 0;
                 player.setPosition(mob.posX - 6, mob.posY + playerHeight, mob.posZ);
+                if (cinder) {
+                    LOGGER.info("coverage cinderOpening mob={} player={} distance={} y={} targetY={} range={}",
+                            mob.getUniqueID(), player.getUniqueID(), mob.getDistance(player), mob.posY, player.posY,
+                            SpecialMobsCompatibility.blazeRange(mob));
+                }
+                break;
+            case "cinder-blocked":
+            case "cinder-clear":
+            case "cinder-edge":
+                if (!CINDER.equals(String.valueOf(EntityList.getKey(mob)))) {
+                    throw new CommandException("Expected a Cinder Blaze.");
+                }
+                boolean blocked = "cinder-blocked".equals(operation);
+                double cinderGap = "cinder-edge".equals(operation) ? 16 : 6;
+                restorePlayer(player);
+                mob.setPosition(X, Y, Z);
+                player.setPosition(X - cinderGap, Y, Z);
+                BlockPos obstacle = new BlockPos(X - 2, Y, Z);
+                world.setBlockState(obstacle, blocked ? Blocks.STONE_SLAB.getDefaultState() : Blocks.AIR.getDefaultState(), 2);
+                player.addPotionEffect(new PotionEffect(MobEffects.FIRE_RESISTANCE, 200, 0));
+                boolean visible = world.rayTraceBlocks(mob.getPositionEyes(1.0F), player.getPositionEyes(1.0F),
+                        false, true, false) == null;
+                LOGGER.info("coverage cinderProbe mob={} player={} step={} distance={} range={} followRange={} visible={} resistant={} result={}",
+                        mob.getUniqueID(), player.getUniqueID(), operation, mob.getDistance(player),
+                        SpecialMobsCompatibility.blazeRange(mob),
+                        mob.getEntityAttribute(SharedMonsterAttributes.FOLLOW_RANGE).getAttributeValue(),
+                        visible, player.isPotionActive(MobEffects.FIRE_RESISTANCE),
+                        actions.taunt(mob, player));
                 break;
             case "wildfire-finish":
                 if (!WILDFIRE.equals(String.valueOf(EntityList.getKey(mob)))

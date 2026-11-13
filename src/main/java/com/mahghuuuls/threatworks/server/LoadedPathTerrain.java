@@ -7,7 +7,9 @@ import net.minecraft.init.Blocks;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraft.util.math.ChunkPos;
+import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.IBlockAccess;
 import net.minecraft.world.WorldServer;
@@ -107,6 +109,26 @@ final class LoadedPathTerrain implements IBlockAccess {
         return readableArea(Math.min(start.getX(), end.getX()) - margin, Math.min(start.getZ(), end.getZ()) - margin,
                 Math.max(start.getX(), end.getX()) + margin, Math.max(start.getZ(), end.getZ()) + margin)
                 && world.rayTraceBlocks(from, to, false, true, false) == null;
+    }
+
+    boolean clearFlight(AxisAlignedBB body, Vec3d travel) {
+        AxisAlignedBB envelope = body.union(body.offset(travel));
+        int margin = PATH_COLLISION_NEIGHBORS;
+        if (!readableArea(MathHelper.floor(envelope.minX) - margin, MathHelper.floor(envelope.minZ) - margin,
+                MathHelper.ceil(envelope.maxX) + margin, MathHelper.ceil(envelope.maxZ) + margin)) {
+            return false;
+        }
+        // Test short swept boxes so a diagonal approach does not require its entire enclosing box to be empty.
+        int steps = (int) Math.ceil(travel.length() / 2.0);
+        AxisAlignedBB previous = body;
+        for (int index = 1; index <= steps; index++) {
+            AxisAlignedBB next = body.offset(travel.scale((double) index / steps));
+            if (world.collidesWithAnyBlock(previous.union(next))) {
+                return false;
+            }
+            previous = next;
+        }
+        return true;
     }
 
     private boolean readableArea(int minX, int minZ, int maxX, int maxZ) {

@@ -51,6 +51,9 @@ import net.minecraft.world.EnumDifficulty;
 import java.util.function.Predicate;
 
 final class MobTargets {
+    // Bound the straight-line flight probe to local combat.
+    private static final double MELEE_BLAZE_PURSUIT_RANGE = 16.0;
+
     private MobTargets() {
     }
 
@@ -153,7 +156,7 @@ final class MobTargets {
                 && (!SpecialMobsCompatibility.isVariantSkeleton(type) || !mob.isRiding()
                 && SpecialMobsCompatibility.hasSupportedSkeletonWeapon(type, mob, usesBow(mob)))
                 && (!SpecialMobsCompatibility.isVariantBlaze(type) || !mob.isRiding() && !mob.isBeingRidden()
-                && SpecialMobsCompatibility.blazeRange(mob) > 0.0F)
+                && SpecialMobsCompatibility.hasSupportedBlazeRange(type, mob))
                 && (!(SpecialMobsCompatibility.isVariantSpider(type) || DungeonMobsCompatibility.meleePriority(type) >= 0
                 || mob instanceof EntityCreeper || type == MobType.GAIA_DULLAHAN || type == MobType.DEFILED_SCUTTLER)
                 || !mob.isRiding() && !mob.isBeingRidden())
@@ -220,7 +223,9 @@ final class MobTargets {
         BlockPos position = new BlockPos(target);
         double range = followRange(mob);
         if (SpecialMobsCompatibility.isVariantBlaze(type)) {
-            range = Math.min(range, SpecialMobsCompatibility.blazeRange(mob));
+            double attackRange = SpecialMobsCompatibility.isMeleeBlaze(type) ? MELEE_BLAZE_PURSUIT_RANGE
+                    : SpecialMobsCompatibility.blazeRange(mob);
+            range = Math.min(range, attackRange);
         }
         return isAttackable(mob, target) && target.world == world && world.isBlockLoaded(position)
                 && world.getWorldBorder().contains(position)
@@ -241,6 +246,21 @@ final class MobTargets {
         boolean needsSight = !(mob instanceof EntityZombie && target instanceof EntityVillager)
                 && !DefiledLandsCompatibility.canAcquireWithoutSight(type, target);
         boolean sightLost = needsSight && !sees(terrain, mob, target, position);
+        if (SpecialMobsCompatibility.isMeleeBlaze(type)) {
+            double distanceSquared = mob.getDistanceSq(target);
+            if (distanceSquared < 4.0) {
+                return sightLost ? TargetObservation.obscured(true) : TargetObservation.IN_REACH;
+            }
+            double distance = Math.sqrt(distanceSquared);
+            Vec3d approach = target.getPositionVector().subtract(position).scale((distance - 1.0) / distance);
+            if (sample != null) {
+                sample.pathQuery();
+            }
+            if (!terrain.clearFlight(mob.getEntityBoundingBox(), approach)) {
+                return TargetObservation.INELIGIBLE;
+            }
+            return sightLost ? TargetObservation.obscured(false) : TargetObservation.pursuit(distance);
+        }
         if (mob instanceof EntityBlaze || mob instanceof EntityShulker) {
             return observeProjectile(terrain, mob, target, sightLost);
         }

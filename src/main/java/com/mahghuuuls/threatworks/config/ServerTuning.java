@@ -107,6 +107,7 @@ public final class ServerTuning {
         DROWNING_CREEPER("specialmobs:drowningcreeper"),
         JUMPING_CREEPER("specialmobs:jumpingcreeper"),
         SPECIAL_BLAZE("specialmobs:specialblaze"),
+        CINDER_BLAZE("specialmobs:cinderblaze"),
         CONFLAGRATION_BLAZE("specialmobs:conflagrationblaze"),
         HELLFIRE_BLAZE("specialmobs:hellfireblaze"),
         INFERNO_BLAZE("specialmobs:infernoblaze"),

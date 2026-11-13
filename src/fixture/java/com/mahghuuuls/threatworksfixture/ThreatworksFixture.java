@@ -59,6 +59,7 @@ public final class ThreatworksFixture {
     private static final String REENTER_PLAYER = "threatworks_reenter_next_player";
     private static final String REENTER_GOLEM = "threatworks_reenter_next_golem";
     private static final String WILDFIRE_SPAWN = "tw_l_wildfire_spawn";
+    static final String CINDER_OFFSPRING = "tw_l_wildfire_cinder";
 
     private EntityLiving probingMob;
     private int nestedNotifications;
@@ -119,6 +120,12 @@ public final class ThreatworksFixture {
                         EntityList.getKey(immediate));
             }
             String id = String.valueOf(EntityList.getKey(source));
+            if (CoverageFixtureCommand.CINDER.equals(id) && source == immediate
+                    && "mob".equals(event.getSource().getDamageType())) {
+                LOGGER.info("coverage cinderImpact mob={} target={} tick={} distance={} onGround={} y={} burningBefore={}",
+                        source.getUniqueID(), victim.getUniqueID(), victim.world.getTotalWorldTime(),
+                        source.getDistance(victim), source.onGround, source.posY, victim.isBurning());
+            }
             if (victim.getTags().contains("tw_i_player")
                     && ("specialmobs:webspider".equals(id) || "specialmobs:webcavespider".equals(id))
                     && (!source.getUniqueID().equals(webSpider) || !victim.getUniqueID().equals(webVictim))) {
@@ -264,6 +271,7 @@ public final class ThreatworksFixture {
     private static void recordWildfireOffspring(EntityLiving parent, EntityLiving child, String phase) {
         child.addTag(CoverageFixtureCommand.TAG);
         child.addTag(WILDFIRE_SPAWN);
+        child.addTag(CINDER_OFFSPRING);
         EntityLivingBase target = child.getAttackTarget();
         double toward = target == null ? 0 : child.motionX * (target.posX - child.posX)
                 + child.motionZ * (target.posZ - child.posZ);
@@ -454,6 +462,16 @@ public final class ThreatworksFixture {
         }
         String folder = event.world.getMinecraftServer().getFolderName();
         if (folder.startsWith("TW-Campaign-L")) {
+            event.world.getEntities(EntityLiving.class, mob -> mob.getTags().contains("tw_i_mob")
+                    && CoverageFixtureCommand.CINDER.equals(String.valueOf(EntityList.getKey(mob))))
+                    .forEach(mob -> {
+                        EntityLivingBase target = mob.getAttackTarget();
+                        if (target != null && mob.ticksExisted % 4 == 0) {
+                            LOGGER.info("coverage cinderPursuit mob={} target={} tick={} distance={} onGround={} y={} burning={}",
+                                    mob.getUniqueID(), target.getUniqueID(), event.world.getTotalWorldTime(),
+                                    mob.getDistance(target), mob.onGround, mob.posY, target.isBurning());
+                        }
+                    });
             event.world.getEntities(EntityLiving.class, child -> child.getTags().contains(WILDFIRE_SPAWN))
                     .forEach(child -> {
                         child.removeTag(WILDFIRE_SPAWN);

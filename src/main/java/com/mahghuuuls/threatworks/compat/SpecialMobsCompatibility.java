@@ -100,18 +100,27 @@ public final class SpecialMobsCompatibility {
         return goal.getName().equals("fathertoast.specialmobs.ai.EntityAISpecialAttackBlaze");
     }
 
+    public static boolean isMeleeBlaze(MobType type) {
+        return type == MobType.CINDER_BLAZE;
+    }
+
+    public static boolean hasSupportedBlazeRange(MobType type, EntityCreature mob) {
+        float range = blazeRange(mob);
+        return isMeleeBlaze(type) ? range == 0.0F : range >= 2.0F;
+    }
+
     public static float blazeRange(EntityCreature mob) {
         BlazeRange access = BlazeRange.ACCESS;
         if (access == null || access.readFailed) {
-            return 0.0F;
+            return Float.NaN;
         }
         try {
             float range = access.range.getFloat(access.specialData.invoke(mob));
-            return Float.isFinite(range) && range >= 2.0F ? range : 0.0F;
+            return Float.isFinite(range) ? range : Float.NaN;
         } catch (ReflectiveOperationException | LinkageError | RuntimeException failure) {
             access.readFailed = true;
             LOGGER.warn("Disabling Special Mobs blaze targeting because its native range read failed.", failure);
-            return 0.0F;
+            return Float.NaN;
         }
     }
 
@@ -271,6 +280,8 @@ public final class SpecialMobsCompatibility {
         switch (type) {
             case SPECIAL_BLAZE:
                 return "blaze.Entity_SpecialBlaze";
+            case CINDER_BLAZE:
+                return "blaze.EntityCinderBlaze";
             case CONFLAGRATION_BLAZE:
                 return "blaze.EntityConflagrationBlaze";
             case HELLFIRE_BLAZE:
