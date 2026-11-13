@@ -4,6 +4,7 @@ import com.mahghuuuls.threatworks.ThreatworksMod;
 import com.mahghuuuls.threatworks.api.SummonThreatCreditEvent;
 import net.minecraft.entity.EntityLiving;
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.EntityAreaEffectCloud;
 import net.minecraft.entity.EntityCreature;
 import net.minecraft.entity.EntityList;
 import net.minecraft.entity.EntityLivingBase;
@@ -12,12 +13,16 @@ import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.entity.projectile.EntityArrow;
 import net.minecraft.init.Items;
 import net.minecraft.init.Blocks;
+import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.nbt.NBTTagList;
+import net.minecraft.potion.PotionEffect;
 import net.minecraft.util.math.BlockPos;
 import net.minecraftforge.common.ForgeChunkManager;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.entity.living.LivingDamageEvent;
 import net.minecraftforge.event.entity.living.LivingDeathEvent;
 import net.minecraftforge.event.entity.living.LivingSetAttackTargetEvent;
+import net.minecraftforge.event.entity.EntityJoinWorldEvent;
 import net.minecraftforge.event.entity.living.PotionEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.event.FMLInitializationEvent;
@@ -116,6 +121,34 @@ public final class ThreatworksFixture {
         }
     }
 
+    @SubscribeEvent
+    public void onDoomCloud(EntityJoinWorldEvent event) {
+        if (event.getWorld().isRemote || !(event.getEntity() instanceof EntityAreaEffectCloud)) {
+            return;
+        }
+        EntityAreaEffectCloud cloud = (EntityAreaEffectCloud) event.getEntity();
+        EntityLivingBase owner = cloud.getOwner();
+        if (!(owner instanceof EntityLiving) || !owner.getTags().contains("tw_i_mob")
+                || !"specialmobs:doomcreeper".equals(String.valueOf(EntityList.getKey(owner)))) {
+            return;
+        }
+        EntityLivingBase target = ((EntityLiving) owner).getAttackTarget();
+        if (target == null) {
+            return;
+        }
+        cloud.addTag(CoverageFixtureCommand.TAG);
+        target.addTag("tw_l_doom_cloud_target");
+        NBTTagList effects = cloud.writeToNBT(new NBTTagCompound()).getTagList("Effects", 10);
+        for (int index = 0; index < effects.tagCount(); index++) {
+            PotionEffect effect = PotionEffect.readCustomPotionEffectFromNBT(effects.getCompoundTagAt(index));
+            if (effect != null) {
+                LOGGER.info("coverage doomCloud mob={} target={} cloud={} potion={} amplifier={} duration={} radius={} distance={}",
+                        owner.getUniqueID(), target.getUniqueID(), cloud.getUniqueID(), effect.getPotion().getRegistryName(),
+                        effect.getAmplifier(), effect.getDuration(), cloud.getRadius(), cloud.getDistance(target));
+            }
+        }
+    }
+
     void reportSpiderWeb(EntityCreature mob, EntityPlayerMP player) {
         boolean matches = mob.getUniqueID().equals(webSpider) && player.getUniqueID().equals(webVictim);
         LOGGER.info("coverage webSpiderEffect mob={} player={} before={} web={}", mob.getUniqueID(),
@@ -130,6 +163,11 @@ public final class ThreatworksFixture {
     @SubscribeEvent
     public void onGaiaPotion(PotionEvent.PotionAddedEvent event) {
         EntityLivingBase target = event.getEntityLiving();
+        if (!target.world.isRemote && target.getTags().contains("tw_l_doom_cloud_target")) {
+            PotionEffect effect = event.getPotionEffect();
+            LOGGER.info("coverage doomPotion target={} potion={} amplifier={} duration={}", target.getUniqueID(),
+                    effect.getPotion().getRegistryName(), effect.getAmplifier(), effect.getDuration());
+        }
         if (!target.world.isRemote && target.getTags().contains("tw_l_gaia_effect")) {
             LOGGER.info("coverage gaiaPotion player={} potion={} amplifier={} duration={}", target.getUniqueID(),
                     event.getPotionEffect().getPotion().getRegistryName(), event.getPotionEffect().getAmplifier(),

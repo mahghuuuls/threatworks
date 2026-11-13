@@ -205,6 +205,12 @@ public final class SpecialMobsCompatibility {
                 return "creeper.Entity_SpecialCreeper";
             case FIRE_CREEPER:
                 return "creeper.EntityFireCreeper";
+            case DEATH_CREEPER:
+                return "creeper.EntityDeathCreeper";
+            case DOOM_CREEPER:
+                return "creeper.EntityDoomCreeper";
+            case MINI_CREEPER:
+                return "creeper.EntityMiniCreeper";
             default:
                 return null;
         }

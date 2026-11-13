@@ -60,7 +60,7 @@ import java.util.UUID;
 
 final class CoverageFixtureCommand extends CommandBase {
     private static final Logger LOGGER = LogManager.getLogger("ThreatworksFixture");
-    private static final String TAG = "tw_coverage";
+    static final String TAG = "tw_coverage";
     private static final double X = 12.5;
     private static final int Y = 20;
     private static final double Z = 12.5;
@@ -507,6 +507,37 @@ final class CoverageFixtureCommand extends CommandBase {
                 restorePlayer(player);
                 attack(mob, player, "hit");
                 player.setPosition(mob.posX - 5.0, mob.posY, mob.posZ);
+                break;
+            case "creeper-short-blast":
+                String creeperId = String.valueOf(EntityList.getKey(mob));
+                if (!(mob instanceof EntityCreeper) || mob.getAttackTarget() != player
+                        || ((EntityCreeper) mob).getCreeperState() <= 0
+                        || !("specialmobs:doomcreeper".equals(creeperId) || "specialmobs:minicreeper".equals(creeperId))) {
+                    throw new CommandException("Expected a selected player and a swelling Doom or Mini Creeper.");
+                }
+                player.setPosition(mob.posX - 1.1, mob.posY, mob.posZ);
+                LOGGER.info("coverage creeperShortBlast mob={} player={} distance={}", mob.getUniqueID(),
+                        player.getUniqueID(), mob.getDistance(player));
+                break;
+            case "creeper-burn":
+                if (!(mob instanceof EntityCreeper) || mob.getAttackTarget() != player
+                        || ((EntityCreeper) mob).getCreeperState() > 0 || mob.isBurning()
+                        || !"specialmobs:deathcreeper".equals(String.valueOf(EntityList.getKey(mob)))) {
+                    throw new CommandException("Expected a Death Creeper pursuing the player before its fuse.");
+                }
+                player.setPosition(mob.posX, mob.posY, mob.posZ + 5.0);
+                mob.setFire(5);
+                LOGGER.info("coverage creeperBurn mob={} player={} distance={} burning={} fuse={} ignited={}",
+                        mob.getUniqueID(), player.getUniqueID(), mob.getDistance(player), mob.isBurning(),
+                        ((EntityCreeper) mob).getCreeperState(), ((EntityCreeper) mob).hasIgnited());
+                break;
+            case "creeper-fuse-read":
+                if (!(mob instanceof EntityCreeper)) {
+                    throw new CommandException("Expected a creeper.");
+                }
+                LOGGER.info("coverage creeperFuse mob={} player={} distance={} burning={} fuse={} ignited={}",
+                        mob.getUniqueID(), player.getUniqueID(), mob.getDistance(player), mob.isBurning(),
+                        ((EntityCreeper) mob).getCreeperState(), ((EntityCreeper) mob).hasIgnited());
                 break;
             case "creeper-ocelot":
                 if (!(mob instanceof EntityCreeper) || guard == null || mob.getAttackTarget() != player
