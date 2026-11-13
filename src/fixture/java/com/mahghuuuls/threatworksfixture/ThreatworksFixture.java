@@ -16,6 +16,7 @@ import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.entity.living.LivingDamageEvent;
 import net.minecraftforge.event.entity.living.LivingDeathEvent;
 import net.minecraftforge.event.entity.living.LivingSetAttackTargetEvent;
+import net.minecraftforge.event.entity.living.PotionEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.event.FMLInitializationEvent;
 import net.minecraftforge.fml.common.event.FMLServerStartingEvent;
@@ -95,6 +96,16 @@ public final class ThreatworksFixture {
                 && "player".equals(event.getSource().getDamageType()) && victim.removeTag(CANCEL_NEXT)) {
             event.setCanceled(true);
             LOGGER.info("canceled_player_damage victim={} amount={}", victim.getUniqueID(), event.getAmount());
+        }
+    }
+
+    @SubscribeEvent
+    public void onGaiaPotion(PotionEvent.PotionAddedEvent event) {
+        EntityLivingBase target = event.getEntityLiving();
+        if (!target.world.isRemote && target.getTags().contains("tw_l_gaia_effect")) {
+            LOGGER.info("coverage gaiaPotion player={} potion={} amplifier={} duration={}", target.getUniqueID(),
+                    event.getPotionEffect().getPotion().getRegistryName(), event.getPotionEffect().getAmplifier(),
+                    event.getPotionEffect().getDuration());
         }
     }
 

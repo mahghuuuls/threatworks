@@ -99,6 +99,14 @@ public final class ServerTuning {
         GAIA_SLUDGE_GIRL("grimoireofgaia:sludge_girl"),
         GAIA_SUCCUBUS("grimoireofgaia:succubus"),
         GAIA_WITHER_COW("grimoireofgaia:wither_cow"),
+        GAIA_ANT("grimoireofgaia:ant"),
+        GAIA_COBBLESTONE_GOLEM("grimoireofgaia:cobblestone_golem"),
+        GAIA_DULLAHAN("grimoireofgaia:dullahan"),
+        GAIA_GELATINOUS_SLIME("grimoireofgaia:gelatinous_slime"),
+        GAIA_ILLAGER_BUTLER("grimoireofgaia:butler"),
+        GAIA_ILLAGER_INQUISITOR("grimoireofgaia:illager_inquisitor"),
+        GAIA_SPORELING("grimoireofgaia:sporeling"),
+        GAIA_YETI("grimoireofgaia:yeti"),
         FOLIAATH("mowziesmobs:foliaath");
 
         public final String id;

@@ -99,6 +99,7 @@ final class MobTargets {
                 matched = true;
             } else if (SpecialAiCompatibility.hasUnknownCombatGoal(entry)
                     || !SpecialAiCompatibility.isCombatReaction(entry)
+                    && !GaiaCompatibility.isAntWander(type, entry)
                     && (entry.priority > priority ? !entry.action.isInterruptible()
                     : (entry.action.getMutexBits() & 3) != 0 && !nativeCompetingGoal(mob, goal))) {
                 return false;
@@ -128,7 +129,8 @@ final class MobTargets {
                 && (GaiaCompatibility.meleePriority(type) < 0 || GaiaCompatibility.isHostile(mob))
                 && (!SpecialMobsCompatibility.isVariantSkeleton(type) || !mob.isRiding()
                 && SpecialMobsCompatibility.hasSupportedSkeletonWeapon(type, mob, usesBow(mob)))
-                && (!(SpecialMobsCompatibility.isVariantSpider(type) || DungeonMobsCompatibility.meleePriority(type) >= 0)
+                && (!(SpecialMobsCompatibility.isVariantSpider(type) || DungeonMobsCompatibility.meleePriority(type) >= 0
+                || type == MobType.GAIA_DULLAHAN)
                 || !mob.isRiding() && !mob.isBeingRidden())
                 && (type != MobType.SPECIAL_SKELETON || usesBow(mob));
     }
@@ -150,6 +152,7 @@ final class MobTargets {
         for (EntityAITaskEntry entry : mob.tasks.taskEntries) {
             if (entry.using && (SpecialAiCompatibility.isCombatReaction(entry)
                     || SpecialAiCompatibility.isBlockGriefing(entry)
+                    || GaiaCompatibility.isAntWander(type, entry)
                     || SpecialMobsCompatibility.isVariantSkeleton(type)
                     && (entry.action.getClass() == EntityAIFleeSun.class || entry.action.getClass() == EntityAIAvoidEntity.class))) {
                 return true;

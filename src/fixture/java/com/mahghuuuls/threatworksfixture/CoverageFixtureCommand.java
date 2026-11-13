@@ -14,6 +14,8 @@ import net.minecraft.entity.EntityCreature;
 import net.minecraft.entity.item.EntityTNTPrimed;
 import net.minecraft.entity.EntityList;
 import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.entity.ai.EntityAITasks.EntityAITaskEntry;
+import net.minecraft.entity.ai.EntityAIWander;
 import net.minecraft.entity.SharedMonsterAttributes;
 import net.minecraft.entity.monster.EntityIronGolem;
 import net.minecraft.entity.monster.AbstractSkeleton;
@@ -164,6 +166,9 @@ final class CoverageFixtureCommand extends CommandBase {
         mob.setPosition(X, height, Z);
         mob.onInitialSpawn(world.getDifficultyForLocation(mob.getPosition()), null);
         mob.getRecursivePassengers().forEach(passenger -> passenger.addTag(TAG));
+        if (mob.getRidingEntity() != null) {
+            mob.getRidingEntity().addTag(TAG);
+        }
         // Keep exact-ID fixtures separate from the natural replacement probe.
         if (id.startsWith("minecraft:")) {
             mob.getEntityData().setBoolean("SpecialMobsInit", true);
@@ -252,6 +257,9 @@ final class CoverageFixtureCommand extends CommandBase {
         ReflectionHelper.setPrivateValue(EntityPlayerMP.class, player, 0, "respawnInvulnerabilityTicks", "field_147101_bU");
         player.setSneaking(true);
         player.setInvisible(true);
+        if (String.valueOf(EntityList.getKey(mob)).startsWith("grimoireofgaia:")) {
+            player.addTag("tw_l_gaia_effect");
+        }
         place(world, player, "tw_i_player", X, mob.posY, Z + 13);
         LOGGER.info("coverage actors mob={} player={} guard={}", mob.getUniqueID(), player.getUniqueID(),
                 identity(get(world, EntityIronGolem.class, "tw_i_guard")));
@@ -329,6 +337,43 @@ final class CoverageFixtureCommand extends CommandBase {
                         player.getItemStackFromSlot(EntityEquipmentSlot.FEET).getItemDamage(),
                         player.isPotionActive(MobEffects.NAUSEA), !world.canSeeSky(mob.getPosition()));
                 break;
+            case "gaia-vertical-impact":
+                LOGGER.info("coverage gaiaVertical mob={} player={} playerY={} mobY={} velocityY={}",
+                        mob.getUniqueID(), player.getUniqueID(), player.posY, mob.posY, player.motionY);
+                break;
+            case "gaia-ant-wander":
+                if (guard == null || mob.getAttackTarget() != player
+                        || !"grimoireofgaia:ant".equals(String.valueOf(EntityList.getKey(mob)))) {
+                    throw new CommandException("Expected a tracked Ant targeting the player.");
+                }
+                EntityAITaskEntry wanderEntry = mob.tasks.taskEntries.stream()
+                        .filter(entry -> entry.priority == 2 && entry.action.getClass() == EntityAIWander.class)
+                        .findFirst().orElseThrow(() -> new CommandException("Ant wander goal was missing."));
+                EntityAIWander wander = (EntityAIWander) wanderEntry.action;
+                boolean pathStarted = false;
+                for (int attempt = 0; attempt < 8 && !pathStarted; attempt++) {
+                    wander.makeUpdate();
+                    if (wander.shouldExecute()) {
+                        wander.startExecuting();
+                        pathStarted = !mob.getNavigator().noPath();
+                    }
+                }
+                if (!pathStarted) {
+                    throw new CommandException("Ant did not take the native wander path.");
+                }
+                // Stimulate the same-tick setter boundary with the exact goal running.
+                wanderEntry.using = true;
+                try {
+                    mob.setAttackTarget(guard);
+                    if (mob.getAttackTarget() != guard) {
+                        throw new CommandException("The native setter was blocked while the Ant wandered.");
+                    }
+                    LOGGER.info("coverage antWanderTaunt={}", actions.taunt(mob, player));
+                    report(mob, world);
+                } finally {
+                    wanderEntry.using = false;
+                }
+                return;
             case "umber-aura-prepare":
                 if (guard == null || mob.getAttackTarget() != guard) {
                     throw new CommandException("Expected a native guard target for the Umber Hulk aura probe.");
@@ -354,6 +399,24 @@ final class CoverageFixtureCommand extends CommandBase {
                 mob.setAttackTarget(guard);
                 if (mob.getAttackTarget() != guard) {
                     throw new CommandException("The native setter was blocked after the Ghoul mounted.");
+                }
+                break;
+            case "gaia-dullahan-mount":
+                if (guard == null || mob.getAttackTarget() != player
+                        || !"grimoireofgaia:dullahan".equals(String.valueOf(EntityList.getKey(mob)))) {
+                    throw new CommandException("Expected a tracked Dullahan targeting the player.");
+                }
+                Entity horse = EntityList.createEntityByIDFromName(new ResourceLocation("grimoireofgaia:horse"), world);
+                if (horse == null) {
+                    throw new CommandException("Gaia Horse was unavailable.");
+                }
+                place(world, horse, "tw_l_gaia_mount", mob.posX, mob.posY, mob.posZ);
+                if (!mob.startRiding(horse, true)) {
+                    throw new CommandException("Could not mount the Dullahan.");
+                }
+                mob.setAttackTarget(guard);
+                if (mob.getAttackTarget() != guard) {
+                    throw new CommandException("The native setter was blocked after the Dullahan mounted.");
                 }
                 break;
             case "absorb":

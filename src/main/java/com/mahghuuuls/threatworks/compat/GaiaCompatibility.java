@@ -2,6 +2,8 @@ package com.mahghuuuls.threatworks.compat;
 
 import com.mahghuuuls.threatworks.config.ServerTuning.MobType;
 import net.minecraft.entity.EntityCreature;
+import net.minecraft.entity.ai.EntityAITasks.EntityAITaskEntry;
+import net.minecraft.entity.ai.EntityAIWander;
 import net.minecraftforge.fml.common.Loader;
 import net.minecraftforge.fml.common.ModContainer;
 import net.minecraftforge.fml.common.versioning.ComparableVersion;
@@ -11,7 +13,7 @@ import org.apache.logging.log4j.LogManager;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 
-/** Ordinary ground melee shares Gaia's native neutral state and priority-one attack. */
+/** Ordinary ground melee shares Gaia's native neutral state. */
 public final class GaiaCompatibility {
     private static final String MOD_ID = "grimoireofgaia";
     private static final String MINIMUM = "1.7.2";
@@ -36,7 +38,21 @@ public final class GaiaCompatibility {
     }
 
     public static int meleePriority(MobType type) {
-        return entitySuffix(type) == null ? -1 : 1;
+        switch (type) {
+            case GAIA_COBBLESTONE_GOLEM:
+            case GAIA_GELATINOUS_SLIME:
+                return 0;
+            case GAIA_ANT:
+            case GAIA_SPORELING:
+                return 2;
+            default:
+                return entitySuffix(type) == null ? -1 : 1;
+        }
+    }
+
+    public static boolean isAntWander(MobType type, EntityAITaskEntry entry) {
+        return type == MobType.GAIA_ANT && entry.priority == 2 && entry.action.getClass() == EntityAIWander.class
+                && entry.action.getMutexBits() == 1;
     }
 
     public static boolean matches(MobType type, EntityCreature mob) {
@@ -69,6 +85,22 @@ public final class GaiaCompatibility {
                 return "Succubus";
             case GAIA_WITHER_COW:
                 return "WitherCow";
+            case GAIA_ANT:
+                return "Ant";
+            case GAIA_COBBLESTONE_GOLEM:
+                return "CobblestoneGolem";
+            case GAIA_DULLAHAN:
+                return "Dullahan";
+            case GAIA_GELATINOUS_SLIME:
+                return "GelatinousSlime";
+            case GAIA_ILLAGER_BUTLER:
+                return "IllagerButler";
+            case GAIA_ILLAGER_INQUISITOR:
+                return "IllagerInquisitor";
+            case GAIA_SPORELING:
+                return "Sporeling";
+            case GAIA_YETI:
+                return "Yeti";
             default:
                 return null;
         }
