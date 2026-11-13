@@ -87,7 +87,9 @@ final class MobTargets {
             Class<?> goal = entry.action.getClass();
             boolean vanillaSkeletonMelee = attack == EntityAIAttackMelee.class
                     && goal.getSuperclass() == attack && goal.getEnclosingClass() == AbstractSkeleton.class;
-            boolean matchesAttack = nestedAttack == null ? goal == attack || vanillaSkeletonMelee
+            boolean providerSkeletonMelee = attack == EntityAIAttackMelee.class
+                    && SpecialMobsCompatibility.isVariantSkeletonMelee(type, goal);
+            boolean matchesAttack = nestedAttack == null ? goal == attack || vanillaSkeletonMelee || providerSkeletonMelee
                     : goal.getEnclosingClass() == declaringMob && goal.getSimpleName().equals(nestedAttack);
             if (matchesAttack) {
                 if (matched || entry.priority != priority || (entry.action.getMutexBits() & 3) != 3) {
@@ -114,7 +116,7 @@ final class MobTargets {
         boolean providerGoalCheck = SpecialMobsCompatibility.requiresLiveMeleeContract(type)
                 || providerMeleePriority(type) >= 0;
         return (providerGoalCheck ? matchesBehavior(mob, type) : hasSupportedState(mob, type))
-                && !inNativePhase(mob);
+                && !inNativePhase(mob, type);
     }
 
     private static boolean hasSupportedState(EntityCreature mob, MobType type) {
@@ -123,6 +125,8 @@ final class MobTargets {
                 && (mob instanceof EntityShulker || mob.getNavigator().getClass() == navigator)
                 && (!(mob instanceof EntityZombieVillager) || !((EntityZombieVillager) mob).isConverting())
                 && (GaiaCompatibility.meleePriority(type) < 0 || GaiaCompatibility.isHostile(mob))
+                && (!SpecialMobsCompatibility.isVariantSkeleton(type) || !mob.isRiding()
+                && SpecialMobsCompatibility.hasSupportedSkeletonWeapon(type, mob, usesBow(mob)))
                 && (type != MobType.SPECIAL_SKELETON || usesBow(mob));
     }
 
@@ -131,14 +135,16 @@ final class MobTargets {
         return defiled >= 0 ? defiled : GaiaCompatibility.meleePriority(type);
     }
 
-    static boolean inNativePhase(EntityCreature mob) {
+    static boolean inNativePhase(EntityCreature mob, MobType type) {
         if (mob instanceof EntitySpider && mob.getBrightness() >= 0.5F
                 || mob instanceof EntityShulker && !canAttackWhileAttached((EntityShulker) mob)) {
             return true;
         }
         for (EntityAITaskEntry entry : mob.tasks.taskEntries) {
             if (entry.using && (SpecialAiCompatibility.isCombatReaction(entry)
-                    || SpecialAiCompatibility.isBlockGriefing(entry))) {
+                    || SpecialAiCompatibility.isBlockGriefing(entry)
+                    || SpecialMobsCompatibility.isVariantSkeleton(type)
+                    && (entry.action.getClass() == EntityAIFleeSun.class || entry.action.getClass() == EntityAIAvoidEntity.class))) {
                 return true;
             }
         }

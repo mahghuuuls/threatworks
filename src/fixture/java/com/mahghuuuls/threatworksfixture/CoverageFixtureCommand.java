@@ -487,6 +487,36 @@ final class CoverageFixtureCommand extends CommandBase {
                 }
                 guard.setPosition(mob.posX + 6, Y, mob.posZ);
                 break;
+            case "variant-skeleton-bow":
+                if (!mob.getServer().getFolderName().startsWith("TW-Campaign-L") || guard == null
+                        || !guard.isEntityAlive() || mob.getAttackTarget() != player
+                        || !"specialmobs:knightskeleton".equals(String.valueOf(EntityList.getKey(mob)))) {
+                    throw new CommandException("Expected a tracked Campaign L Knight Skeleton targeting the player.");
+                }
+                mob.setItemStackToSlot(EntityEquipmentSlot.MAINHAND, new ItemStack(net.minecraft.init.Items.BOW));
+                mob.setAttackTarget(guard);
+                if (mob.getAttackTarget() != guard) {
+                    throw new CommandException("The native setter was blocked after changing skeleton weapon modes.");
+                }
+                guard.setPosition(mob.posX + 6, mob.posY, mob.posZ);
+                break;
+            case "variant-skeleton-wolf":
+                if (!mob.getServer().getFolderName().startsWith("TW-Campaign-L") || guard == null
+                        || !"specialmobs:fireskeleton".equals(String.valueOf(EntityList.getKey(mob)))) {
+                    throw new CommandException("Expected a Campaign L Fire Skeleton.");
+                }
+                net.minecraft.entity.passive.EntityWolf wolf = new net.minecraft.entity.passive.EntityWolf(world);
+                wolf.setNoAI(true);
+                wolf.enablePersistence();
+                place(world, wolf, "tw_l_wolf", mob.posX, mob.posY, mob.posZ + 4);
+                break;
+            case "variant-skeleton-remove-wolf":
+                net.minecraft.entity.passive.EntityWolf wolfProbe = get(world, net.minecraft.entity.passive.EntityWolf.class, "tw_l_wolf");
+                if (wolfProbe != null) {
+                    wolfProbe.setDead();
+                }
+                LOGGER.info("coverage wolfRemoved present={}", wolfProbe != null);
+                break;
             case "threatening-tnt":
                 if (!mob.getServer().getFolderName().startsWith("TW-Campaign-L")) {
                     throw new CommandException("Expected a Campaign L world.");

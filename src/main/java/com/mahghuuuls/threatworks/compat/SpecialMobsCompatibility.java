@@ -2,9 +2,12 @@ package com.mahghuuuls.threatworks.compat;
 
 import com.mahghuuuls.threatworks.config.ServerTuning.MobType;
 import net.minecraft.entity.EntityCreature;
+import net.minecraft.entity.ai.EntityAIAttackMelee;
+import net.minecraft.entity.monster.AbstractSkeleton;
 import net.minecraft.entity.monster.EntitySkeleton;
 import net.minecraft.entity.monster.EntitySilverfish;
 import net.minecraft.entity.monster.EntityZombie;
+import net.minecraft.init.Items;
 import net.minecraftforge.fml.common.Loader;
 import net.minecraftforge.fml.common.ModContainer;
 import net.minecraftforge.fml.common.versioning.ComparableVersion;
@@ -13,20 +16,21 @@ import org.apache.logging.log4j.Logger;
 public final class SpecialMobsCompatibility {
     private static final String ZOMBIE_PACKAGE = "fathertoast.specialmobs.entity.zombie.";
     private static final String SILVERFISH_PACKAGE = "fathertoast.specialmobs.entity.silverfish.";
-    private static final String SILVERFISH_MINIMUM = "1.0.4";
+    private static final String ENTITY_PACKAGE = "fathertoast.specialmobs.entity.";
+    private static final String VARIANT_MINIMUM = "1.0.4";
 
     private SpecialMobsCompatibility() {
     }
 
-    public static void reportSilverfishVersion(Logger logger) {
-        if (Installed.MOD != null && !Installed.SILVERFISH_SUPPORTED) {
-            logger.warn("Special Mobs silverfish targeting unavailable for version {}. Update to at least {}.",
-                    Installed.MOD.getVersion(), SILVERFISH_MINIMUM);
+    public static void reportVariantVersion(Logger logger) {
+        if (Installed.MOD != null && !Installed.VARIANTS_SUPPORTED) {
+            logger.warn("Special Mobs silverfish and skeleton variant targeting unavailable for version {}. Update to at least {}.",
+                    Installed.MOD.getVersion(), VARIANT_MINIMUM);
         }
     }
 
     public static boolean requiresLiveMeleeContract(MobType type) {
-        return zombieClass(type) != null || silverfishClass(type) != null;
+        return zombieClass(type) != null || silverfishClass(type) != null || skeletonClass(type) != null;
     }
 
     public static boolean matches(MobType type, EntityCreature mob) {
@@ -36,11 +40,73 @@ public final class SpecialMobsCompatibility {
         }
         String silverfishClass = silverfishClass(type);
         if (silverfishClass != null) {
-            return Installed.SILVERFISH_SUPPORTED && mob instanceof EntitySilverfish
+            return Installed.VARIANTS_SUPPORTED && mob instanceof EntitySilverfish
                     && mob.getClass().getName().equals(SILVERFISH_PACKAGE + silverfishClass);
+        }
+        String skeletonClass = skeletonClass(type);
+        if (skeletonClass != null) {
+            return Installed.VARIANTS_SUPPORTED && mob instanceof AbstractSkeleton
+                    && mob.getClass().getName().equals(ENTITY_PACKAGE + skeletonClass);
         }
         return type == MobType.SPECIAL_SKELETON && mob instanceof EntitySkeleton && mob.getClass().getName().equals(
                 "fathertoast.specialmobs.entity.skeleton.Entity_SpecialSkeleton");
+    }
+
+    public static boolean isVariantSkeletonMelee(MobType type, Class<?> goal) {
+        return skeletonClass(type) != null && goal.getSuperclass() == EntityAIAttackMelee.class
+                && goal.getName().equals("fathertoast.specialmobs.ai.EntityAISpecialAttackMelee");
+    }
+
+    public static boolean isVariantSkeleton(MobType type) {
+        return skeletonClass(type) != null;
+    }
+
+    public static boolean hasSupportedSkeletonWeapon(MobType type, EntityCreature mob, boolean usesBow) {
+        switch (type) {
+            case KNIGHT_SKELETON:
+            case SPECIAL_WITHER_SKELETON:
+            case BRUTE_WITHER_SKELETON:
+            case GIANT_WITHER_SKELETON:
+            case KNIGHT_WITHER_SKELETON:
+                return !usesBow;
+            default:
+                return mob.getHeldItemMainhand().getItem() == Items.BOW;
+        }
+    }
+
+    private static String skeletonClass(MobType type) {
+        switch (type) {
+            case BRUTE_SKELETON:
+                return "skeleton.EntityBruteSkeleton";
+            case FIRE_SKELETON:
+                return "skeleton.EntityFireSkeleton";
+            case GATLING_SKELETON:
+                return "skeleton.EntityGatlingSkeleton";
+            case GIANT_SKELETON:
+                return "skeleton.EntityGiantSkeleton";
+            case KNIGHT_SKELETON:
+                return "skeleton.EntityKnightSkeleton";
+            case POISON_SKELETON:
+                return "skeleton.EntityPoisonSkeleton";
+            case SNIPER_SKELETON:
+                return "skeleton.EntitySniperSkeleton";
+            case STRAY_SPECIAL_SKELETON:
+                return "skeleton.EntityStraySkeleton";
+            case SPECIAL_WITHER_SKELETON:
+                return "witherskeleton.Entity_SpecialWitherSkeleton";
+            case BRUTE_WITHER_SKELETON:
+                return "witherskeleton.EntityBruteWitherSkeleton";
+            case GATLING_WITHER_SKELETON:
+                return "witherskeleton.EntityGatlingWitherSkeleton";
+            case GIANT_WITHER_SKELETON:
+                return "witherskeleton.EntityGiantWitherSkeleton";
+            case KNIGHT_WITHER_SKELETON:
+                return "witherskeleton.EntityKnightWitherSkeleton";
+            case SNIPER_WITHER_SKELETON:
+                return "witherskeleton.EntitySniperWitherSkeleton";
+            default:
+                return null;
+        }
     }
 
     private static String silverfishClass(MobType type) {
@@ -81,13 +147,12 @@ public final class SpecialMobsCompatibility {
 
     private static final class Installed {
         private static final ModContainer MOD = Loader.instance().getIndexedModList().get("specialmobs");
-        private static final boolean SILVERFISH_SUPPORTED = MOD != null
-                && supportsSilverfish(MOD.getVersion());
+        private static final boolean VARIANTS_SUPPORTED = MOD != null && supportsVariants(MOD.getVersion());
     }
 
-    private static boolean supportsSilverfish(String version) {
+    private static boolean supportsVariants(String version) {
         String numeric = version.replaceFirst("_for_mc1\\.12\\.2$", "");
         return numeric.matches("\\d+\\.\\d+\\.\\d+")
-                && new ComparableVersion(numeric).compareTo(new ComparableVersion(SILVERFISH_MINIMUM)) >= 0;
+                && new ComparableVersion(numeric).compareTo(new ComparableVersion(VARIANT_MINIMUM)) >= 0;
     }
 }

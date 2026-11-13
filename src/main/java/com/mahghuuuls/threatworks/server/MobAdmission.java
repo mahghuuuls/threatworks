@@ -123,7 +123,7 @@ final class MobAdmission {
         if (!MobTargets.matchesBehavior(mob, type)) {
             return UNSUPPORTED_STATE;
         }
-        return MobTargets.inNativePhase(mob) ? NATIVE.get(type) : CONTROL.get(type);
+        return MobTargets.inNativePhase(mob, type) ? NATIVE.get(type) : CONTROL.get(type);
     }
 
     private static boolean matches(MobType type, EntityCreature mob, FoliaathCompatibility foliaath) {

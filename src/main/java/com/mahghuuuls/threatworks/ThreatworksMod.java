@@ -78,7 +78,7 @@ public final class ThreatworksMod {
         EncounterCoordinator.INSTANCE.setSummonSource(WizardryCompatibility.load(LOGGER));
         EncounterCoordinator.INSTANCE.setFoliaathCompatibility(FoliaathCompatibility.load(LOGGER));
         SpecialAiCompatibility.reportVersion(LOGGER);
-        SpecialMobsCompatibility.reportSilverfishVersion(LOGGER);
+        SpecialMobsCompatibility.reportVariantVersion(LOGGER);
         DefiledLandsCompatibility.reportVersion(LOGGER);
         GaiaCompatibility.reportVersion(LOGGER);
     }
