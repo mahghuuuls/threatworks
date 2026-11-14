@@ -109,6 +109,7 @@ public final class ServerTuning {
         SPECIAL_BLAZE("specialmobs:specialblaze"),
         CINDER_BLAZE("specialmobs:cinderblaze"),
         CONFLAGRATION_BLAZE("specialmobs:conflagrationblaze"),
+        EMBER_BLAZE("specialmobs:emberblaze"),
         HELLFIRE_BLAZE("specialmobs:hellfireblaze"),
         INFERNO_BLAZE("specialmobs:infernoblaze"),
         WILDFIRE_BLAZE("specialmobs:wildfireblaze"),

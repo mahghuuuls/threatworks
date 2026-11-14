@@ -72,6 +72,8 @@ public final class ThreatworksFixture {
     private CreeperTerrain creeperTerrain;
     private EntityLargeFireball largeFireballImpact;
     private long largeFireballImpactTick;
+    private EntityLiving emberAttacker;
+    private EntityLivingBase emberVictim;
 
     @Mod.EventHandler
     public void init(FMLInitializationEvent event) {
@@ -120,11 +122,16 @@ public final class ThreatworksFixture {
                         EntityList.getKey(immediate));
             }
             String id = String.valueOf(EntityList.getKey(source));
-            if (CoverageFixtureCommand.CINDER.equals(id) && source == immediate
+            String meleeBlaze = CoverageFixtureCommand.meleeBlazeName(id);
+            if (meleeBlaze != null && source == immediate
                     && "mob".equals(event.getSource().getDamageType())) {
-                LOGGER.info("coverage cinderImpact mob={} target={} tick={} distance={} onGround={} y={} burningBefore={}",
-                        source.getUniqueID(), victim.getUniqueID(), victim.world.getTotalWorldTime(),
+                LOGGER.info("coverage {}Impact mob={} target={} tick={} distance={} onGround={} y={} burningBefore={}",
+                        meleeBlaze, source.getUniqueID(), victim.getUniqueID(), victim.world.getTotalWorldTime(),
                         source.getDistance(victim), source.onGround, source.posY, victim.isBurning());
+                if (CoverageFixtureCommand.EMBER.equals(id)) {
+                    emberAttacker = (EntityLiving) source;
+                    emberVictim = victim;
+                }
             }
             if (victim.getTags().contains("tw_i_player")
                     && ("specialmobs:webspider".equals(id) || "specialmobs:webcavespider".equals(id))
@@ -462,12 +469,19 @@ public final class ThreatworksFixture {
         }
         String folder = event.world.getMinecraftServer().getFolderName();
         if (folder.startsWith("TW-Campaign-L")) {
+            if (emberVictim != null && emberVictim.world == event.world) {
+                LOGGER.info("coverage emberHealth mob={} target={} tick={} health={}", emberAttacker.getUniqueID(),
+                        emberVictim.getUniqueID(), event.world.getTotalWorldTime(), emberVictim.getHealth());
+                emberAttacker = null;
+                emberVictim = null;
+            }
             event.world.getEntities(EntityLiving.class, mob -> mob.getTags().contains("tw_i_mob")
-                    && CoverageFixtureCommand.CINDER.equals(String.valueOf(EntityList.getKey(mob))))
+                    && CoverageFixtureCommand.meleeBlazeName(String.valueOf(EntityList.getKey(mob))) != null)
                     .forEach(mob -> {
                         EntityLivingBase target = mob.getAttackTarget();
                         if (target != null && mob.ticksExisted % 4 == 0) {
-                            LOGGER.info("coverage cinderPursuit mob={} target={} tick={} distance={} onGround={} y={} burning={}",
+                            LOGGER.info("coverage {}Pursuit mob={} target={} tick={} distance={} onGround={} y={} burning={}",
+                                    CoverageFixtureCommand.meleeBlazeName(String.valueOf(EntityList.getKey(mob))),
                                     mob.getUniqueID(), target.getUniqueID(), event.world.getTotalWorldTime(),
                                     mob.getDistance(target), mob.onGround, mob.posY, target.isBurning());
                         }

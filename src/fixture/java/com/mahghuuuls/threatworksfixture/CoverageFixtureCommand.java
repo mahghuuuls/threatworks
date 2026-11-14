@@ -73,6 +73,7 @@ final class CoverageFixtureCommand extends CommandBase {
     private static final int Y = 20;
     private static final String WILDFIRE = "specialmobs:wildfireblaze";
     static final String CINDER = "specialmobs:cinderblaze";
+    static final String EMBER = "specialmobs:emberblaze";
     private static final double Z = 12.5;
     private final ThreatworksFixture fixture;
     private ForgeChunkManager.Ticket ticket;
@@ -296,7 +297,7 @@ final class CoverageFixtureCommand extends CommandBase {
             @Override
             public void onUpdate() {
                 // FakePlayer skips the countdown a connected player gets in EntityPlayerMP.
-                if ((WILDFIRE.equals(id) || getTags().contains("tw_l_cinder_player")) && hurtResistantTime > 0) {
+                if ((WILDFIRE.equals(id) || EMBER.equals(id) || getTags().contains("tw_l_cinder_player")) && hurtResistantTime > 0) {
                     --hurtResistantTime;
                 }
             }
@@ -572,9 +573,9 @@ final class CoverageFixtureCommand extends CommandBase {
                 restorePlayer(player);
                 String openingId = String.valueOf(EntityList.getKey(mob));
                 boolean conflagration = "specialmobs:conflagrationblaze".equals(openingId);
-                boolean cinder = CINDER.equals(openingId);
+                String meleeBlaze = meleeBlazeName(openingId);
                 byte feedBefore = conflagration ? blazeFeedLevel(mob) : 0;
-                if (cinder) {
+                if (meleeBlaze != null) {
                     // Keep the native incumbent in melee reach through the opening hit.
                     guard.setPosition(mob.posX + 1.25, mob.posY, mob.posZ);
                 }
@@ -584,32 +585,36 @@ final class CoverageFixtureCommand extends CommandBase {
                             player.getUniqueID(), feedBefore, blazeFeedLevel(mob));
                 }
                 // Give Wildfire's long ranged cycle an elevated target to follow throughout the fight.
-                double playerHeight = WILDFIRE.equals(openingId) ? 5 : cinder ? 4 : 0;
+                double playerHeight = WILDFIRE.equals(openingId) ? 5 : meleeBlaze != null ? 4 : 0;
                 player.setPosition(mob.posX - 6, mob.posY + playerHeight, mob.posZ);
-                if (cinder) {
-                    LOGGER.info("coverage cinderOpening mob={} player={} distance={} y={} targetY={} range={}",
-                            mob.getUniqueID(), player.getUniqueID(), mob.getDistance(player), mob.posY, player.posY,
+                if (meleeBlaze != null) {
+                    LOGGER.info("coverage {}Opening mob={} player={} distance={} y={} targetY={} range={}",
+                            meleeBlaze, mob.getUniqueID(), player.getUniqueID(), mob.getDistance(player), mob.posY, player.posY,
                             SpecialMobsCompatibility.blazeRange(mob));
                 }
                 break;
             case "cinder-blocked":
             case "cinder-clear":
             case "cinder-edge":
-                if (!CINDER.equals(String.valueOf(EntityList.getKey(mob)))) {
-                    throw new CommandException("Expected a Cinder Blaze.");
+            case "ember-blocked":
+            case "ember-clear":
+            case "ember-edge":
+                String probeBlaze = meleeBlazeName(String.valueOf(EntityList.getKey(mob)));
+                if (probeBlaze == null || !operation.startsWith(probeBlaze + "-")) {
+                    throw new CommandException("Expected the matching melee Blaze.");
                 }
-                boolean blocked = "cinder-blocked".equals(operation);
-                double cinderGap = "cinder-edge".equals(operation) ? 16 : 6;
+                boolean blocked = operation.endsWith("-blocked");
+                double gapForMelee = operation.endsWith("-edge") ? 16 : 6;
                 restorePlayer(player);
                 mob.setPosition(X, Y, Z);
-                player.setPosition(X - cinderGap, Y, Z);
+                player.setPosition(X - gapForMelee, Y, Z);
                 BlockPos obstacle = new BlockPos(X - 2, Y, Z);
                 world.setBlockState(obstacle, blocked ? Blocks.STONE_SLAB.getDefaultState() : Blocks.AIR.getDefaultState(), 2);
                 player.addPotionEffect(new PotionEffect(MobEffects.FIRE_RESISTANCE, 200, 0));
                 boolean visible = world.rayTraceBlocks(mob.getPositionEyes(1.0F), player.getPositionEyes(1.0F),
                         false, true, false) == null;
-                LOGGER.info("coverage cinderProbe mob={} player={} step={} distance={} range={} followRange={} visible={} resistant={} result={}",
-                        mob.getUniqueID(), player.getUniqueID(), operation, mob.getDistance(player),
+                LOGGER.info("coverage {}Probe mob={} player={} step={} distance={} range={} followRange={} visible={} resistant={} result={}",
+                        probeBlaze, mob.getUniqueID(), player.getUniqueID(), operation, mob.getDistance(player),
                         SpecialMobsCompatibility.blazeRange(mob),
                         mob.getEntityAttribute(SharedMonsterAttributes.FOLLOW_RANGE).getAttributeValue(),
                         visible, player.isPotionActive(MobEffects.FIRE_RESISTANCE),
@@ -1174,6 +1179,17 @@ final class CoverageFixtureCommand extends CommandBase {
             throw new CommandException("Expected a native Conflagration Blaze feeding level.");
         }
         return data.getByte("FeedLevel");
+    }
+
+    static String meleeBlazeName(String id) {
+        switch (id) {
+            case CINDER:
+                return "cinder";
+            case EMBER:
+                return "ember";
+            default:
+                return null;
+        }
     }
 
     private static NBTTagCompound specialMobData(EntityCreature mob) {
