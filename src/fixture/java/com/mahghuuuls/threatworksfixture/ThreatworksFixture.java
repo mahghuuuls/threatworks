@@ -11,6 +11,7 @@ import net.minecraft.entity.EntityAreaEffectCloud;
 import net.minecraft.entity.EntityCreature;
 import net.minecraft.entity.EntityList;
 import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.entity.effect.EntityLightningBolt;
 import net.minecraft.entity.item.EntityFallingBlock;
 import net.minecraft.entity.monster.EntityIronGolem;
 import net.minecraft.entity.player.EntityPlayerMP;
@@ -23,11 +24,13 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraft.potion.PotionEffect;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.World;
 import net.minecraft.world.WorldServer;
 import net.minecraftforge.common.ForgeChunkManager;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.entity.living.LivingDamageEvent;
+import net.minecraftforge.event.entity.living.EnderTeleportEvent;
 import net.minecraftforge.event.entity.living.LivingDeathEvent;
 import net.minecraftforge.event.entity.living.LivingSetAttackTargetEvent;
 import net.minecraftforge.event.entity.EntityJoinWorldEvent;
@@ -74,6 +77,12 @@ public final class ThreatworksFixture {
     private long largeFireballImpactTick;
     private EntityLiving emberAttacker;
     private EntityLivingBase emberVictim;
+    private EntityLiving jolt;
+    private Vec3d joltOrigin;
+    private long joltTick;
+    private EntityLightningBolt joltBolt;
+    private String joltPhase;
+    private static final String JOLT_LIGHTNING = "tw_l_jolt_lightning";
 
     @Mod.EventHandler
     public void init(FMLInitializationEvent event) {
@@ -103,6 +112,13 @@ public final class ThreatworksFixture {
         EntityLivingBase victim = event.getEntityLiving();
         Entity source = event.getSource().getTrueSource();
         Entity immediate = event.getSource().getImmediateSource();
+        if (!victim.world.isRemote && victim == jolt && victim.world.getTotalWorldTime() == joltTick
+                && "reactive".equals(joltPhase) && source instanceof EntityPlayerMP
+                && source.getTags().contains("tw_l_jolt_opening") && jolt.getAttackTarget() != null
+                && jolt.getAttackTarget().getTags().contains("tw_i_guard")) {
+            // The provider moves before entering the ordinary damage pipeline.
+            jolt.getAttackTarget().setPosition(jolt.posX + 1.25, jolt.posY, jolt.posZ);
+        }
         if (!victim.world.isRemote && victim.getTags().contains(DimensionCoverageCommand.TAG)
                 && source instanceof EntityLiving && source.getTags().contains(DimensionCoverageCommand.TAG)
                 && immediate != null && event.getAmount() > 0) {
@@ -207,6 +223,63 @@ public final class ThreatworksFixture {
             LOGGER.info("coverage creeperShotImpact mob={} arrow={} shooter={}", hit.getUniqueID(),
                     arrow.getUniqueID(), ArrowFixtureCommand.identity(arrow.shootingEntity));
         }
+        if (!arrow.world.isRemote && arrow.getTags().contains("tw_l_jolt_arrow") && hit != null) {
+            LOGGER.info("coverage joltArrowImpact mob={} arrow={} shooter={} tick={}", hit.getUniqueID(),
+                    arrow.getUniqueID(), ArrowFixtureCommand.identity(arrow.shootingEntity), arrow.world.getTotalWorldTime());
+        }
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public void onJoltTeleport(EnderTeleportEvent event) {
+        EntityLivingBase entity = event.getEntityLiving();
+        if (entity.world.isRemote || !(entity instanceof EntityLiving) || !entity.getTags().contains("tw_i_mob")
+                || !CoverageFixtureCommand.JOLT.equals(String.valueOf(EntityList.getKey(entity))) || !logsCoverageCombat(entity)) {
+            return;
+        }
+        jolt = (EntityLiving) entity;
+        joltOrigin = entity.getPositionVector();
+        joltTick = entity.world.getTotalWorldTime();
+        joltBolt = null;
+        joltPhase = "unknown";
+        for (StackTraceElement frame : Thread.currentThread().getStackTrace()) {
+            if (entity.getClass().getName().equals(frame.getClassName())) {
+                if ("teleportRandomly".equals(frame.getMethodName())) {
+                    joltPhase = "reactive";
+                    break;
+                }
+                if ("teleportToEntity".equals(frame.getMethodName())) {
+                    joltPhase = "directed";
+                    break;
+                }
+            }
+        }
+    }
+
+    private void recordJoltBolt(EntityLightningBolt bolt) {
+        if (jolt == null || jolt.world != bolt.world || joltTick != bolt.world.getTotalWorldTime()) {
+            return;
+        }
+        for (StackTraceElement frame : Thread.currentThread().getStackTrace()) {
+            if (!jolt.getClass().getName().equals(frame.getClassName())) {
+                continue;
+            }
+            String method = frame.getMethodName();
+            boolean joltDirected = "onLivingUpdate".equals(method) || "func_70636_d".equals(method);
+            if (joltDirected || "attackEntityFrom".equals(method) || "func_70097_a".equals(method)) {
+                joltBolt = bolt;
+                bolt.addTag(CoverageFixtureCommand.TAG);
+                bolt.addTag(JOLT_LIGHTNING);
+                Vec3d expected = joltDirected ? jolt.getPositionVector() : joltOrigin;
+                EntityLivingBase target = jolt.getAttackTarget();
+                LOGGER.info("coverage joltBolt mob={} target={} bolt={} tick={} directed={} offset={} moved={} before={} after={}",
+                        jolt.getUniqueID(), ArrowFixtureCommand.identity(target), bolt.getUniqueID(), joltTick,
+                        joltDirected, bolt.getPositionVector().distanceTo(expected),
+                        jolt.getPositionVector().distanceTo(joltOrigin),
+                        target == null ? -1 : target.getPositionVector().distanceTo(joltOrigin),
+                        target == null ? -1 : jolt.getDistance(target));
+            }
+            return;
+        }
     }
 
     @SubscribeEvent
@@ -214,6 +287,9 @@ public final class ThreatworksFixture {
         Entity spawned = event.getEntity();
         if (event.getWorld().isRemote) {
             return;
+        }
+        if (spawned instanceof EntityLightningBolt) {
+            recordJoltBolt((EntityLightningBolt) spawned);
         }
         EntityLiving parent = creeperBlastSource;
         if (parent != null && parent.world == event.getWorld() && parent.world.getTotalWorldTime() == creeperBlastTick
@@ -290,6 +366,10 @@ public final class ThreatworksFixture {
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public void onCreeperLightning(EntityStruckByLightningEvent event) {
         Entity victim = event.getEntity();
+        if (!event.isCanceled() && !victim.world.isRemote && event.getLightning().getTags().contains(JOLT_LIGHTNING)) {
+            LOGGER.info("coverage joltStrike bolt={} target={} tick={}", event.getLightning().getUniqueID(),
+                    victim.getUniqueID(), victim.world.getTotalWorldTime());
+        }
         EntityLiving parent = creeperBlastSource;
         if (!event.isCanceled() && parent != null && parent.world == victim.world
                 && victim.world.getTotalWorldTime() - creeperBlastTick <= 2
@@ -469,6 +549,15 @@ public final class ThreatworksFixture {
         }
         String folder = event.world.getMinecraftServer().getFolderName();
         if (folder.startsWith("TW-Campaign-L")) {
+            if (jolt != null && jolt.world == event.world) {
+                LOGGER.info("coverage joltTeleportResult mob={} tick={} moved={} bolt={} boltpresent={} health={} phase={}",
+                        jolt.getUniqueID(), joltTick, jolt.getPositionVector().distanceTo(joltOrigin),
+                        ArrowFixtureCommand.identity(joltBolt),
+                        joltBolt != null && event.world.weatherEffects.contains(joltBolt), jolt.getHealth(), joltPhase);
+                jolt = null;
+                joltOrigin = null;
+                joltBolt = null;
+            }
             if (emberVictim != null && emberVictim.world == event.world) {
                 LOGGER.info("coverage emberHealth mob={} target={} tick={} health={}", emberAttacker.getUniqueID(),
                         emberVictim.getUniqueID(), event.world.getTotalWorldTime(), emberVictim.getHealth());

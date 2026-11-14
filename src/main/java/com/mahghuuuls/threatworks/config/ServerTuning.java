@@ -112,6 +112,7 @@ public final class ServerTuning {
         EMBER_BLAZE("specialmobs:emberblaze"),
         HELLFIRE_BLAZE("specialmobs:hellfireblaze"),
         INFERNO_BLAZE("specialmobs:infernoblaze"),
+        JOLT_BLAZE("specialmobs:joltblaze"),
         WILDFIRE_BLAZE("specialmobs:wildfireblaze"),
         DEFILED_HOST("defiledlands:host"),
         DEFILED_SHAMBLER("defiledlands:shambler"),

@@ -101,7 +101,7 @@ public final class SpecialMobsCompatibility {
     }
 
     public static boolean isMeleeBlaze(MobType type) {
-        return type == MobType.CINDER_BLAZE || type == MobType.EMBER_BLAZE;
+        return type == MobType.CINDER_BLAZE || type == MobType.EMBER_BLAZE || type == MobType.JOLT_BLAZE;
     }
 
     public static boolean hasSupportedBlazeRange(MobType type, EntityCreature mob) {
@@ -290,6 +290,8 @@ public final class SpecialMobsCompatibility {
                 return "blaze.EntityHellfireBlaze";
             case INFERNO_BLAZE:
                 return "blaze.EntityInfernoBlaze";
+            case JOLT_BLAZE:
+                return "blaze.EntityJoltBlaze";
             case WILDFIRE_BLAZE:
                 return "blaze.EntityWildfireBlaze";
             default:

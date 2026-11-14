@@ -74,6 +74,8 @@ final class CoverageFixtureCommand extends CommandBase {
     private static final String WILDFIRE = "specialmobs:wildfireblaze";
     static final String CINDER = "specialmobs:cinderblaze";
     static final String EMBER = "specialmobs:emberblaze";
+    static final String JOLT = "specialmobs:joltblaze";
+    private static final int JOLT_FLOOR = 4;
     private static final double Z = 12.5;
     private final ThreatworksFixture fixture;
     private ForgeChunkManager.Ticket ticket;
@@ -158,6 +160,7 @@ final class CoverageFixtureCommand extends CommandBase {
     }
 
     private static void cleanup(WorldServer world) {
+        world.weatherEffects.stream().filter(entity -> entity.getTags().contains(TAG)).forEach(Entity::setDead);
         for (Entity entity : world.getEntities(Entity.class, candidate -> candidate.getTags().contains(TAG)
                 || candidate instanceof EntityArrow && ((EntityArrow) candidate).shootingEntity != null
                 && ((EntityArrow) candidate).shootingEntity.getTags().contains(TAG))) {
@@ -170,8 +173,14 @@ final class CoverageFixtureCommand extends CommandBase {
     }
 
     private static void seed(WorldServer world, String id, boolean solo) throws CommandException {
-        int height = id.startsWith("grimoireofgaia:") ? 64 : "defiledlands:shambler".equals(id) ? 60 : Y;
+        int height = id.startsWith("grimoireofgaia:") ? 64 : "defiledlands:shambler".equals(id) ? 60
+                : JOLT.equals(id) ? JOLT_FLOOR : Y;
         arena(world, height);
+        if (JOLT.equals(id)) {
+            for (BlockPos pos : BlockPos.getAllInBox(new BlockPos(-12, height - 1, 41), new BlockPos(40, height - 1, 54))) {
+                world.setBlockState(pos, Blocks.STONE.getDefaultState(), 2);
+            }
+        }
         if (id.startsWith("dungeonmobs:")) {
             for (BlockPos roof : BlockPos.getAllInBox(new BlockPos(0, height + 6, 0), new BlockPos(28, height + 6, 28))) {
                 world.setBlockState(roof, Blocks.STONE.getDefaultState(), 2);
@@ -297,7 +306,8 @@ final class CoverageFixtureCommand extends CommandBase {
             @Override
             public void onUpdate() {
                 // FakePlayer skips the countdown a connected player gets in EntityPlayerMP.
-                if ((WILDFIRE.equals(id) || EMBER.equals(id) || getTags().contains("tw_l_cinder_player")) && hurtResistantTime > 0) {
+                if ((WILDFIRE.equals(id) || meleeBlazeName(id) != null || getTags().contains("tw_l_cinder_player"))
+                        && hurtResistantTime > 0) {
                     --hurtResistantTime;
                 }
             }
@@ -553,7 +563,12 @@ final class CoverageFixtureCommand extends CommandBase {
                 }
                 player.setPosition(X, mob.posY, Z + 13);
                 player.capabilities.disableDamage = true;
-                if ("specialmobs:jumpingcreeper".equals(String.valueOf(EntityList.getKey(mob)))) {
+                String retaliatingId = String.valueOf(EntityList.getKey(mob));
+                if (JOLT.equals(retaliatingId)) {
+                    guard.setPosition(mob.posX, JOLT_FLOOR, mob.posZ + 25);
+                    // Stimulate the native hurt-by-target goal without triggering Jolt's reactive teleport.
+                    mob.setRevengeTarget(guard);
+                } else if ("specialmobs:jumpingcreeper".equals(retaliatingId)) {
                     // The golem's normal attack adds lift even when its victim resists knockback.
                     mob.attackEntityFrom(DamageSource.causeMobDamage(guard), 1.0F);
                     if ("creeper-jump-retaliation".equals(operation)) {
@@ -573,13 +588,21 @@ final class CoverageFixtureCommand extends CommandBase {
                 restorePlayer(player);
                 String openingId = String.valueOf(EntityList.getKey(mob));
                 boolean conflagration = "specialmobs:conflagrationblaze".equals(openingId);
+                Vec3d joltStart = JOLT.equals(openingId) ? mob.getPositionVector() : null;
                 String meleeBlaze = meleeBlazeName(openingId);
                 byte feedBefore = conflagration ? blazeFeedLevel(mob) : 0;
-                if (meleeBlaze != null) {
+                if (joltStart != null) {
+                    player.addTag("tw_l_jolt_opening");
+                } else if (meleeBlaze != null) {
                     // Keep the native incumbent in melee reach through the opening hit.
                     guard.setPosition(mob.posX + 1.25, mob.posY, mob.posZ);
                 }
                 attack(mob, player, "hit");
+                if (joltStart != null) {
+                    player.removeTag("tw_l_jolt_opening");
+                    LOGGER.info("coverage joltOpeningMove mob={} player={} tick={} moved={}", mob.getUniqueID(),
+                            player.getUniqueID(), world.getTotalWorldTime(), mob.getPositionVector().distanceTo(joltStart));
+                }
                 if (conflagration) {
                     LOGGER.info("coverage blazeFeeding mob={} player={} before={} after={}", mob.getUniqueID(),
                             player.getUniqueID(), feedBefore, blazeFeedLevel(mob));
@@ -599,16 +622,20 @@ final class CoverageFixtureCommand extends CommandBase {
             case "ember-blocked":
             case "ember-clear":
             case "ember-edge":
+            case "jolt-blocked":
+            case "jolt-clear":
+            case "jolt-edge":
                 String probeBlaze = meleeBlazeName(String.valueOf(EntityList.getKey(mob)));
                 if (probeBlaze == null || !operation.startsWith(probeBlaze + "-")) {
                     throw new CommandException("Expected the matching melee Blaze.");
                 }
                 boolean blocked = operation.endsWith("-blocked");
                 double gapForMelee = operation.endsWith("-edge") ? 16 : 6;
+                int probeY = "jolt".equals(probeBlaze) ? JOLT_FLOOR : Y;
                 restorePlayer(player);
-                mob.setPosition(X, Y, Z);
-                player.setPosition(X - gapForMelee, Y, Z);
-                BlockPos obstacle = new BlockPos(X - 2, Y, Z);
+                mob.setPosition(X, probeY, Z);
+                player.setPosition(X - gapForMelee, probeY, Z);
+                BlockPos obstacle = new BlockPos(X - 2, probeY, Z);
                 world.setBlockState(obstacle, blocked ? Blocks.STONE_SLAB.getDefaultState() : Blocks.AIR.getDefaultState(), 2);
                 player.addPotionEffect(new PotionEffect(MobEffects.FIRE_RESISTANCE, 200, 0));
                 boolean visible = world.rayTraceBlocks(mob.getPositionEyes(1.0F), player.getPositionEyes(1.0F),
@@ -619,6 +646,23 @@ final class CoverageFixtureCommand extends CommandBase {
                         mob.getEntityAttribute(SharedMonsterAttributes.FOLLOW_RANGE).getAttributeValue(),
                         visible, player.isPotionActive(MobEffects.FIRE_RESISTANCE),
                         actions.taunt(mob, player));
+                break;
+            case "jolt-arrow":
+                if (!JOLT.equals(String.valueOf(EntityList.getKey(mob))) || mob.getAttackTarget() != null) {
+                    throw new CommandException("Expected an inactive Jolt Blaze.");
+                }
+                restorePlayer(player);
+                player.setPosition(X, Y + 80, Z);
+                EntityTippedArrow joltArrow = new EntityTippedArrow(world, player);
+                joltArrow.addTag("tw_l_jolt_arrow");
+                joltArrow.setPosition(mob.posX - 2.5, mob.posY + mob.height * 0.5, mob.posZ);
+                joltArrow.shoot(mob.posX - joltArrow.posX, mob.posY + mob.height * 0.5 - joltArrow.posY,
+                        mob.posZ - joltArrow.posZ, 2.0F, 0.0F);
+                if (!world.spawnEntity(joltArrow)) {
+                    throw new CommandException("Jolt fixture arrow failed to spawn.");
+                }
+                LOGGER.info("coverage joltArrow mob={} player={} arrow={} health={}", mob.getUniqueID(),
+                        player.getUniqueID(), joltArrow.getUniqueID(), mob.getHealth());
                 break;
             case "wildfire-finish":
                 if (!WILDFIRE.equals(String.valueOf(EntityList.getKey(mob)))
@@ -1187,6 +1231,8 @@ final class CoverageFixtureCommand extends CommandBase {
                 return "cinder";
             case EMBER:
                 return "ember";
+            case JOLT:
+                return "jolt";
             default:
                 return null;
         }
