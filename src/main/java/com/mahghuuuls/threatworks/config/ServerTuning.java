@@ -60,6 +60,7 @@ public final class ServerTuning {
         SHULKER("minecraft:shulker", true),
         CREEPER("minecraft:creeper"),
         ENDER_DRAGON("minecraft:ender_dragon"),
+        WITHER("minecraft:wither"),
         SPECIAL_ZOMBIE("specialmobs:specialzombie", true),
         PVJ_BANSHEE("pvj:pvj_banshee"),
         PVJ_SHADE("pvj:pvj_shade"),

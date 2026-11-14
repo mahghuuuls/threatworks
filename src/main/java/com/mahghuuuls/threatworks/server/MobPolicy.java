@@ -40,6 +40,9 @@ interface MobPolicy {
     }
 
     static MobPolicy forType(MobType type) {
+        if (type == MobType.WITHER) {
+            return new WitherMobPolicy();
+        }
         if (GhastMobPolicy.matchesType(type)) {
             return new GhastMobPolicy(type);
         }

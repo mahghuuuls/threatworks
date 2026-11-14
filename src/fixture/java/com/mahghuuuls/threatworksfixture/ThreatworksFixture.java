@@ -119,6 +119,9 @@ public final class ThreatworksFixture {
         DragonFixtureCommand dragon = new DragonFixtureCommand(this);
         event.registerServerCommand(dragon);
         MinecraftForge.EVENT_BUS.register(dragon);
+        WitherFixtureCommand wither = new WitherFixtureCommand();
+        event.registerServerCommand(wither);
+        MinecraftForge.EVENT_BUS.register(wither);
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)

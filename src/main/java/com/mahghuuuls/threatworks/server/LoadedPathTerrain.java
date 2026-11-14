@@ -103,12 +103,15 @@ final class LoadedPathTerrain implements IBlockAccess {
     }
 
     boolean clearLine(Vec3d from, Vec3d to) {
+        return lineLoaded(from, to) && world.rayTraceBlocks(from, to, false, true, false) == null;
+    }
+
+    boolean lineLoaded(Vec3d from, Vec3d to) {
         BlockPos start = new BlockPos(from);
         BlockPos end = new BlockPos(to);
         int margin = SHAPE_NEIGHBORS;
         return readableArea(Math.min(start.getX(), end.getX()) - margin, Math.min(start.getZ(), end.getZ()) - margin,
-                Math.max(start.getX(), end.getX()) + margin, Math.max(start.getZ(), end.getZ()) + margin)
-                && world.rayTraceBlocks(from, to, false, true, false) == null;
+                Math.max(start.getX(), end.getX()) + margin, Math.max(start.getZ(), end.getZ()) + margin);
     }
 
     boolean clearFlight(AxisAlignedBB body, Vec3d travel) {

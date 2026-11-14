@@ -18,6 +18,7 @@ import net.minecraft.entity.EntityList;
 import net.minecraft.entity.EntityLiving;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.boss.EntityDragon;
+import net.minecraft.entity.boss.EntityWither;
 import net.minecraft.entity.monster.EntityBlaze;
 import net.minecraft.entity.monster.EntityCaveSpider;
 import net.minecraft.entity.monster.EntityCreeper;
@@ -71,6 +72,7 @@ final class MobAdmission {
         VANILLA_CLASSES.put(MobType.BLAZE, EntityBlaze.class);
         VANILLA_CLASSES.put(MobType.SHULKER, EntityShulker.class);
         VANILLA_CLASSES.put(MobType.WITCH, EntityWitch.class);
+        VANILLA_CLASSES.put(MobType.WITHER, EntityWither.class);
         for (MobType type : MobType.values()) {
             TYPES.put(new ResourceLocation(type.id), type);
             CONTROL.put(type, new MobAdmission(type, State.CONTROL));
@@ -163,6 +165,13 @@ final class MobAdmission {
         EntityCreature mob = (EntityCreature) entity;
         if (!(mob.world instanceof WorldServer)) {
             return UNSUPPORTED_STATE;
+        }
+        if (type == MobType.WITHER) {
+            EntityWither wither = (EntityWither) mob;
+            if (!WitherMobPolicy.hasNativeContract(wither)) {
+                return UNSUPPORTED_STATE;
+            }
+            return WitherMobPolicy.isNativePhase(wither) ? NATIVE.get(type) : CONTROL.get(type);
         }
         if (type == MobType.FOLIAATH) {
             if (!foliaath.matchesGoals(mob)) {
