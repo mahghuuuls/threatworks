@@ -11,6 +11,7 @@ public final class SpecialAiCompatibility {
     private static final String AVOID_EXPLOSIONS = REACTIONS + "EntityAIAvoidExplosions";
     private static final String DODGE_ARROWS = REACTIONS + "EntityAIDodgeArrows";
     private static final String GRIEF_BLOCKS = "fathertoast.specialai.ai.grief.EntityAIGriefBlocks";
+    private static final String EAT_BREEDING_ITEM = "fathertoast.specialai.ai.grief.EntityAIEatBreedingItem";
 
     private SpecialAiCompatibility() {
     }
@@ -32,6 +33,15 @@ public final class SpecialAiCompatibility {
 
     public static boolean isEliteGoal(EntityAITaskEntry entry) {
         return entry.action.getClass().getName().startsWith("fathertoast.specialai.ai.elite.");
+    }
+
+    public static boolean isBreedingItemGoal(EntityAITaskEntry entry) {
+        return Installed.VERSION_MATCHES && entry.action.getMutexBits() == 3
+                && entry.action.getClass().getName().equals(EAT_BREEDING_ITEM);
+    }
+
+    public static boolean hasUnknownBreedingItemGoal(EntityAITaskEntry entry) {
+        return entry.action.getClass().getName().equals(EAT_BREEDING_ITEM) && !isBreedingItemGoal(entry);
     }
 
     public static boolean isCombatReaction(EntityAITaskEntry entry) {

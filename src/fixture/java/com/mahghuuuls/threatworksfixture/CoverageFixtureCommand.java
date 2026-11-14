@@ -12,6 +12,7 @@ import net.minecraft.command.CommandException;
 import net.minecraft.command.ICommandSender;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityCreature;
+import net.minecraft.entity.item.EntityItem;
 import net.minecraft.entity.item.EntityTNTPrimed;
 import net.minecraft.entity.EntityList;
 import net.minecraft.entity.EntityLivingBase;
@@ -28,6 +29,7 @@ import net.minecraft.entity.monster.EntitySpider;
 import net.minecraft.entity.monster.EntityZombie;
 import net.minecraft.entity.passive.EntityOcelot;
 import net.minecraft.entity.passive.EntityHorse;
+import net.minecraft.entity.passive.EntityTameable;
 import net.minecraft.entity.projectile.EntityArrow;
 import net.minecraft.entity.projectile.EntityFireball;
 import net.minecraft.entity.projectile.EntityTippedArrow;
@@ -600,16 +602,67 @@ final class CoverageFixtureCommand extends CommandBase {
                 fishNativeHandoff(actions, mob, player, guard, "hanging");
                 break;
             case "fish-tamed-handoff":
-                if (!"mod_lavacow:mummy".equals(String.valueOf(EntityList.getKey(mob)))
-                        || !(mob instanceof net.minecraft.entity.passive.EntityTameable)
+                String fishTamedId = String.valueOf(EntityList.getKey(mob));
+                if (!("mod_lavacow:mummy".equals(fishTamedId) || "mod_lavacow:amber_scarab".equals(fishTamedId))
+                        || !(mob instanceof EntityTameable)
                         || guard == null || mob.getAttackTarget() != player) {
-                    throw new CommandException("Expected a tracked wild Mummy targeting the player.");
+                    throw new CommandException("Expected a tracked wild Fish mob targeting the player.");
                 }
-                net.minecraft.entity.passive.EntityTameable tamedMummy =
-                        (net.minecraft.entity.passive.EntityTameable) mob;
-                tamedMummy.setTamed(true);
-                tamedMummy.setOwnerId(player.getUniqueID());
+                EntityTameable tamedMob = (EntityTameable) mob;
+                tamedMob.setTamed(true);
+                tamedMob.setOwnerId(player.getUniqueID());
                 fishNativeHandoff(actions, mob, player, guard, "tamed");
+                break;
+            case "fish-leap-handoff":
+                if (!"mod_lavacow:amber_scarab".equals(String.valueOf(EntityList.getKey(mob)))
+                        || guard == null || mob.getAttackTarget() != player) {
+                    throw new CommandException("Expected a tracked wild Amber Scarab targeting the player.");
+                }
+                if (mob.tasks.taskEntries.stream().anyMatch(task -> task.using
+                        && task.action.getClass() == net.minecraft.entity.ai.EntityAILeapAtTarget.class)) {
+                    fishNativeHandoff(actions, mob, player, guard, "leap");
+                } else {
+                    player.setPosition(mob.posX - 3.0, mob.posY, mob.posZ);
+                }
+                break;
+            case "fish-breeding-item-handoff":
+                if (!"mod_lavacow:weta".equals(String.valueOf(EntityList.getKey(mob))) || guard == null) {
+                    throw new CommandException("Expected a tracked wild Weta and its guard.");
+                }
+                if (mob.tasks.taskEntries.stream().anyMatch(task -> task.using && task.action.getClass().getName()
+                        .equals("fathertoast.specialai.ai.grief.EntityAIEatBreedingItem"))) {
+                    player.setNoGravity(false);
+                    guard.setNoGravity(false);
+                    player.setPosition(mob.posX - 1.3, mob.posY, mob.posZ);
+                    guard.setPosition(mob.posX + 1.3, mob.posY, mob.posZ);
+                    restorePlayer(player);
+                    if (mob.getAttackTarget() != player) {
+                        mob.setAttackTarget(player);
+                    }
+                    fishNativeHandoff(actions, mob, player, guard, "breeding-item");
+                } else if (!mob.getTags().contains("tw_l_weta_food")) {
+                    ResourceLocation food = new ResourceLocation("mod_lavacow:canepork");
+                    ItemStack bait = new ItemStack(ForgeRegistries.ITEMS.getValue(food));
+                    if (bait.isEmpty() || !((EntityTameable) mob).isBreedingItem(bait)) {
+                        throw new CommandException("The native Weta rejected the fixture food.");
+                    }
+                    EntityItem droppedFood = new EntityItem(world, mob.posX + 5, mob.posY, mob.posZ, bait);
+                    droppedFood.motionX = 0;
+                    droppedFood.motionY = 0;
+                    droppedFood.motionZ = 0;
+                    place(world, droppedFood, "tw_l_weta_food", mob.posX + 5, mob.posY, mob.posZ);
+                    mob.addTag("tw_l_weta_food");
+                    // Leave both scored participants alive but outside engagement while the food goal starts.
+                    guard.setNoGravity(true);
+                    player.setNoGravity(true);
+                    guard.setPosition(mob.posX, mob.posY + 40, mob.posZ);
+                    player.setPosition(mob.posX, mob.posY + 40, mob.posZ + 4);
+                    player.capabilities.disableDamage = true;
+                    mob.getNavigator().clearPath();
+                    world.getGameRules().setOrCreateGameRule("mobGriefing", "true");
+                    LOGGER.info("coverage fishDroppedBreedingItem mob={} item={} id={}", mob.getUniqueID(), food,
+                            droppedFood.getUniqueID());
+                }
                 break;
             case "fish-rising-handoff":
                 if (!"mod_lavacow:unburied".equals(String.valueOf(EntityList.getKey(mob)))

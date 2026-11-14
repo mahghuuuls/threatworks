@@ -3,10 +3,14 @@ package com.mahghuuuls.threatworks.compat;
 import com.mahghuuuls.threatworks.config.ServerTuning.MobType;
 import net.minecraft.entity.EntityCreature;
 import net.minecraft.entity.ai.EntityAITasks.EntityAITaskEntry;
+import net.minecraft.entity.ai.EntityAILeapAtTarget;
+import net.minecraft.entity.ai.EntityAIMate;
+import net.minecraft.entity.ai.EntityAITempt;
 import net.minecraft.entity.passive.EntityTameable;
 import net.minecraftforge.fml.common.Loader;
 import net.minecraftforge.fml.common.ModContainer;
 import net.minecraftforge.fml.common.versioning.ComparableVersion;
+import org.apache.logging.log4j.Logger;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -15,8 +19,19 @@ import java.lang.reflect.Method;
 public final class FishUndeadRisingCompatibility {
     private static final String MINIMUM = "1.6.2";
     private static final String ENTITY_PACKAGE = "com.Fishmod.mod_LavaCow.entities.";
+    private static final int LEAP = 16;
+    private static final int MATE = 32;
+    private static final int TEMPT = 64;
+    private static final int DESTROY_CROPS = 128;
 
     private FishUndeadRisingCompatibility() {
+    }
+
+    public static void reportVersion(Logger logger) {
+        if (Installed.MOD != null && !Installed.SUPPORTED) {
+            logger.warn("Fish's Undead Rising targeting unavailable for version {}. Update to at least {}.",
+                    Installed.MOD.getVersion(), MINIMUM);
+        }
     }
 
     public static boolean matches(MobType type, EntityCreature mob) {
@@ -29,16 +44,47 @@ public final class FishUndeadRisingCompatibility {
     }
 
     public static int meleePriority(MobType type) {
+        if (type == MobType.FISH_WETA) {
+            return 4;
+        }
+        if (usesWildAnimalMelee(type)) {
+            return 5;
+        }
         return type == MobType.FISH_PINGU || isWildZombie(type) ? 2 : usesSpells(type) ? 4 : -1;
     }
 
     public static boolean canUseGroundMelee(MobType type, EntityCreature mob) {
         return meleePriority(type) < 0 || !mob.isRiding() && !mob.isBeingRidden() && !mob.isInWater()
-                && (!isWildZombie(type) || mob instanceof EntityTameable && !((EntityTameable) mob).isTamed()
-                && ((EntityTameable) mob).getOwnerId() == null && !((EntityTameable) mob).isSitting());
+                && (!(isWildZombie(type) || usesWildAnimalMelee(type)) || isUnownedAndStanding(mob));
+    }
+
+    private static boolean isUnownedAndStanding(EntityCreature mob) {
+        if (!(mob instanceof EntityTameable)) {
+            return false;
+        }
+        EntityTameable tameable = (EntityTameable) mob;
+        return !tameable.isTamed() && tameable.getOwnerId() == null && !tameable.isSitting();
     }
 
     public static int nativeGoal(MobType type, EntityAITaskEntry entry) {
+        if (usesWildAnimalMelee(type)) {
+            Class<?> goal = entry.action.getClass();
+            int mutex = entry.action.getMutexBits();
+            if (goal == EntityAILeapAtTarget.class && entry.priority == meleePriority(type) - 1 && mutex == 5) {
+                return LEAP;
+            }
+            if (type == MobType.FISH_WETA) {
+                if (goal == EntityAIMate.class && entry.priority == 2 && mutex == 3) {
+                    return MATE;
+                }
+                if (goal == EntityAITempt.class && entry.priority == 3 && mutex == 3) {
+                    return TEMPT;
+                }
+                if (goal.getName().equals(ENTITY_PACKAGE + "ai.EntityAIDestroyCrops") && entry.priority == 5 && mutex == 5) {
+                    return DESTROY_CROPS;
+                }
+            }
+        }
         if (isWildZombie(type) && entry.priority == 1 && entry.action.getMutexBits() == 0
                 && entry.action.getClass().getName().equals(ENTITY_PACKAGE + "ai.EntityFishAIBreakDoor")) {
             return 8;
@@ -62,6 +108,10 @@ public final class FishUndeadRisingCompatibility {
     }
 
     public static boolean hasNativeGoals(MobType type, int goals) {
+        if (usesWildAnimalMelee(type)) {
+            int expected = type == MobType.FISH_WETA ? LEAP | MATE | TEMPT | DESTROY_CROPS : LEAP;
+            return goals == expected;
+        }
         return !usesSpells(type) || (goals & 3) == 3;
     }
 
@@ -94,6 +144,11 @@ public final class FishUndeadRisingCompatibility {
                 || type == MobType.FISH_FROZEN_ZOMBIE || type == MobType.FISH_MUSHROOM_ZOMBIE;
     }
 
+    public static boolean usesWildAnimalMelee(MobType type) {
+        return type == MobType.FISH_SCARAB || type == MobType.FISH_LITTLE_SLUDGE
+                || type == MobType.FISH_WETA || type == MobType.FISH_CACTOID;
+    }
+
     private static String entityClass(MobType type) {
         switch (type) {
             case FISH_FOGLET:
@@ -112,6 +167,14 @@ public final class FishUndeadRisingCompatibility {
                 return "EntityZombieFrozen";
             case FISH_MUSHROOM_ZOMBIE:
                 return "EntityZombieMushroom";
+            case FISH_SCARAB:
+                return "tameable.EntityScarab";
+            case FISH_LITTLE_SLUDGE:
+                return "tameable.EntityLilSludge";
+            case FISH_WETA:
+                return "tameable.EntityWeta";
+            case FISH_CACTOID:
+                return "tameable.EntityCactoid";
             default:
                 return null;
         }

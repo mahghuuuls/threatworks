@@ -69,7 +69,8 @@ final class MobTargets {
         boolean bow = usesBow(mob);
         boolean cqrGroundMelee = ChocolateQuestCompatibility.isGroundMelee(type);
         boolean rejectEliteGoals = GroundMeleeCompatibility.requiresNonEliteCombat(type)
-                || type == MobType.GAIA_BONE_KNIGHT || type == MobType.GAIA_VAMPIRE;
+                || type == MobType.GAIA_BONE_KNIGHT || type == MobType.GAIA_VAMPIRE
+                || FishUndeadRisingCompatibility.usesWildAnimalMelee(type);
         Class<?> attack = EntityAIAttackMelee.class;
         Class<?> declaringMob = null;
         String nestedAttack = null;
@@ -142,6 +143,8 @@ final class MobTargets {
                     fishGoals |= fishGoal;
                 } else if (SpecialAiCompatibility.hasUnknownCombatGoal(entry)
                         || rejectEliteGoals && SpecialAiCompatibility.isEliteGoal(entry)
+                        || FishUndeadRisingCompatibility.usesWildAnimalMelee(type)
+                        && SpecialAiCompatibility.hasUnknownBreedingItemGoal(entry)
                         || !SpecialAiCompatibility.isCombatReaction(entry)
                         && !GaiaCompatibility.isAntWander(type, entry)
                         && !GaiaCompatibility.isFleeSun(type, entry)
@@ -243,6 +246,7 @@ final class MobTargets {
         for (EntityAITaskEntry entry : mob.tasks.taskEntries) {
             if (entry.using && (SpecialAiCompatibility.isCombatReaction(entry)
                     || FishUndeadRisingCompatibility.nativeGoal(type, entry) != 0
+                    || FishUndeadRisingCompatibility.usesWildAnimalMelee(type) && SpecialAiCompatibility.isBreedingItemGoal(entry)
                     || SpecialAiCompatibility.isBlockGriefing(entry)
                     || GaiaCompatibility.isAntWander(type, entry)
                     || GaiaCompatibility.isFleeSun(type, entry)
