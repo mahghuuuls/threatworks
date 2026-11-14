@@ -5,6 +5,7 @@ import com.mahghuuuls.threatworks.compat.DungeonMobsCompatibility;
 import com.mahghuuuls.threatworks.compat.FishUndeadRisingCompatibility;
 import com.mahghuuuls.threatworks.compat.FoliaathCompatibility;
 import com.mahghuuuls.threatworks.compat.GaiaCompatibility;
+import com.mahghuuuls.threatworks.compat.GroundMeleeCompatibility;
 import com.mahghuuuls.threatworks.compat.IceAndFireCompatibility;
 import com.mahghuuuls.threatworks.compat.SpecialMobsCompatibility;
 import com.mahghuuuls.threatworks.config.ServerTuning;
@@ -137,6 +138,7 @@ final class MobAdmission {
         return type == MobType.FOLIAATH ? foliaath != null && foliaath.matches(mob)
                 : SpecialMobsCompatibility.matches(type, mob) || DefiledLandsCompatibility.matches(type, mob)
                 || GaiaCompatibility.matches(type, mob) || DungeonMobsCompatibility.matches(type, mob)
-                || IceAndFireCompatibility.matches(type, mob) || FishUndeadRisingCompatibility.matches(type, mob);
+                || IceAndFireCompatibility.matches(type, mob) || FishUndeadRisingCompatibility.matches(type, mob)
+                || GroundMeleeCompatibility.matches(type, mob);
     }
 }

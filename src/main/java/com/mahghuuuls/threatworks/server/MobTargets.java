@@ -6,6 +6,7 @@ import com.mahghuuuls.threatworks.compat.DungeonMobsCompatibility;
 import com.mahghuuuls.threatworks.compat.FishUndeadRisingCompatibility;
 import com.mahghuuuls.threatworks.compat.FoliaathCompatibility;
 import com.mahghuuuls.threatworks.compat.GaiaCompatibility;
+import com.mahghuuuls.threatworks.compat.GroundMeleeCompatibility;
 import com.mahghuuuls.threatworks.compat.IceAndFireCompatibility;
 import com.mahghuuuls.threatworks.compat.SpecialAiCompatibility;
 import com.mahghuuuls.threatworks.compat.SpecialMobsCompatibility;
@@ -178,6 +179,10 @@ final class MobTargets {
     }
 
     private static int providerMeleePriority(MobType type) {
+        int standardGround = GroundMeleeCompatibility.meleePriority(type);
+        if (standardGround >= 0) {
+            return standardGround;
+        }
         int dungeon = DungeonMobsCompatibility.meleePriority(type);
         if (dungeon >= 0) {
             return dungeon;
@@ -195,7 +200,8 @@ final class MobTargets {
     }
 
     static boolean inNativePhase(EntityCreature mob, MobType type) {
-        if (FishUndeadRisingCompatibility.nativePhase(type, mob) || GaiaCompatibility.isAquaticPhase(type, mob)) {
+        if (FishUndeadRisingCompatibility.nativePhase(type, mob) || GaiaCompatibility.isAquaticPhase(type, mob)
+                || GroundMeleeCompatibility.nativePhase(type, mob)) {
             return true;
         }
         if (IceAndFireCompatibility.usesAnimatedMelee(type) && IceAndFireCompatibility.animatedMeleeUnavailable(type, mob)) {

@@ -157,6 +157,12 @@ public final class ServerTuning {
         FISH_UNBURIED("mod_lavacow:unburied"),
         FISH_FROZEN_ZOMBIE("mod_lavacow:zombiefrozen"),
         FISH_MUSHROOM_ZOMBIE("mod_lavacow:zombiemushroom"),
+        STYGIAN_CRACKY("stygian:cracky"),
+        STYGIAN_GLUTTERMITE("stygian:gluttermite"),
+        STYGIAN_ENDERMITE("stygian:stygian_endermite"),
+        STYGIAN_WATCHLING("stygian:watchling"),
+        EERIE_CURSED_ARMOR("eerieentities:cursed_armor"),
+        EERIE_NETHER_KNIGHT("eerieentities:nether_knight"),
         FOLIAATH("mowziesmobs:foliaath");
 
         public final String id;

@@ -52,6 +52,7 @@ import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.World;
 import net.minecraft.world.WorldServer;
 import net.minecraftforge.common.ForgeChunkManager;
 import net.minecraft.util.math.ChunkPos;
@@ -796,6 +797,71 @@ final class CoverageFixtureCommand extends CommandBase {
                 break;
             case "legal-player":
                 restorePlayer(player);
+                break;
+            case "ordinary-guard-revenge":
+                if (guard == null || mob.getAttackTarget() != null) {
+                    throw new CommandException("Expected a fresh mob and its coverage guard.");
+                }
+                player.setPosition(X, mob.posY, Z + 13);
+                player.capabilities.disableDamage = true;
+                guard.setPosition(mob.posX + 1.4, mob.posY, mob.posZ);
+                mob.setRevengeTarget(guard);
+                break;
+            case "eerie-armor-wear":
+                if (!"eerieentities:cursed_armor".equals(String.valueOf(EntityList.getKey(mob)))
+                        || guard == null || mob.getAttackTarget() != guard) {
+                    throw new CommandException("Expected Cursed Armor targeting its coverage guard.");
+                }
+                double priorArmor = mob.getEntityAttribute(SharedMonsterAttributes.ARMOR).getAttributeValue();
+                float priorHealth = mob.getHealth();
+                restorePlayer(player);
+                for (int hit = 0; mob.getTotalArmorValue() > 0 && hit < 100; hit++) {
+                    attack(mob, player, "eerie-armor-blocked");
+                }
+                LOGGER.info("coverage eerieArmorWear mob={} armorBefore={} armorAfter={} lostHealth={}", mob.getUniqueID(),
+                        priorArmor, mob.getTotalArmorValue(), priorHealth - mob.getHealth());
+                if (priorArmor < 1 || mob.getTotalArmorValue() > 0 || mob.getHealth() != priorHealth) {
+                    throw new CommandException("Expected native armor to wear down before any health loss.");
+                }
+                break;
+            case "stygian-watchling-child":
+                if (!"stygian:watchling".equals(String.valueOf(EntityList.getKey(mob)))
+                        || mob.isChild() || guard == null || mob.getAttackTarget() != player) {
+                    throw new CommandException("Expected a tracked adult Watchling targeting the player.");
+                }
+                try {
+                    mob.getClass().getMethod("setChild", boolean.class).invoke(mob, true);
+                } catch (ReflectiveOperationException error) {
+                    throw new CommandException("Could not set Watchling's native child state.");
+                }
+                if (!mob.isChild()) {
+                    throw new CommandException("Expected the Watchling's native child flag.");
+                }
+                LOGGER.info("coverage watchlingChild mob={} former={} requested={} child=true taunt={}",
+                        mob.getUniqueID(), player.getUniqueID(), guard.getUniqueID(), actions.taunt(mob, player));
+                mob.setAttackTarget(guard);
+                if (mob.getAttackTarget() != guard) {
+                    throw new CommandException("The child Watchling did not accept the native target.");
+                }
+                break;
+            case "stygian-watchling-rain":
+                if (!"stygian:watchling".equals(String.valueOf(EntityList.getKey(mob)))
+                        || mob.isChild() || guard == null || mob.isWet() || mob.getAttackTarget() != player) {
+                    throw new CommandException("Expected a tracked dry adult Watchling targeting the player.");
+                }
+                world.getWorldInfo().setRaining(true);
+                world.getWorldInfo().setRainTime(200);
+                ReflectionHelper.setPrivateValue(World.class, world, 1.0F, "rainingStrength", "field_73004_o");
+                ReflectionHelper.setPrivateValue(World.class, world, 1.0F, "prevRainingStrength", "field_73003_n");
+                if (!mob.isWet() || mob.isInWater()) {
+                    throw new CommandException("Expected rain without submersion.");
+                }
+                LOGGER.info("coverage watchlingRain mob={} former={} requested={} wet=true swimming=false taunt={}",
+                        mob.getUniqueID(), player.getUniqueID(), guard.getUniqueID(), actions.taunt(mob, player));
+                mob.setAttackTarget(guard);
+                if (mob.getAttackTarget() != guard) {
+                    throw new CommandException("The wet Watchling did not accept the native target.");
+                }
                 break;
             case "blaze-opening":
                 if (!(mob instanceof EntityBlaze) || guard == null || mob.getAttackTarget() != guard) {
