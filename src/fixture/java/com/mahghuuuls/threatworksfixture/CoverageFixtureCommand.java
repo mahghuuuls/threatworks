@@ -374,7 +374,8 @@ final class CoverageFixtureCommand extends CommandBase {
         EntityPlayerMP player = get(world, EntityPlayerMP.class, "tw_i_player");
         EntityIronGolem guard = get(world, EntityIronGolem.class, "tw_i_guard");
         if (mob == null || player == null) {
-            throw new CommandException("Coverage actors are missing.");
+            throw new CommandException("Coverage actors are missing (mob=" + (mob != null)
+                    + ", player=" + (player != null) + ", guard=" + (guard != null) + ").");
         }
         ThreatActions actions = ThreatworksMod.threatActions();
         switch (operation) {
@@ -595,6 +596,36 @@ final class CoverageFixtureCommand extends CommandBase {
                 }
                 fishNativeHandoff(actions, mob, player, guard, "hanging");
                 break;
+            case "fish-tamed-handoff":
+                if (!"mod_lavacow:mummy".equals(String.valueOf(EntityList.getKey(mob)))
+                        || !(mob instanceof net.minecraft.entity.passive.EntityTameable)
+                        || guard == null || mob.getAttackTarget() != player) {
+                    throw new CommandException("Expected a tracked wild Mummy targeting the player.");
+                }
+                net.minecraft.entity.passive.EntityTameable tamedMummy =
+                        (net.minecraft.entity.passive.EntityTameable) mob;
+                tamedMummy.setTamed(true);
+                tamedMummy.setOwnerId(player.getUniqueID());
+                fishNativeHandoff(actions, mob, player, guard, "tamed");
+                break;
+            case "fish-rising-handoff":
+                if (!"mod_lavacow:unburied".equals(String.valueOf(EntityList.getKey(mob)))
+                        || guard == null || mob.getAttackTarget() != player) {
+                    throw new CommandException("Expected a tracked wild Unburied targeting the player.");
+                }
+                try {
+                    Class<?> zombieBase = mob.getClass().getSuperclass();
+                    Field risingTicks = zombieBase.getDeclaredField("risingTicks");
+                    risingTicks.setAccessible(true);
+                    risingTicks.setInt(mob, 20);
+                    if (!(Boolean) mob.getClass().getMethod("isRising").invoke(mob)) {
+                        throw new CommandException("The provider did not enter its rising state.");
+                    }
+                } catch (ReflectiveOperationException error) {
+                    throw new CommandException("Could not observe the provider's native rising state.");
+                }
+                fishNativeHandoff(actions, mob, player, guard, "rising");
+                break;
             case "gaia-vertical-impact":
                 LOGGER.info("coverage gaiaVertical mob={} player={} playerY={} mobY={} velocityY={}",
                         mob.getUniqueID(), player.getUniqueID(), player.posY, mob.posY, player.motionY);
@@ -726,6 +757,10 @@ final class CoverageFixtureCommand extends CommandBase {
                     if ("creeper-jump-retaliation".equals(operation)) {
                         mob.addTag("tw_l_jumping_pursuit");
                     }
+                } else if (mob instanceof net.minecraft.entity.passive.EntityTameable
+                        && retaliatingId.startsWith("mod_lavacow:")) {
+                    // Exercise native retaliation without leaving the opening in the guard's hurt window.
+                    mob.setRevengeTarget(guard);
                 } else {
                     guard.attackEntityAsMob(mob);
                 }

@@ -147,6 +147,10 @@ public final class ServerTuning {
         FISH_IMP("mod_lavacow:imp"),
         FISH_ISNACHI("mod_lavacow:isnachi"),
         FISH_PINGU("mod_lavacow:pingu"),
+        FISH_MUMMY("mod_lavacow:mummy"),
+        FISH_UNBURIED("mod_lavacow:unburied"),
+        FISH_FROZEN_ZOMBIE("mod_lavacow:zombiefrozen"),
+        FISH_MUSHROOM_ZOMBIE("mod_lavacow:zombiemushroom"),
         FOLIAATH("mowziesmobs:foliaath");
 
         public final String id;
