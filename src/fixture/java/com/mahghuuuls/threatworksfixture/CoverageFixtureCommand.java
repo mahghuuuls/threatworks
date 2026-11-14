@@ -1502,7 +1502,7 @@ final class CoverageFixtureCommand extends CommandBase {
                     restorePlayer(player);
                 }
                 attack(mob, player, "hit");
-                if (isCqrGoblinFaction(mob)) {
+                if (isCqrGoblinFaction(mob) || "cqrepoured:gremlin".equals(String.valueOf(EntityList.getKey(mob)))) {
                     mob.motionX = 0;
                     mob.motionZ = 0;
                     // Native revenge retains the closer incumbent. Both players fit inside the melee lane.
