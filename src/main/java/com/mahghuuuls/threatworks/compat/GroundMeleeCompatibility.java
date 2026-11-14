@@ -24,6 +24,9 @@ public final class GroundMeleeCompatibility {
     private static final Map<MobType, Binding> BINDINGS = new EnumMap<>(MobType.class);
     private static final Logger LOGGER = LogManager.getLogger("threatworks");
     private static final String MOC_HOSTILE = "drzhark.mocreatures.entity.hostile.MoCEntity";
+    private static final String MOC_WANDER = "drzhark.mocreatures.entity.ai.EntityAIWanderMoC2";
+    private static final String TORO_ZOMBIE_LEAP = "net.torocraft.toroquest.entities.ai.EntityAIZombieLeap";
+    private static final String TORO_RAID = "net.torocraft.toroquest.entities.ai.EntityAIRaid";
     private static MethodHandle horseIsFlyer;
     private static MethodHandle horseIsTamed;
 
@@ -47,9 +50,10 @@ public final class GroundMeleeCompatibility {
         bind(unsupported, MobType.MOC_FIRE_SCORPION, "mocreatures", "12.5.1", MOC_HOSTILE + "FireScorpion", 4);
         bind(unsupported, MobType.MOC_FROST_SCORPION, "mocreatures", "12.5.1", MOC_HOSTILE + "FrostScorpion", 4);
         bind(unsupported, MobType.MOC_UNDEAD_SCORPION, "mocreatures", "12.5.1", MOC_HOSTILE + "UndeadScorpion", 4);
-        bind(unsupported, MobType.MOC_RAT, "mocreatures", "12.5.1", MOC_HOSTILE + "Rat", 2);
-        bind(unsupported, MobType.MOC_HELL_RAT, "mocreatures", "12.5.1", MOC_HOSTILE + "HellRat", 2);
         bind(unsupported, MobType.MOC_SILVER_SKELETON, "mocreatures", "12.5.1", MOC_HOSTILE + "SilverSkeleton", 2);
+        String toro = "net.torocraft.toroquest.entities.Entity";
+        bind(unsupported, MobType.TORO_ZOMBIE_RAIDER, "toroquest", "1.12.2-5.3", toro + "ZombieRaider", 3);
+        bind(unsupported, MobType.TORO_ZOMBIE_VILLAGER_RAIDER, "toroquest", "1.12.2-5.3", toro + "ZombieVillagerRaider", 3);
         bindHorseGroundState();
         String quark = "vazkii.quark.world.entity.Entity";
         bind(unsupported, MobType.QUARK_ASHEN, "quark", "r1.6-192", quark + "Ashen", 4);
@@ -121,7 +125,8 @@ public final class GroundMeleeCompatibility {
     public static boolean requiresNonEliteCombat(MobType type) {
         return isQuarkSkeleton(type) || type == MobType.QUARK_DWELLER || type == MobType.QUARK_WRAITH
                 || type == MobType.ILLAGERS_FURANTUR || type == MobType.GAIA_MITE || isLightAvoiding(type)
-                || type == MobType.CHARM_SPECTRE || type == MobType.MOC_HORSE_MOB || usesMocDarkMelee(type);
+                || type == MobType.CHARM_SPECTRE || type == MobType.MOC_HORSE_MOB || usesMocDarkMelee(type)
+                || isToroZombieRaider(type);
     }
 
     private static boolean isLightAvoiding(MobType type) {
@@ -140,7 +145,7 @@ public final class GroundMeleeCompatibility {
     }
 
     public static boolean usesClimbingNavigator(MobType type) {
-        return isMocScorpion(type) || type == MobType.MOC_RAT || type == MobType.MOC_HELL_RAT;
+        return isMocScorpion(type);
     }
 
     public static boolean usesMocDarkMelee(MobType type) {
@@ -151,8 +156,7 @@ public final class GroundMeleeCompatibility {
         if (!usesMocDarkMelee(type)) {
             return false;
         }
-        String name = isMocScorpion(type) ? "Scorpion$AIScorpionAttack"
-                : usesClimbingNavigator(type) ? "Rat$AIRatAttack" : "SilverSkeleton$AISkeletonAttack";
+        String name = isMocScorpion(type) ? "Scorpion$AIScorpionAttack" : "SilverSkeleton$AISkeletonAttack";
         return goal.getName().equals(MOC_HOSTILE + name);
     }
 
@@ -163,7 +167,36 @@ public final class GroundMeleeCompatibility {
 
     public static boolean isMocWander(MobType type, EntityAITaskEntry entry) {
         return usesMocDarkMelee(type) && entry.priority == 4 && entry.action.getMutexBits() == 1
-                && entry.action.getClass().getName().equals("drzhark.mocreatures.entity.ai.EntityAIWanderMoC2");
+                && entry.action.getClass().getName().equals(MOC_WANDER);
+    }
+
+    public static boolean hasUnknownMocGoal(MobType type, EntityAITaskEntry entry) {
+        Class<?> goal = entry.action.getClass();
+        return isMocScorpion(type) && goal == EntityAILeapAtTarget.class && !isMocScorpionLeap(type, entry)
+                || usesMocDarkMelee(type) && goal.getName().equals(MOC_WANDER)
+                && !isMocWander(type, entry);
+    }
+
+    public static boolean isToroZombieRaider(MobType type) {
+        return type == MobType.TORO_ZOMBIE_RAIDER || type == MobType.TORO_ZOMBIE_VILLAGER_RAIDER;
+    }
+
+    public static boolean isToroRaiderGoal(MobType type, EntityAITaskEntry entry) {
+        if (!isToroZombieRaider(type)) {
+            return false;
+        }
+        String name = entry.action.getClass().getName();
+        int mutex = entry.action.getMutexBits();
+        return entry.priority == 2 && mutex == 0 && name.equals(TORO_ZOMBIE_LEAP)
+                || entry.priority == 7 && mutex == 1 && name.equals(TORO_RAID);
+    }
+
+    public static boolean hasUnknownToroRaiderGoal(MobType type, EntityAITaskEntry entry) {
+        if (!isToroZombieRaider(type)) {
+            return false;
+        }
+        String name = entry.action.getClass().getName();
+        return (name.equals(TORO_ZOMBIE_LEAP) || name.equals(TORO_RAID)) && !isToroRaiderGoal(type, entry);
     }
 
     public static boolean nativePhase(MobType type, EntityCreature mob) {

@@ -74,6 +74,7 @@ final class MobTargets {
         boolean rejectEliteGoals = GroundMeleeCompatibility.requiresNonEliteCombat(type)
                 || mob instanceof EntityWitch
                 || type == MobType.GAIA_BONE_KNIGHT || type == MobType.GAIA_VAMPIRE
+                || type == MobType.DUNGEON_GHOST || type == MobType.DUNGEON_REVENANT
                 || FishUndeadRisingCompatibility.usesWildAnimalMelee(type);
         Class<?> attack = EntityAIAttackMelee.class;
         Class<?> declaringMob = null;
@@ -82,7 +83,7 @@ final class MobTargets {
         int priority = cqrGroundMelee ? 18 : 4;
         if (mob instanceof EntityZombie) {
             attack = EntityAIZombieAttack.class;
-            priority = 2;
+            priority = type == MobType.DUNGEON_REVENANT ? 3 : 2;
         } else if (mob instanceof AbstractSkeleton) {
             attack = bow ? EntityAIAttackRangedBow.class : EntityAIAttackMelee.class;
         } else if (mob instanceof EntitySpider) {
@@ -153,6 +154,9 @@ final class MobTargets {
                     fishGoals |= fishGoal;
                 } else if (SpecialAiCompatibility.hasUnknownCombatGoal(entry)
                         || mob instanceof EntityWitch && SpecialAiCompatibility.hasUnknownWitchRider(entry)
+                        || GroundMeleeCompatibility.hasUnknownMocGoal(type, entry)
+                        || GroundMeleeCompatibility.hasUnknownToroRaiderGoal(type, entry)
+                        || DungeonMobsCompatibility.hasUnknownRevenantGoal(type, entry)
                         || rejectEliteGoals && SpecialAiCompatibility.isEliteGoal(entry)
                         || FishUndeadRisingCompatibility.usesWildAnimalMelee(type)
                         && SpecialAiCompatibility.hasUnknownBreedingItemGoal(entry)
@@ -160,6 +164,8 @@ final class MobTargets {
                         && !GroundMeleeCompatibility.isLightAvoidance(type, entry)
                         && !GroundMeleeCompatibility.isMocScorpionLeap(type, entry)
                         && !GroundMeleeCompatibility.isMocWander(type, entry)
+                        && !GroundMeleeCompatibility.isToroRaiderGoal(type, entry)
+                        && !DungeonMobsCompatibility.isRevenantGoal(type, entry)
                         && !GaiaCompatibility.isAntWander(type, entry)
                         && !GaiaCompatibility.isFleeSun(type, entry)
                         && !IceAndFireCompatibility.isHorseGoal(type, entry)
@@ -246,6 +252,9 @@ final class MobTargets {
         if (mob instanceof EntityWitch && WitchCombat.nativePhase((EntityWitch) mob)) {
             return true;
         }
+        if (type == MobType.DUNGEON_REVENANT && mob.isBurning()) {
+            return true;
+        }
         if (FishUndeadRisingCompatibility.nativePhase(type, mob) || GaiaCompatibility.isAquaticPhase(type, mob)
                 || GroundMeleeCompatibility.nativePhase(type, mob)
                 || ChocolateQuestCompatibility.isGroundMelee(type) && ChocolateQuestCompatibility.yieldsToNative(mob)
@@ -270,6 +279,8 @@ final class MobTargets {
                     || mob instanceof EntityWitch && SpecialAiCompatibility.isWitchRider(entry)
                     || GroundMeleeCompatibility.isLightAvoidance(type, entry)
                     || GroundMeleeCompatibility.isMocScorpionLeap(type, entry)
+                    || GroundMeleeCompatibility.isToroRaiderGoal(type, entry)
+                    || DungeonMobsCompatibility.isRevenantGoal(type, entry)
                     || entry.priority == GroundMeleeCompatibility.meleePriority(type)
                     && GroundMeleeCompatibility.isMocWander(type, entry)
                     || FishUndeadRisingCompatibility.nativeGoal(type, entry) != 0
@@ -335,7 +346,9 @@ final class MobTargets {
     }
 
     static boolean providerAccepts(MobType type, EntityCreature mob, EntityLivingBase target) {
-        return (!(mob instanceof EntityWitch) || target instanceof EntityPlayer)
+        boolean playersOnly = mob instanceof EntityWitch || type == MobType.DUNGEON_GHOST
+                || GroundMeleeCompatibility.isToroZombieRaider(type);
+        return (!playersOnly || target instanceof EntityPlayer)
                 && IceAndFireCompatibility.acceptsTarget(type, target)
                 && (!UnseenDungeonCompatibility.isSupportedType(type) || UnseenDungeonCompatibility.acceptsTarget(type, target))
                 && (!ChocolateQuestCompatibility.isGroundMelee(type) || ChocolateQuestCompatibility.acceptsTarget(mob, target));

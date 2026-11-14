@@ -379,8 +379,9 @@ final class CoverageFixtureCommand extends CommandBase {
         boolean cqrGoblinFaction = isCqrGoblinFaction(mob);
         boolean spectre = "charm:spectre".equals(id);
         boolean mocDarkMelee = id.startsWith("mocreatures:") && !"mocreatures:horsemob".equals(id);
+        boolean nativePlayerMelee = id.equals("dungeonmobs:dmghost") || id.startsWith("toroquest:toroquest_zombie");
         boolean twoPlayers = cqrGoblinFaction || "cqrepoured:gremlin".equals(id) || spectre
-                || mob instanceof net.minecraft.entity.monster.EntityWitch || mocDarkMelee;
+                || mob instanceof net.minecraft.entity.monster.EntityWitch || mocDarkMelee || nativePlayerMelee;
         if (!solo && twoPlayers) {
             EntityPlayerMP incumbent = fixturePlayer(world, id, "MeleeIncumbent");
             if (cqrGoblinFaction) {
@@ -1037,16 +1038,26 @@ final class CoverageFixtureCommand extends CommandBase {
                 }
                 restorePlayer(player);
                 attack(mob, player, "hit");
+                mob.setRevengeTarget(guard);
                 player.setPosition(mob.posX - 3.5, mob.posY, mob.posZ);
                 guard.setPosition(mob.posX + 3.2, mob.posY, mob.posZ);
                 break;
-            case "moc-incumbent-opening":
-                if (!(guard instanceof EntityPlayerMP) || mob.getAttackTarget() != guard) {
-                    throw new CommandException("Expected a native incumbent for a Mo' Creatures melee fight.");
+            case "revenant-burning-handoff":
+                if (guard == null || mob.getAttackTarget() != player
+                        || !"dungeonmobs:dmrevenant".equals(String.valueOf(EntityList.getKey(mob)))) {
+                    throw new CommandException("Expected a tracked Revenant targeting the challenger.");
                 }
-                attack(mob, (EntityPlayerMP) guard, "moc-incumbent");
-                guard.setPosition(mob.posX + 2, mob.posY, mob.posZ);
-                break;
+                mob.setFire(8);
+                try {
+                    mob.setAttackTarget(guard);
+                    LOGGER.info("coverage revenantBurnHandoff mob={} guard={} target={} burning={} taunt={}",
+                            mob.getUniqueID(), guard.getUniqueID(), identity(mob.getAttackTarget()), mob.isBurning(),
+                            actions.taunt(mob, player));
+                    report(mob, world);
+                } finally {
+                    mob.extinguish();
+                }
+                return;
             case "moc-flying-handoff":
                 if (guard == null || mob.getAttackTarget() != player) {
                     throw new CommandException("Expected a tracked ground HorseMob targeting the challenger.");
@@ -1072,6 +1083,20 @@ final class CoverageFixtureCommand extends CommandBase {
                 LOGGER.info("coverage mocClimbingHandoff mob={} guard={} target={} climbing={} taunt={}",
                         mob.getUniqueID(), guard.getUniqueID(), identity(mob.getAttackTarget()),
                         mob.isOnLadder(), actions.taunt(mob, player));
+                break;
+            }
+            case "moc-altered-leap": {
+                if (guard == null || mob.getAttackTarget() != player) {
+                    throw new CommandException("Expected a tracked scorpion targeting the challenger.");
+                }
+                EntityAIBase leap = mob.tasks.taskEntries.stream().filter(entry -> entry.priority == 3
+                                && entry.action.getClass() == net.minecraft.entity.ai.EntityAILeapAtTarget.class)
+                        .map(entry -> entry.action).findFirst()
+                        .orElseThrow(() -> new CommandException("Expected the provider's native scorpion leap."));
+                leap.setMutexBits(4);
+                mob.setAttackTarget(guard);
+                LOGGER.info("coverage mocAlteredLeap mob={} guard={} target={} mutex={} taunt={}", mob.getUniqueID(),
+                        guard.getUniqueID(), identity(mob.getAttackTarget()), leap.getMutexBits(), actions.taunt(mob, player));
                 break;
             }
             case "witch-opening":
@@ -2129,7 +2154,11 @@ final class CoverageFixtureCommand extends CommandBase {
         }
         float hp = mob.getHealth();
         float absorption = mob.getAbsorptionAmount();
-        player.setHeldItem(net.minecraft.util.EnumHand.MAIN_HAND, new ItemStack(net.minecraft.init.Items.STICK));
+        ItemStack held = new ItemStack(Items.STICK);
+        if ("dungeonmobs:dmghost".equals(String.valueOf(EntityList.getKey(mob)))) {
+            held.addEnchantment(net.minecraft.init.Enchantments.UNBREAKING, 1);
+        }
+        player.setHeldItem(net.minecraft.util.EnumHand.MAIN_HAND, held);
         player.attackTargetEntityWithCurrentItem(mob);
         LOGGER.info("coverage hit kind={} player={} mob={} hpBefore={} hpAfter={} absorptionBefore={} absorptionAfter={}",
                 operation, player.getUniqueID(), mob.getUniqueID(), hp, mob.getHealth(), absorption, mob.getAbsorptionAmount());
