@@ -70,11 +70,13 @@ class ServerTuningTest {
         freshVanilla.add(MobType.WITHER.id);
         freshVanilla.add(MobType.GUARDIAN.id);
         freshVanilla.add(MobType.ELDER_GUARDIAN.id);
+        freshVanilla.add(MobType.EVOKER.id);
+        freshVanilla.add(MobType.VEX.id);
         for (ServerTuning tuning : new ServerTuning[] {created, reloaded}) {
             assertEquals(freshVanilla, enabledVanilla(tuning));
             assertTrue(tuning.isEnabled(SPECIAL_ZOMBIE));
             assertTrue(tuning.isEnabled(SPECIAL_SKELETON));
-            assertEquals(239, Arrays.stream(MobType.values()).filter(tuning::isEnabled).count());
+            assertEquals(241, Arrays.stream(MobType.values()).filter(tuning::isEnabled).count());
             assertNull(tuning.assignedPoints("minecraft:stick", null));
             Rules rules = tuning.rulesFor(ZOMBIE);
             assertArrayEquals(new double[] {0.2, 0.4, 8, 16, 10, 60, 200, 40}, new double[] {

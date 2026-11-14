@@ -63,6 +63,8 @@ public final class ServerTuning {
         WITHER("minecraft:wither"),
         GUARDIAN("minecraft:guardian"),
         ELDER_GUARDIAN("minecraft:elder_guardian"),
+        EVOKER("minecraft:evocation_illager"),
+        VEX("minecraft:vex"),
         SPECIAL_ZOMBIE("specialmobs:specialzombie", true),
         PVJ_BANSHEE("pvj:pvj_banshee"),
         PVJ_SHADE("pvj:pvj_shade"),

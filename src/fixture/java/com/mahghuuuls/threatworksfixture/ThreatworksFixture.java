@@ -125,6 +125,12 @@ public final class ThreatworksFixture {
         GuardianFixtureCommand guardian = new GuardianFixtureCommand(this);
         event.registerServerCommand(guardian);
         MinecraftForge.EVENT_BUS.register(guardian);
+        IllagerFixtureCommand illager = new IllagerFixtureCommand(this);
+        event.registerServerCommand(illager);
+        MinecraftForge.EVENT_BUS.register(illager);
+        NeutralFixtureCommand neutral = new NeutralFixtureCommand(this);
+        event.registerServerCommand(neutral);
+        MinecraftForge.EVENT_BUS.register(neutral);
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)

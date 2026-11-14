@@ -55,6 +55,9 @@ interface MobPolicy {
         if (GuardianMobPolicy.matchesType(type)) {
             return new GuardianMobPolicy();
         }
+        if (IllagerMobPolicy.matchesType(type)) {
+            return new IllagerMobPolicy(type);
+        }
         if (GhastMobPolicy.matchesType(type)) {
             return new GhastMobPolicy(type);
         }
