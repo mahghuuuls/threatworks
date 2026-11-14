@@ -564,6 +564,37 @@ final class CoverageFixtureCommand extends CommandBase {
                         player.getItemStackFromSlot(EntityEquipmentSlot.FEET).getItemDamage(),
                         player.isPotionActive(MobEffects.NAUSEA), !world.canSeeSky(mob.getPosition()));
                 break;
+            case "fish-spell-handoff":
+                if (!"mod_lavacow:foglet".equals(String.valueOf(EntityList.getKey(mob)))
+                        || guard == null || mob.getAttackTarget() != player) {
+                    throw new CommandException("Expected a tracked Foglet targeting the player.");
+                }
+                boolean casting = mob.tasks.taskEntries.stream().anyMatch(entry -> entry.using
+                        && entry.action.getClass().getName().endsWith("EntityFoglet$AICastingApell"));
+                if (casting) {
+                    fishNativeHandoff(actions, mob, player, guard, "spell");
+                }
+                break;
+            case "fish-hanging-handoff":
+                if (!"mod_lavacow:isnachi".equals(String.valueOf(EntityList.getKey(mob)))
+                        || guard == null || mob.getAttackTarget() != player) {
+                    throw new CommandException("Expected a tracked Isnachi targeting the player.");
+                }
+                try {
+                    if (mob.tasks.taskEntries.stream().anyMatch(entry -> entry.using
+                            && entry.action.getClass().getName().endsWith("$AIClimbimgTree"))) {
+                        throw new CommandException("Hanging probe requires the climbing goal to be inactive.");
+                    }
+                    mob.getClass().getMethod("setIsHanging", boolean.class).invoke(mob, true);
+                    mob.setNoGravity(true);
+                    if (!(Boolean) mob.getClass().getMethod("getIsHanging").invoke(mob)) {
+                        throw new CommandException("The provider did not enter its hanging state.");
+                    }
+                } catch (ReflectiveOperationException error) {
+                    throw new CommandException("Could not set the provider's native hanging state.");
+                }
+                fishNativeHandoff(actions, mob, player, guard, "hanging");
+                break;
             case "gaia-vertical-impact":
                 LOGGER.info("coverage gaiaVertical mob={} player={} playerY={} mobY={} velocityY={}",
                         mob.getUniqueID(), player.getUniqueID(), player.posY, mob.posY, player.motionY);
@@ -1341,6 +1372,17 @@ final class CoverageFixtureCommand extends CommandBase {
         }
         view.participants.forEach(participant -> LOGGER.info("coverage score mob={} participant={} score={} eligibility={}",
                 mob.getUniqueID(), participant.id, participant.score, participant.eligibility));
+    }
+
+    private static void fishNativeHandoff(ThreatActions actions, EntityCreature mob,
+                                          EntityLivingBase player, EntityLivingBase guard, String phase)
+            throws CommandException {
+        LOGGER.info("coverage fishNativeHandoff mob={} former={} requested={} phase={} taunt={}",
+                mob.getUniqueID(), player.getUniqueID(), guard.getUniqueID(), phase, actions.taunt(mob, player));
+        mob.setAttackTarget(guard);
+        if (mob.getAttackTarget() != guard) {
+            throw new CommandException("The tracked Fish mob did not accept the native phase target.");
+        }
     }
 
     private static byte blazeFeedLevel(EntityCreature mob) throws CommandException {

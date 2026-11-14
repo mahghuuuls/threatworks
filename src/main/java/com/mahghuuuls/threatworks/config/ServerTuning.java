@@ -143,6 +143,10 @@ public final class ServerTuning {
         GAIA_MIMIC("grimoireofgaia:mimic"),
         GAIA_SPHINX("grimoireofgaia:sphinx"),
         GAIA_SPRIGGAN("grimoireofgaia:spriggan"),
+        FISH_FOGLET("mod_lavacow:foglet"),
+        FISH_IMP("mod_lavacow:imp"),
+        FISH_ISNACHI("mod_lavacow:isnachi"),
+        FISH_PINGU("mod_lavacow:pingu"),
         FOLIAATH("mowziesmobs:foliaath");
 
         public final String id;

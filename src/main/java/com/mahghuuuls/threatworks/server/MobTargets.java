@@ -3,6 +3,7 @@ package com.mahghuuuls.threatworks.server;
 import com.mahghuuuls.threatworks.config.ServerTuning.MobType;
 import com.mahghuuuls.threatworks.compat.DefiledLandsCompatibility;
 import com.mahghuuuls.threatworks.compat.DungeonMobsCompatibility;
+import com.mahghuuuls.threatworks.compat.FishUndeadRisingCompatibility;
 import com.mahghuuuls.threatworks.compat.FoliaathCompatibility;
 import com.mahghuuuls.threatworks.compat.GaiaCompatibility;
 import com.mahghuuuls.threatworks.compat.IceAndFireCompatibility;
@@ -93,6 +94,7 @@ final class MobTargets {
         boolean creeper = mob instanceof EntityCreeper;
         boolean specialBlaze = SpecialMobsCompatibility.isVariantBlaze(type);
         boolean foundSwell = false;
+        int fishGoals = 0;
         for (EntityAITaskEntry entry : mob.tasks.taskEntries) {
             Class<?> goal = entry.action.getClass();
             boolean vanillaSkeletonMelee = attack == EntityAIAttackMelee.class
@@ -117,16 +119,24 @@ final class MobTargets {
                     return false;
                 }
                 foundSwell = true;
-            } else if (SpecialAiCompatibility.hasUnknownCombatGoal(entry)
-                    || !SpecialAiCompatibility.isCombatReaction(entry)
-                    && !GaiaCompatibility.isAntWander(type, entry)
-                    && !IceAndFireCompatibility.isHorseGoal(type, entry)
-                    && (entry.priority > priority ? !entry.action.isInterruptible()
-                    : (entry.action.getMutexBits() & 3) != 0 && !nativeCompetingGoal(mob, entry))) {
-                return false;
+            } else {
+                int fishGoal = FishUndeadRisingCompatibility.nativeGoal(type, entry);
+                if (fishGoal != 0) {
+                    if ((fishGoals & fishGoal) != 0) {
+                        return false;
+                    }
+                    fishGoals |= fishGoal;
+                } else if (SpecialAiCompatibility.hasUnknownCombatGoal(entry)
+                        || !SpecialAiCompatibility.isCombatReaction(entry)
+                        && !GaiaCompatibility.isAntWander(type, entry)
+                        && !IceAndFireCompatibility.isHorseGoal(type, entry)
+                        && (entry.priority > priority ? !entry.action.isInterruptible()
+                        : (entry.action.getMutexBits() & 3) != 0 && !nativeCompetingGoal(mob, entry))) {
+                    return false;
+                }
             }
         }
-        return matched && (!creeper || foundSwell);
+        return matched && (!creeper || foundSwell) && FishUndeadRisingCompatibility.hasNativeGoals(type, fishGoals);
     }
 
     private static boolean nativeCompetingGoal(EntityCreature mob, EntityAITaskEntry entry) {
@@ -155,6 +165,7 @@ final class MobTargets {
                 && (mob instanceof EntityShulker || mob.getNavigator().getClass() == navigator)
                 && (!(mob instanceof EntityZombieVillager) || !((EntityZombieVillager) mob).isConverting())
                 && (GaiaCompatibility.meleePriority(type) < 0 || GaiaCompatibility.isHostile(mob))
+                && FishUndeadRisingCompatibility.canUseGroundMelee(type, mob)
                 && (IceAndFireCompatibility.meleePriority(type) < 0 || IceAndFireCompatibility.isUncommandedOnFoot(mob))
                 && (!SpecialMobsCompatibility.isVariantSkeleton(type) || !mob.isRiding()
                 && SpecialMobsCompatibility.hasSupportedSkeletonWeapon(type, mob, usesBow(mob)))
@@ -176,10 +187,17 @@ final class MobTargets {
             return defiled;
         }
         int gaia = GaiaCompatibility.meleePriority(type);
-        return gaia >= 0 ? gaia : IceAndFireCompatibility.meleePriority(type);
+        if (gaia >= 0) {
+            return gaia;
+        }
+        int iceAndFire = IceAndFireCompatibility.meleePriority(type);
+        return iceAndFire >= 0 ? iceAndFire : FishUndeadRisingCompatibility.meleePriority(type);
     }
 
     static boolean inNativePhase(EntityCreature mob, MobType type) {
+        if (FishUndeadRisingCompatibility.nativePhase(type, mob)) {
+            return true;
+        }
         if (IceAndFireCompatibility.usesAnimatedMelee(type) && IceAndFireCompatibility.animatedMeleeUnavailable(type, mob)) {
             return true;
         }
@@ -195,6 +213,7 @@ final class MobTargets {
         }
         for (EntityAITaskEntry entry : mob.tasks.taskEntries) {
             if (entry.using && (SpecialAiCompatibility.isCombatReaction(entry)
+                    || FishUndeadRisingCompatibility.nativeGoal(type, entry) != 0
                     || SpecialAiCompatibility.isBlockGriefing(entry)
                     || GaiaCompatibility.isAntWander(type, entry)
                     || IceAndFireCompatibility.isHorseGoal(type, entry)
