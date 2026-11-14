@@ -1158,6 +1158,8 @@ final class CoverageFixtureCommand extends CommandBase {
                 }
                 Vec3d prior = guard.getPositionVector();
                 mob.setPosition(X, Y, Z);
+                guard.setPosition(X, Y + 8, Z);
+                ThreatActions.Result tooHigh = actions.taunt(mob, guard);
                 guard.setPosition(X + 6, Y, Z);
                 BlockPos roof = new BlockPos(X + 3, Y + 2, Z);
                 world.setBlockState(roof, Blocks.STONE.getDefaultState());
@@ -1166,8 +1168,8 @@ final class CoverageFixtureCommand extends CommandBase {
                 boolean eyeClear = world.rayTraceBlocks(start, end, false, true, false) == null;
                 ThreatActions.Result blocked = actions.taunt(mob, guard);
                 world.setBlockToAir(roof);
-                LOGGER.info("coverage witchLaneBounds mob={} guard={} eyeClear={} blocked={} clear={}",
-                        mob.getUniqueID(), guard.getUniqueID(), eyeClear, blocked, actions.taunt(mob, guard));
+                LOGGER.info("coverage witchLaneBounds mob={} guard={} tooHigh={} eyeClear={} blocked={} clear={}",
+                        mob.getUniqueID(), guard.getUniqueID(), tooHigh, eyeClear, blocked, actions.taunt(mob, guard));
                 guard.setPosition(prior.x, prior.y, prior.z);
                 break;
             }

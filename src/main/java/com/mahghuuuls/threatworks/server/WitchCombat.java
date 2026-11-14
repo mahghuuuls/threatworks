@@ -25,7 +25,7 @@ final class WitchCombat {
 
     static TargetObservation observe(LoadedPathTerrain terrain, EntityWitch witch, EntityLivingBase target,
                                      boolean sightLost) {
-        if (witch.getDistanceSq(target) > POTION_LANE_RANGE_SQUARED) {
+        if (witch.getDistanceSq(target) > POTION_LANE_RANGE_SQUARED || Math.abs(witch.posY - target.posY) > 2.0) {
             return TargetObservation.INELIGIBLE;
         }
         if (sightLost) {
