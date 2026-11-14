@@ -2,6 +2,8 @@ package com.mahghuuuls.threatworks.compat;
 
 import com.mahghuuuls.threatworks.config.ServerTuning.MobType;
 import net.minecraft.entity.EntityCreature;
+import net.minecraft.entity.ai.EntityAIFleeSun;
+import net.minecraft.entity.ai.EntityAITasks.EntityAITaskEntry;
 import net.minecraftforge.fml.common.Loader;
 import net.minecraftforge.fml.common.ModContainer;
 import net.minecraftforge.fml.common.versioning.ComparableVersion;
@@ -29,6 +31,10 @@ public final class GroundMeleeCompatibility {
         bind(unsupported, MobType.EERIE_NETHER_KNIGHT, "eerieentities", "1.0.7", "com.jarhax.eerieentities.entities.EntityNetherKnight", 2);
         bind(unsupported, MobType.ILLAGERS_FURANTUR, "illagers_plus", "1.1", "com.litewolf101.objects.entities.EntityFurantur", 4);
         bind(unsupported, MobType.GAIA_MITE, "grimoireofgaia", "1.7.2", "gaia.entity.monster.EntityGaiaMite", 2);
+        bind(unsupported, MobType.PVJ_BANSHEE, "pvj", "1.6.4", "vibrantjourneys.entities.monster.EntityBanshee", 2);
+        bind(unsupported, MobType.PVJ_SHADE, "pvj", "1.6.4", "vibrantjourneys.entities.monster.EntityShade", 2);
+        bind(unsupported, MobType.CHARM_SPECTRE, "charm", "1.4", "svenhjol.charm.world.entity.EntitySpectre", 2);
+        bind(unsupported, MobType.MOC_HORSE_MOB, "mocreatures", "12.5.1", "drzhark.mocreatures.entity.hostile.MoCEntityHorseMob", 2);
         String quark = "vazkii.quark.world.entity.Entity";
         bind(unsupported, MobType.QUARK_ASHEN, "quark", "r1.6-192", quark + "Ashen", 4);
         bind(unsupported, MobType.QUARK_DWELLER, "quark", "r1.6-192", quark + "Dweller", 2);
@@ -72,11 +78,23 @@ public final class GroundMeleeCompatibility {
 
     public static boolean requiresNonEliteCombat(MobType type) {
         return isQuarkSkeleton(type) || type == MobType.QUARK_DWELLER || type == MobType.QUARK_WRAITH
-                || type == MobType.ILLAGERS_FURANTUR || type == MobType.GAIA_MITE;
+                || type == MobType.ILLAGERS_FURANTUR || type == MobType.GAIA_MITE || isLightAvoiding(type)
+                || type == MobType.CHARM_SPECTRE || type == MobType.MOC_HORSE_MOB;
+    }
+
+    private static boolean isLightAvoiding(MobType type) {
+        return type == MobType.PVJ_BANSHEE || type == MobType.PVJ_SHADE;
+    }
+
+    public static boolean isLightAvoidance(MobType type, EntityAITaskEntry entry) {
+        return isLightAvoiding(type) && entry.action.getMutexBits() == 1
+                && (entry.priority == 0 && entry.action.getClass().getName().equals("vibrantjourneys.entities.ai.EntityAIAvoidLight")
+                || entry.priority == 3 && entry.action.getClass() == EntityAIFleeSun.class);
     }
 
     public static boolean nativePhase(MobType type, EntityCreature mob) {
         return BINDINGS.containsKey(type) && (mob.isRiding() || mob.isBeingRidden() || mob.isInWater() || mob.isInLava()
+                || isLightAvoiding(type) && mob.isBurning()
                 || type == MobType.STYGIAN_WATCHLING && mob.isChild()
                 || (type == MobType.STYGIAN_GLUTTERMITE || type == MobType.STYGIAN_ENDERMITE
                     || type == MobType.STYGIAN_WATCHLING) && mob.isWet());

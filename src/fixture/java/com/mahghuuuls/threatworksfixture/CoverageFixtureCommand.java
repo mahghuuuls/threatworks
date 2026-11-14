@@ -373,14 +373,17 @@ final class CoverageFixtureCommand extends CommandBase {
     private static void actors(WorldServer world, EntityCreature mob, boolean solo) throws CommandException {
         String id = String.valueOf(EntityList.getKey(mob));
         boolean cqrGoblinFaction = isCqrGoblinFaction(mob);
-        boolean cqrPlayerDuel = cqrGoblinFaction || "cqrepoured:gremlin".equals(id);
-        if (!solo && cqrPlayerDuel) {
-            EntityPlayerMP incumbent = fixturePlayer(world, id, "CqrIncumbent");
+        boolean spectre = "charm:spectre".equals(id);
+        boolean twoPlayers = cqrGoblinFaction || "cqrepoured:gremlin".equals(id) || spectre
+                || mob instanceof net.minecraft.entity.monster.EntityWitch;
+        if (!solo && twoPlayers) {
+            EntityPlayerMP incumbent = fixturePlayer(world, id, "MeleeIncumbent");
             if (cqrGoblinFaction) {
                 setCqrHostileReputation(mob, incumbent);
             }
             incumbent.addTag("tw_l_tick_hurt_window");
-            place(world, incumbent, "tw_i_guard", X + 2, mob.posY, Z);
+            double spacing = spectre ? 7 : mob instanceof net.minecraft.entity.monster.EntityWitch ? 6 : 2;
+            place(world, incumbent, "tw_i_guard", X + spacing, mob.posY, Z);
         } else if (!solo) {
             EntityIronGolem guard = new EntityIronGolem(world);
             guard.setNoAI(true);
@@ -403,7 +406,7 @@ final class CoverageFixtureCommand extends CommandBase {
         EntityPlayerMP player = fixturePlayer(world, id, "CampaignI");
         player.setSneaking(true);
         player.setInvisible(true);
-        if (cqrPlayerDuel) {
+        if (twoPlayers) {
             player.capabilities.disableDamage = true;
             player.addTag("tw_l_tick_hurt_window");
         }
@@ -413,7 +416,7 @@ final class CoverageFixtureCommand extends CommandBase {
         if (id.startsWith("grimoireofgaia:")) {
             player.addTag("tw_l_gaia_effect");
         }
-        place(world, player, "tw_i_player", X, mob.posY, Z + (cqrPlayerDuel ? 27 : 13));
+        place(world, player, "tw_i_player", X, mob.posY, Z + (twoPlayers ? 27 : 13));
         LOGGER.info("coverage actors mob={} player={} guard={}", mob.getUniqueID(), player.getUniqueID(),
                 identity(get(world, EntityLivingBase.class, "tw_i_guard")));
         report(mob, world);
@@ -1023,6 +1026,47 @@ final class CoverageFixtureCommand extends CommandBase {
             case "legal-player":
                 restorePlayer(player);
                 break;
+            case "ground-player-opening":
+                if (!(guard instanceof EntityPlayerMP) || mob.getAttackTarget() != guard) {
+                    throw new CommandException("Expected the native player incumbent.");
+                }
+                restorePlayer(player);
+                attack(mob, player, "hit");
+                player.setPosition(mob.posX - 3.5, mob.posY, mob.posZ);
+                guard.setPosition(mob.posX + 3.2, mob.posY, mob.posZ);
+                break;
+            case "witch-opening":
+            case "witch-native-redirect":
+                if (!(mob instanceof net.minecraft.entity.monster.EntityWitch) || !(guard instanceof EntityPlayerMP)
+                        || mob.getAttackTarget() != guard) {
+                    throw new CommandException("Expected a native Witch targeting its first player.");
+                }
+                restorePlayer(player);
+                if ("witch-opening".equals(operation)) {
+                    attack(mob, player, "witch");
+                }
+                player.setPosition(mob.posX - 6.0, mob.posY, mob.posZ);
+                guard.setPosition(mob.posX + 6.0, mob.posY, mob.posZ);
+                if ("witch-native-redirect".equals(operation)) {
+                    mob.setAttackTarget(player);
+                }
+                break;
+            case "pvj-burning-handoff": {
+                if (guard == null || mob.getAttackTarget() != player) {
+                    throw new CommandException("Expected a tracked light-avoiding mob targeting the player.");
+                }
+                mob.setFire(8);
+                try {
+                    mob.setAttackTarget(guard);
+                    LOGGER.info("coverage pvjBurningHandoff mob={} guard={} target={} burning={} taunt={}",
+                            mob.getUniqueID(), guard.getUniqueID(), identity(mob.getAttackTarget()),
+                            mob.isBurning(), actions.taunt(mob, player));
+                    report(mob, world);
+                } finally {
+                    mob.extinguish();
+                }
+                return;
+            }
             case "ordinary-guard-revenge":
             case "cqr-sword-guard-revenge":
                 if (guard == null || mob.getAttackTarget() != null && mob.getAttackTarget() != guard) {

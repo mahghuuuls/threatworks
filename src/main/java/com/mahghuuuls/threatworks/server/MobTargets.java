@@ -146,6 +146,7 @@ final class MobTargets {
                         || FishUndeadRisingCompatibility.usesWildAnimalMelee(type)
                         && SpecialAiCompatibility.hasUnknownBreedingItemGoal(entry)
                         || !SpecialAiCompatibility.isCombatReaction(entry)
+                        && !GroundMeleeCompatibility.isLightAvoidance(type, entry)
                         && !GaiaCompatibility.isAntWander(type, entry)
                         && !GaiaCompatibility.isFleeSun(type, entry)
                         && !IceAndFireCompatibility.isHorseGoal(type, entry)
@@ -245,6 +246,7 @@ final class MobTargets {
         }
         for (EntityAITaskEntry entry : mob.tasks.taskEntries) {
             if (entry.using && (SpecialAiCompatibility.isCombatReaction(entry)
+                    || GroundMeleeCompatibility.isLightAvoidance(type, entry)
                     || FishUndeadRisingCompatibility.nativeGoal(type, entry) != 0
                     || FishUndeadRisingCompatibility.usesWildAnimalMelee(type) && SpecialAiCompatibility.isBreedingItemGoal(entry)
                     || SpecialAiCompatibility.isBlockGriefing(entry)
