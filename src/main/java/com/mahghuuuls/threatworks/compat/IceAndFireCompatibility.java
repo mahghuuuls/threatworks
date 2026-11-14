@@ -3,7 +3,10 @@ package com.mahghuuuls.threatworks.compat;
 import com.mahghuuuls.threatworks.config.ServerTuning.MobType;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityCreature;
+import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.ai.EntityAITasks.EntityAITaskEntry;
+import net.minecraft.util.math.MathHelper;
+import net.minecraft.util.math.Vec3d;
 import net.minecraftforge.fml.common.Loader;
 import net.minecraftforge.fml.common.ModContainer;
 import net.minecraftforge.fml.common.versioning.ComparableVersion;
@@ -12,6 +15,7 @@ import org.apache.logging.log4j.Logger;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.lang.reflect.Field;
 import java.util.UUID;
 
 /** Ground melee for wild, on-foot Dread mobs with inspected native goals. */
@@ -37,14 +41,47 @@ public final class IceAndFireCompatibility {
     }
 
     public static boolean matches(MobType type, EntityCreature mob) {
-        return meleePriority(type) >= 0 && Installed.COMMANDER != null && Installed.TARGET != null
+        String entityClass = entityClass(type);
+        return entityClass != null && Installed.COMMANDER != null && Installed.TARGET != null
                 && Installed.COMMANDER.getDeclaringClass().isInstance(mob)
-                && mob.getClass().getName().equals(ENTITY_PACKAGE
-                + (type == MobType.DREAD_THRALL ? "EntityDreadThrall" : "EntityDreadKnight"));
+                && mob.getClass().getName().equals(ENTITY_PACKAGE + entityClass);
     }
 
     public static int meleePriority(MobType type) {
-        return type == MobType.DREAD_THRALL || type == MobType.DREAD_KNIGHT ? 2 : -1;
+        return entityClass(type) == null ? -1 : 2;
+    }
+
+    private static String entityClass(MobType type) {
+        switch (type) {
+            case DREAD_THRALL:
+                return "EntityDreadThrall";
+            case DREAD_KNIGHT:
+                return "EntityDreadKnight";
+            case DREAD_BEAST:
+                return "EntityDreadBeast";
+            default:
+                return null;
+        }
+    }
+
+    public static boolean beastBiteReaches(Vec3d from, EntityLivingBase target) {
+        float x = (float) (from.x - target.posX);
+        float y = (float) (from.y - target.posY);
+        float z = (float) (from.z - target.posZ);
+        return MathHelper.sqrt(x * x + y * y + z * z) < 4.0F;
+    }
+
+    public static boolean beastUnavailable(EntityCreature mob) {
+        if (Beast.ANIMATION == null || Beast.SPAWN == null || Beast.readFailed) {
+            return true;
+        }
+        try {
+            return Beast.ANIMATION.invoke(mob) == Beast.SPAWN;
+        } catch (ReflectiveOperationException | LinkageError | RuntimeException failure) {
+            Beast.readFailed = true;
+            LOGGER.warn("Disabling Ice and Fire Dread Beast targeting because its animation read failed.", failure);
+            return true;
+        }
     }
 
     public static boolean isHorseGoal(MobType type, EntityAITaskEntry entry) {
@@ -106,6 +143,32 @@ public final class IceAndFireCompatibility {
             } catch (ReflectiveOperationException | LinkageError | RuntimeException failure) {
                 return null;
             }
+        }
+    }
+
+    private static final class Beast {
+        private static final Method ANIMATION;
+        private static final Object SPAWN;
+        private static boolean readFailed;
+
+        static {
+            Method animation = null;
+            Object spawn = null;
+            try {
+                Class<?> entity = Class.forName(ENTITY_PACKAGE + "EntityDreadBeast", false, Loader.instance().getModClassLoader())
+                        .asSubclass(EntityCreature.class);
+                Method getter = entity.getMethod("getAnimation");
+                Field field = entity.getField("ANIMATION_SPAWN");
+                if (!Modifier.isStatic(getter.getModifiers()) && Modifier.isStatic(field.getModifiers())
+                        && getter.getReturnType() == field.getType()) {
+                    spawn = field.get(null);
+                    animation = getter;
+                }
+            } catch (ReflectiveOperationException | LinkageError | RuntimeException failure) {
+                LOGGER.warn("Ice and Fire Dread Beast targeting unavailable because its animation could not be bound.", failure);
+            }
+            ANIMATION = animation;
+            SPAWN = spawn;
         }
     }
 }

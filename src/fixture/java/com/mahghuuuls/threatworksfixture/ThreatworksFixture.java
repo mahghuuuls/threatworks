@@ -134,6 +134,10 @@ public final class ThreatworksFixture {
                 && event.getAmount() > 0) {
             LOGGER.info("coverage nativeImpact mob={} target={} source={} amount={}", source.getUniqueID(),
                     victim.getUniqueID(), event.getSource().getDamageType(), event.getAmount());
+            if (source instanceof EntityCreature && immediate == source
+                    && CoverageFixtureCommand.DREAD_BEAST.equals(String.valueOf(EntityList.getKey(source)))) {
+                CoverageFixtureCommand.recordDreadBeastBite((EntityCreature) source, victim);
+            }
             if (immediate instanceof EntityFireball) {
                 LOGGER.info("coverage blazeImpact mob={} target={} shot={} tick={} projectile={}", source.getUniqueID(),
                         victim.getUniqueID(), immediate.getUniqueID(), victim.world.getTotalWorldTime(),
@@ -489,6 +493,11 @@ public final class ThreatworksFixture {
             boolean coordinated = coordinatedTargetWrite();
             LOGGER.info("coverage targetWrite mob={} requested={} coordinated={} tick={}", entity.getUniqueID(),
                     target == null ? null : target.getUniqueID(), coordinated, entity.getServer().getTickCounter());
+            if (coordinated && target instanceof EntityPlayerMP
+                    && CoverageFixtureCommand.DREAD_BEAST.equals(String.valueOf(EntityList.getKey(entity)))) {
+                LOGGER.info("coverage dreadBeastSwitch mob={} player={} tick={} distance={}",
+                        entity.getUniqueID(), target.getUniqueID(), entity.world.getTotalWorldTime(), entity.getDistance(target));
+            }
             if (!coordinated && target != null && entity.getTags().contains("tw_l_dread_command_probe")
                     && target.getTags().contains("tw_i_guard") && isNativeDreadCommandWrite()) {
                 entity.removeTag("tw_l_dread_command_probe");

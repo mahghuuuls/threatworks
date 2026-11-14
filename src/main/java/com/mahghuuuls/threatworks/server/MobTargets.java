@@ -180,6 +180,9 @@ final class MobTargets {
     }
 
     static boolean inNativePhase(EntityCreature mob, MobType type) {
+        if (type == MobType.DREAD_BEAST && IceAndFireCompatibility.beastUnavailable(mob)) {
+            return true;
+        }
         if (mob instanceof EntitySpider && type != MobType.DEFILED_SCUTTLER && mob.getBrightness() >= 0.5F
                 || mob instanceof EntityShulker && !canAttackWhileAttached((EntityShulker) mob)) {
             return true;
@@ -273,12 +276,12 @@ final class MobTargets {
         if (mob instanceof EntityBlaze || mob instanceof EntityShulker) {
             return observeProjectile(terrain, mob, target, sightLost);
         }
-        boolean attackGeometry = canAttackFrom(terrain, mob, target, position, bow);
-        if (!attackGeometry && !canPursue(world, terrain, mob, target, bow, sample)) {
+        boolean attackGeometry = canAttackFrom(terrain, mob, target, position, bow, type);
+        if (!attackGeometry && !canPursue(world, terrain, mob, target, bow, sample, type)) {
             return TargetObservation.INELIGIBLE;
         }
         if (sightLost) {
-            return TargetObservation.obscured(!bow && attackGeometry);
+            return TargetObservation.obscured(!bow && type != MobType.DREAD_BEAST && attackGeometry);
         }
         return attackGeometry ? TargetObservation.IN_REACH : TargetObservation.pursuit(Math.sqrt(mob.getDistanceSq(target)));
     }
@@ -366,7 +369,7 @@ final class MobTargets {
     }
 
     private static boolean canPursue(WorldServer world, LoadedPathTerrain terrain, EntityLiving mob,
-                                      EntityLivingBase target, boolean bow, WorkSample sample) {
+                                      EntityLivingBase target, boolean bow, WorkSample sample, MobType type) {
         if (!(mob.getNavigator() instanceof PathNavigateGround)) {
             return false;
         }
@@ -391,7 +394,8 @@ final class MobTargets {
             BlockPos floor = new BlockPos(waypoint).down();
             double height = terrain.getBlockState(floor).getBoundingBox(terrain, floor).maxY;
             Vec3d stance = waypoint.add(0.0, height - 1.0, 0.0);
-            if ((!bow || sees(terrain, mob, target, stance)) && canAttackFrom(terrain, mob, target, stance, bow)) {
+            if ((!(bow || type == MobType.DREAD_BEAST) || sees(terrain, mob, target, stance))
+                    && canAttackFrom(terrain, mob, target, stance, bow, type)) {
                 return true;
             }
         }
@@ -440,7 +444,7 @@ final class MobTargets {
     }
 
     private static boolean canAttackFrom(LoadedPathTerrain terrain, EntityLiving mob, EntityLivingBase target,
-                                         Vec3d from, boolean bow) {
+                                         Vec3d from, boolean bow, MobType type) {
         if (bow) {
             return SkeletonBow.canReach(from.add(0.0, mob.getEyeHeight() - 0.1F, 0.0),
                     target.getEntityBoundingBox(), target.height, terrain::clearLine,
@@ -449,6 +453,9 @@ final class MobTargets {
         if (mob instanceof EntityCreeper) {
             return from.squareDistanceTo(target.posX, target.posY, target.posZ) < 9.0
                     && sees(terrain, mob, target, from);
+        }
+        if (type == MobType.DREAD_BEAST) {
+            return IceAndFireCompatibility.beastBiteReaches(from, target);
         }
         float reach = mob.width * 2.0F;
         float reachSquared = mob instanceof EntitySpider ? 4.0F : reach * reach;
