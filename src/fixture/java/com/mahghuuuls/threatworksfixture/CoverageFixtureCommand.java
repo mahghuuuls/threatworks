@@ -254,8 +254,9 @@ final class CoverageFixtureCommand extends CommandBase {
         incumbent.setNoGravity(true);
         challenger.setNoGravity(true);
         challenger.capabilities.disableDamage = true;
-        place(world, incumbent, "tw_i_guard", X + 9, altitude + 0.5, Z);
-        place(world, challenger, "tw_i_player", X - 9, altitude + 0.5, Z);
+        double spacing = meleeGhast(id) ? 5.0 : 9.0;
+        place(world, incumbent, "tw_i_guard", X + spacing, altitude + 0.5, Z);
+        place(world, challenger, "tw_i_player", X - spacing, altitude + 0.5, Z);
         if ("minecraft:ghast".equals(id)) {
             ghast.getEntityData().setBoolean("SpecialMobsInit", true);
         }
@@ -263,6 +264,11 @@ final class CoverageFixtureCommand extends CommandBase {
         LOGGER.info("coverage actors mob={} player={} guard={}", ghast.getUniqueID(),
                 challenger.getUniqueID(), incumbent.getUniqueID());
         report(ghast, world);
+    }
+
+    private static boolean meleeGhast(String id) {
+        return "specialmobs:babyghast".equals(id) || "specialmobs:fighterghast".equals(id)
+                || "specialmobs:unholyghast".equals(id);
     }
 
     private static void seedSlime(WorldServer world, EntitySlime slime, String id, int height) throws CommandException {
@@ -1958,18 +1964,41 @@ final class CoverageFixtureCommand extends CommandBase {
                 throw new CommandException("Expected native player acquisition before changing the ghast's target.");
             }
             restorePlayer(player);
+            boolean melee = meleeGhast(String.valueOf(EntityList.getKey(mob)));
+            double spacing = melee ? 5.0 : Math.max(9.0, mob.width + 2.0);
             if ("ghast-opening".equals(operation)) {
                 attack(mob, player, "ghast");
-                double spacing = Math.max(9.0, mob.width + 2.0);
                 guard.setPosition(mob.posX + spacing, mob.posY + 0.5, mob.posZ);
                 player.setPosition(mob.posX - spacing, mob.posY + 0.5, mob.posZ);
             } else {
-                player.setPosition(mob.posX - 9, mob.posY + 0.5, mob.posZ);
+                player.setPosition(mob.posX - spacing, mob.posY + 0.5, mob.posZ);
                 mob.setAttackTarget(player);
                 if (mob.getAttackTarget() != player) {
                     throw new CommandException("The ghast's native setter rejected the second player.");
                 }
             }
+        } else if ("ghast-melee-geometry".equals(operation)) {
+            if (mob.getAttackTarget() != player || !meleeGhast(String.valueOf(EntityList.getKey(mob)))) {
+                throw new CommandException("Expected a melee ghast targeting the challenger.");
+            }
+            ThreatActions actions = ThreatworksMod.threatActions();
+            Vec3d former = guard.getPositionVector();
+            mob.setPosition(X, Y + 10, Z);
+            guard.setPosition(X + 13, Y + 10, Z);
+            ThreatActions.Result distant = actions.taunt(mob, guard);
+            guard.setPosition(X + 6, Y + 10, Z);
+            // A low protrusion clips the flying body while leaving the eye ray clear.
+            BlockPos obstruction = new BlockPos(X + 3, Y + 10, Z);
+            world.setBlockState(obstruction, Blocks.STONE.getDefaultState());
+            guard.setPosition(X + 6, Y + 10.5, Z);
+            Vec3d eye = mob.getPositionVector().add(0, mob.getEyeHeight(), 0);
+            Vec3d targetEye = guard.getPositionVector().add(0, guard.getEyeHeight(), 0);
+            boolean openEyes = world.rayTraceBlocks(eye, targetEye, false, true, false) == null;
+            ThreatActions.Result blocked = actions.taunt(mob, guard);
+            world.setBlockToAir(obstruction);
+            LOGGER.info("coverage ghastMeleeGeometry mob={} guard={} distant={} eyeClear={} blocked={} clear={}",
+                    mob.getUniqueID(), guard.getUniqueID(), distant, openEyes, blocked, actions.taunt(mob, guard));
+            guard.setPosition(former.x, former.y, former.z);
         } else if ("ghast-geometry".equals(operation)) {
             if (mob.getAttackTarget() != player) {
                 throw new CommandException("Expected the ghast's selected challenger.");

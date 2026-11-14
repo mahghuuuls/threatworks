@@ -16,8 +16,10 @@ import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.EnumDifficulty;
 import net.minecraft.world.WorldServer;
 
-/** Visible native ghast fireball lanes. Flight and firing remain with the mob. */
+/** Visible native ghast fireball lanes and short flying melee approaches. */
 final class GhastMobPolicy implements MobPolicy {
+    private static final double MELEE_APPROACH_LIMIT = 12.0;
+    private static final String PROVIDER_AI = "fathertoast.specialmobs.ai.";
     private final MobType type;
 
     GhastMobPolicy(MobType type) {
@@ -26,7 +28,11 @@ final class GhastMobPolicy implements MobPolicy {
 
     static boolean matchesType(MobType type) {
         return type == MobType.GHAST || type == MobType.SPECIAL_GHAST || type == MobType.KING_GHAST
-                || type == MobType.QUEEN_GHAST;
+                || type == MobType.QUEEN_GHAST || usesFlyingMelee(type);
+    }
+
+    private static boolean usesFlyingMelee(MobType type) {
+        return type == MobType.BABY_GHAST || type == MobType.FIGHTER_GHAST || type == MobType.UNHOLY_GHAST;
     }
 
     static boolean matches(MobType type, EntityLiving mob) {
@@ -34,13 +40,16 @@ final class GhastMobPolicy implements MobPolicy {
     }
 
     static boolean hasNativeContract(MobType type, EntityLiving mob) {
-        if (mob.isAIDisabled() || !(range(type, mob) > 0)
+        double range = range(type, mob);
+        boolean melee = usesFlyingMelee(type);
+        if (mob.isAIDisabled() || !(melee ? range == 0 : range > 0)
+                || melee && !mob.getMoveHelper().getClass().getName().equals(PROVIDER_AI + "EntityMoveHelperFlying")
                 || mob.tasks.isControlFlagDisabled(1) || mob.tasks.isControlFlagDisabled(2)
                 || mob.tasks.taskEntries.size() != 3 || mob.targetTasks.taskEntries.size() != 1) {
             return false;
         }
         boolean vanilla = type == MobType.GHAST;
-        String provider = "fathertoast.specialmobs.ai.";
+        String providerAttackGoal = PROVIDER_AI + (melee ? "EntityAIFlyingAttackMelee" : "EntityAIFlyingAttackRanged");
         boolean attack = false;
         boolean look = false;
         boolean wander = false;
@@ -48,19 +57,19 @@ final class GhastMobPolicy implements MobPolicy {
             Class<?> goal = task.action.getClass();
             String name = goal.getSimpleName();
             if (vanilla ? goal.getEnclosingClass() == EntityGhast.class && name.equals("AIFireballAttack")
-                    : goal.getName().equals(provider + "EntityAIFlyingAttackRanged")) {
-                if (attack || task.priority != (vanilla ? 7 : 4) || task.action.getMutexBits() != 0) {
+                    : goal.getName().equals(providerAttackGoal)) {
+                if (attack || task.priority != (vanilla ? 7 : 4) || task.action.getMutexBits() != (melee ? 1 : 0)) {
                     return false;
                 }
                 attack = true;
             } else if (vanilla ? goal.getEnclosingClass() == EntityGhast.class && name.equals("AILookAround")
-                    : goal.getName().equals(provider + "EntityAIFlyingLookIdle")) {
+                    : goal.getName().equals(PROVIDER_AI + "EntityAIFlyingLookIdle")) {
                 if (look || task.priority != 7 || task.action.getMutexBits() != 2) {
                     return false;
                 }
                 look = true;
             } else if (vanilla ? goal.getEnclosingClass() == EntityGhast.class && name.equals("AIRandomFly")
-                    : goal.getName().equals(provider + "EntityAIFlyingWander")) {
+                    : goal.getName().equals(PROVIDER_AI + "EntityAIFlyingWander")) {
                 if (wander || task.priority != 5 || task.action.getMutexBits() != 1) {
                     return false;
                 }
@@ -111,23 +120,40 @@ final class GhastMobPolicy implements MobPolicy {
         if (target == null) {
             return TargetObservation.INELIGIBLE;
         }
-        double range = range(type, mob);
-        if (!withinFireballRange(mob, target, range)) {
+        if (!withinCombatRange(mob, target)) {
             return TargetObservation.INELIGIBLE;
         }
-        double launchOffset = launchOffset(mob);
         Vec3d position = mob.getPositionVector();
         Vec3d player = target.getPositionVector();
-        Vec3d horizontal = new Vec3d(player.x - position.x, 0.0, player.z - position.z);
         LoadedPathTerrain terrain = new LoadedPathTerrain(world);
         if (!terrain.clearLine(position.add(0.0, mob.getEyeHeight(), 0.0),
                 player.add(0.0, target.getEyeHeight(), 0.0))) {
             return TargetObservation.obscured(false);
         }
+        if (usesFlyingMelee(type)) {
+            return observeFlyingMelee(terrain, mob, target, player, sample);
+        }
         // Project the candidate's firing lane. The native goal still aims and chooses when to fire.
-        Vec3d origin = position.add(horizontal.normalize().scale(launchOffset)).add(0.0, mob.height / 2.0 + 0.5, 0.0);
+        Vec3d horizontal = new Vec3d(player.x - position.x, 0.0, player.z - position.z);
+        Vec3d origin = position.add(horizontal.normalize().scale(launchOffset(mob)))
+                .add(0.0, mob.height / 2.0 + 0.5, 0.0);
         return terrain.clearLine(origin, player.add(0.0, target.height / 2.0, 0.0))
                 ? TargetObservation.IN_REACH : TargetObservation.INELIGIBLE;
+    }
+
+    private static TargetObservation observeFlyingMelee(LoadedPathTerrain terrain, EntityLiving mob,
+                                                       EntityLivingBase target, Vec3d player, WorkSample sample) {
+        double distanceSquared = mob.getDistanceSq(target);
+        double reachSquared = mob.width * mob.width + target.width * target.width;
+        if (distanceSquared < reachSquared) {
+            return TargetObservation.IN_REACH;
+        }
+        if (sample != null) {
+            sample.pathQuery();
+        }
+        Vec3d approach = player.add(0.0, target.height / 2.0, 0.0).subtract(mob.getPositionVector());
+        return terrain.clearFlight(mob.getEntityBoundingBox(), approach)
+                ? TargetObservation.pursuit(Math.sqrt(distanceSquared)) : TargetObservation.INELIGIBLE;
     }
 
     @Override
@@ -139,10 +165,14 @@ final class GhastMobPolicy implements MobPolicy {
     @Override
     public boolean releasesNativeWrite(WorldServer world, EntityLiving mob, EntityLivingBase target) {
         return target != null && world.getEntityFromUuid(target.getUniqueID()) == target
-                && resolve(world, mob, target) != null && !withinFireballRange(mob, target, range(type, mob));
+                && resolve(world, mob, target) != null && !withinCombatRange(mob, target);
     }
 
-    private boolean withinFireballRange(EntityLiving mob, EntityLivingBase target, double range) {
+    private boolean withinCombatRange(EntityLiving mob, EntityLivingBase target) {
+        if (usesFlyingMelee(type)) {
+            return mob.getDistanceSq(target) <= MELEE_APPROACH_LIMIT * MELEE_APPROACH_LIMIT;
+        }
+        double range = range(type, mob);
         double x = target.posX - mob.posX;
         double z = target.posZ - mob.posZ;
         double offset = launchOffset(mob);

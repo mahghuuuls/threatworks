@@ -126,6 +126,9 @@ public final class SpecialMobsCompatibility {
             case SPECIAL_GHAST: name = "Entity_SpecialGhast"; break;
             case KING_GHAST: name = "EntityKingGhast"; break;
             case QUEEN_GHAST: name = "EntityQueenGhast"; break;
+            case BABY_GHAST: name = "EntityBabyGhast"; break;
+            case FIGHTER_GHAST: name = "EntityFighterGhast"; break;
+            case UNHOLY_GHAST: name = "EntityUnholyGhast"; break;
             default: return false;
         }
         return Installed.VARIANTS_SUPPORTED && mob instanceof EntityGhast
