@@ -3,6 +3,7 @@ package com.mahghuuuls.threatworks.compat;
 import com.mahghuuuls.threatworks.config.ServerTuning.MobType;
 import net.minecraft.entity.EntityCreature;
 import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.entity.ai.EntityAILeapAtTarget;
 import net.minecraft.entity.ai.EntityAITasks.EntityAITaskEntry;
 import net.minecraft.item.ItemSword;
 import net.minecraftforge.fml.common.Loader;
@@ -29,8 +30,13 @@ public final class ChocolateQuestCompatibility {
 
     static {
         GROUND_MELEE.put(MobType.CQR_BOARMAN, "Boarman");
+        GROUND_MELEE.put(MobType.CQR_GREMLIN, "Gremlin");
+        GROUND_MELEE.put(MobType.CQR_ILLAGER, "Illager");
+        GROUND_MELEE.put(MobType.CQR_MANDRIL, "Mandril");
         GROUND_MELEE.put(MobType.CQR_MINOTAUR, "Minotaur");
         GROUND_MELEE.put(MobType.CQR_MUMMY, "Mummy");
+        GROUND_MELEE.put(MobType.CQR_OGRE, "Ogre");
+        GROUND_MELEE.put(MobType.CQR_ORC, "Orc");
         GROUND_MELEE.put(MobType.CQR_PIRATE, "Pirate");
         GROUND_MELEE.put(MobType.CQR_SKELETON, "Skeleton");
         GROUND_MELEE.put(MobType.CQR_SPECTRE, "Spectre");
@@ -55,21 +61,37 @@ public final class ChocolateQuestCompatibility {
         return GROUND_MELEE.containsKey(type);
     }
 
-    public static boolean hasNavigator(EntityCreature mob) {
-        return mob.getNavigator().getClass().getName().equals(ROOT + "pathfinding.PathNavigateGroundCQR");
+    public static boolean hasGroundContract(MobType type, EntityCreature mob) {
+        if (!mob.getNavigator().getClass().getName().equals(ROOT + "pathfinding.PathNavigateGroundCQR")) {
+            return false;
+        }
+        if (type != MobType.CQR_MANDRIL) {
+            return true;
+        }
+        boolean foundLeap = false;
+        for (EntityAITaskEntry task : mob.tasks.taskEntries) {
+            if (task.action instanceof EntityAILeapAtTarget) {
+                if (foundLeap || !isMandrilLeap(task)) {
+                    return false;
+                }
+                foundLeap = true;
+            }
+        }
+        return foundLeap;
     }
 
     public static boolean isAttackGoal(Class<?> goal) {
         return goal.getName().equals(AI + "attack.EntityAIAttack");
     }
 
-    public static boolean isNativeGoal(EntityAITaskEntry task) {
+    public static boolean isNativeGoal(MobType type, EntityAITaskEntry task) {
         String name = task.action.getClass().getName();
         switch (task.priority) {
             case 0: return name.equals("net.minecraft.entity.ai.EntityAISwimming");
             case 1: return name.equals(AI + "EntityAIOpenCloseDoor");
             case 8: return name.equals(AI + "EntityAIRideHorse");
-            case 9: return name.equals(AI + "item.EntityAIHealingPotion");
+            case 9: return name.equals(AI + "item.EntityAIHealingPotion")
+                    || type == MobType.CQR_MANDRIL && isMandrilLeap(task);
             case 11: return name.equals(AI + "spells.EntityAISpellHandler")
                     || name.equals("team.cqr.cqrepoured.integration.ebwizardry.EntityAICastSpell");
             case 12: return name.equals(AI + "attack.special.EntityAIAttackSpecial");
@@ -93,8 +115,13 @@ public final class ChocolateQuestCompatibility {
         }
     }
 
-    public static boolean usesNativeGoal(EntityAITaskEntry task) {
-        return isNativeGoal(task) || (task.action.getMutexBits() & 3) != 0 && !isAttackGoal(task.action.getClass());
+    private static boolean isMandrilLeap(EntityAITaskEntry task) {
+        return task.priority == 9 && task.action.getClass() == EntityAILeapAtTarget.class
+                && task.action.getMutexBits() == 5;
+    }
+
+    public static boolean usesNativeGoal(MobType type, EntityAITaskEntry task) {
+        return isNativeGoal(type, task) || (task.action.getMutexBits() & 3) != 0 && !isAttackGoal(task.action.getClass());
     }
 
     public static boolean yieldsToNative(EntityCreature mob) {

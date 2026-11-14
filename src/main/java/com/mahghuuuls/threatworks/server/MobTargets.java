@@ -149,7 +149,7 @@ final class MobTargets {
                         && !GaiaCompatibility.isAntWander(type, entry)
                         && !GaiaCompatibility.isFleeSun(type, entry)
                         && !IceAndFireCompatibility.isHorseGoal(type, entry)
-                        && !(cqrGroundMelee && ChocolateQuestCompatibility.isNativeGoal(entry))
+                        && !(cqrGroundMelee && ChocolateQuestCompatibility.isNativeGoal(type, entry))
                         && (entry.priority > priority ? !entry.action.isInterruptible()
                         : (entry.action.getMutexBits() & 3) != 0 && !nativeCompetingGoal(mob, entry))) {
                     return false;
@@ -185,7 +185,7 @@ final class MobTargets {
         boolean unseen = UnseenDungeonCompatibility.isSupportedType(type);
         return !mob.isAIDisabled() && !mob.tasks.isControlFlagDisabled(1) && !mob.tasks.isControlFlagDisabled(2)
                 && (unseen ? UnseenDungeonCompatibility.hasNavigator(mob) && UnseenDungeonCompatibility.hasHostileRole(type, mob)
-                : ChocolateQuestCompatibility.isGroundMelee(type) ? ChocolateQuestCompatibility.hasNavigator(mob)
+                : ChocolateQuestCompatibility.isGroundMelee(type) ? ChocolateQuestCompatibility.hasGroundContract(type, mob)
                 : mob instanceof EntityShulker || mob.getNavigator().getClass() == navigator)
                 && (!(mob instanceof EntityZombieVillager) || !((EntityZombieVillager) mob).isConverting())
                 && (GaiaCompatibility.meleePriority(type) < 0 || GaiaCompatibility.isHostile(mob))
@@ -251,7 +251,7 @@ final class MobTargets {
                     || GaiaCompatibility.isAntWander(type, entry)
                     || GaiaCompatibility.isFleeSun(type, entry)
                     || IceAndFireCompatibility.isHorseGoal(type, entry)
-                    || ChocolateQuestCompatibility.isGroundMelee(type) && ChocolateQuestCompatibility.usesNativeGoal(entry)
+                    || ChocolateQuestCompatibility.isGroundMelee(type) && ChocolateQuestCompatibility.usesNativeGoal(type, entry)
                     || mob instanceof EntityCreeper
                     && (entry.action.getClass() == EntityAICreeperSwell.class || isCreeperAvoidance(entry))
                     || (SpecialMobsCompatibility.isVariantSkeleton(type) || GroundMeleeCompatibility.isQuarkSkeleton(type))

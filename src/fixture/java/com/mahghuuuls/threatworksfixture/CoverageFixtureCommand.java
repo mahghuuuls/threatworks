@@ -17,6 +17,7 @@ import net.minecraft.entity.item.EntityTNTPrimed;
 import net.minecraft.entity.EntityList;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.ai.EntityAIAvoidEntity;
+import net.minecraft.entity.ai.EntityAILeapAtTarget;
 import net.minecraft.entity.ai.EntityAITasks.EntityAITaskEntry;
 import net.minecraft.entity.ai.EntityAIWander;
 import net.minecraft.entity.SharedMonsterAttributes;
@@ -297,7 +298,17 @@ final class CoverageFixtureCommand extends CommandBase {
     }
 
     private static void actors(WorldServer world, EntityCreature mob, boolean solo) throws CommandException {
-        if (!solo) {
+        String id = String.valueOf(EntityList.getKey(mob));
+        boolean cqrGoblinFaction = isCqrGoblinFaction(mob);
+        boolean cqrPlayerDuel = cqrGoblinFaction || "cqrepoured:gremlin".equals(id);
+        if (!solo && cqrPlayerDuel) {
+            EntityPlayerMP incumbent = fixturePlayer(world, id, "CqrIncumbent");
+            if (cqrGoblinFaction) {
+                setCqrHostileReputation(mob, incumbent);
+            }
+            incumbent.addTag("tw_l_tick_hurt_window");
+            place(world, incumbent, "tw_i_guard", X + 2, mob.posY, Z);
+        } else if (!solo) {
             EntityIronGolem guard = new EntityIronGolem(world);
             guard.setNoAI(true);
             if ("mowziesmobs:foliaath".equals(String.valueOf(EntityList.getKey(mob)))) {
@@ -316,8 +327,27 @@ final class CoverageFixtureCommand extends CommandBase {
             }
             place(world, guard, "tw_i_guard", X + offset, guardY, Z);
         }
-        String id = String.valueOf(EntityList.getKey(mob));
-        FakePlayer player = new FakePlayer(world, new GameProfile(UUID.randomUUID(), "CampaignI")) {
+        EntityPlayerMP player = fixturePlayer(world, id, "CampaignI");
+        player.setSneaking(true);
+        player.setInvisible(true);
+        if (cqrPlayerDuel) {
+            player.capabilities.disableDamage = true;
+            player.addTag("tw_l_tick_hurt_window");
+        }
+        if (cqrGoblinFaction) {
+            setCqrHostileReputation(mob, player);
+        }
+        if (id.startsWith("grimoireofgaia:")) {
+            player.addTag("tw_l_gaia_effect");
+        }
+        place(world, player, "tw_i_player", X, mob.posY, Z + (cqrPlayerDuel ? 27 : 13));
+        LOGGER.info("coverage actors mob={} player={} guard={}", mob.getUniqueID(), player.getUniqueID(),
+                identity(get(world, EntityLivingBase.class, "tw_i_guard")));
+        report(mob, world);
+    }
+
+    private static EntityPlayerMP fixturePlayer(WorldServer world, String id, String name) {
+        FakePlayer player = new FakePlayer(world, new GameProfile(UUID.randomUUID(), name)) {
             @Override
             public void onUpdate() {
                 // FakePlayer skips the countdown a connected player gets in EntityPlayerMP.
@@ -350,15 +380,41 @@ final class CoverageFixtureCommand extends CommandBase {
         player.getEntityAttribute(SharedMonsterAttributes.KNOCKBACK_RESISTANCE).setBaseValue(1);
         player.setHealth(100);
         ReflectionHelper.setPrivateValue(EntityPlayerMP.class, player, 0, "respawnInvulnerabilityTicks", "field_147101_bU");
-        player.setSneaking(true);
-        player.setInvisible(true);
-        if (String.valueOf(EntityList.getKey(mob)).startsWith("grimoireofgaia:")) {
-            player.addTag("tw_l_gaia_effect");
+        return player;
+    }
+
+    private static boolean isCqrGoblinFaction(EntityCreature mob) {
+        String id = String.valueOf(EntityList.getKey(mob));
+        return "cqrepoured:ogre".equals(id) || "cqrepoured:orc".equals(id);
+    }
+
+    private static void setCqrHostileReputation(EntityCreature mob, EntityPlayerMP player) throws CommandException {
+        try {
+            ClassLoader loader = mob.getClass().getClassLoader();
+            Class<?> registryType = loader.loadClass("team.cqr.cqrepoured.faction.FactionRegistry");
+            Class<?> factionType = loader.loadClass("team.cqr.cqrepoured.faction.Faction");
+            Class<?> roughType = loader.loadClass("team.cqr.cqrepoured.faction.EReputationState$EReputationStateRough");
+            MethodHandles.Lookup lookup = MethodHandles.publicLookup();
+            Object registry = lookup.findStatic(registryType, "instance", MethodType.methodType(registryType, Entity.class))
+                    .invoke(mob);
+            Object faction = lookup.findVirtual(registryType, "getFactionOf", MethodType.methodType(factionType, Entity.class))
+                    .invoke(registry, mob);
+            lookup.findVirtual(registryType, "changeReputationTo",
+                            MethodType.methodType(void.class, EntityPlayerMP.class, int.class, factionType))
+                    .invoke(registry, player, -500, faction);
+            Object result = lookup.findVirtual(registryType, "getReputationOf", MethodType.methodType(roughType, UUID.class, factionType))
+                    .invoke(registry, player.getUniqueID(), faction);
+            if (!"ENEMY".equals(String.valueOf(result))) {
+                throw new CommandException("The CQR player must have native hostile reputation.");
+            }
+            LOGGER.info("coverage cqrReputation mob={} player={} reputation={}",
+                    mob.getUniqueID(), player.getUniqueID(), result);
+        } catch (CommandException | Error failure) {
+            throw failure;
+        } catch (Throwable failure) {
+            LOGGER.warn("Native reputation setup failed for {}.", EntityList.getKey(mob), failure);
+            throw new CommandException("Could not set the disposable player's native CQR reputation.");
         }
-        place(world, player, "tw_i_player", X, mob.posY, Z + 13);
-        LOGGER.info("coverage actors mob={} player={} guard={}", mob.getUniqueID(), player.getUniqueID(),
-                identity(get(world, EntityIronGolem.class, "tw_i_guard")));
-        report(mob, world);
     }
 
     private static void place(WorldServer world, Entity entity, String tag, double x, double z) throws CommandException {
@@ -377,7 +433,7 @@ final class CoverageFixtureCommand extends CommandBase {
     private void act(WorldServer world, String operation) throws CommandException {
         EntityCreature mob = get(world, EntityCreature.class, "tw_i_mob");
         EntityPlayerMP player = get(world, EntityPlayerMP.class, "tw_i_player");
-        EntityIronGolem guard = get(world, EntityIronGolem.class, "tw_i_guard");
+        EntityLivingBase guard = get(world, EntityLivingBase.class, "tw_i_guard");
         if (mob == null || player == null) {
             throw new CommandException("Coverage actors are missing (mob=" + (mob != null)
                     + ", player=" + (player != null) + ", guard=" + (guard != null) + ").");
@@ -889,7 +945,7 @@ final class CoverageFixtureCommand extends CommandBase {
                     }
                     mob.setItemStackToSlot(EntityEquipmentSlot.MAINHAND, new ItemStack(Items.IRON_SWORD));
                 }
-                player.setPosition(X, mob.posY, Z + 13);
+                player.setPosition(X, mob.posY, Z + (guard instanceof EntityPlayerMP ? 27 : 13));
                 player.capabilities.disableDamage = true;
                 guard.setPosition(mob.posX + 1.4, mob.posY, mob.posZ);
                 mob.setRevengeTarget(guard);
@@ -988,6 +1044,50 @@ final class CoverageFixtureCommand extends CommandBase {
                         mob.getUniqueID(), ally.getUniqueID(), actions.taunt(mob, player));
                 break;
             }
+            case "cqr-mandril-leap":
+                if (!"cqrepoured:mandril".equals(String.valueOf(EntityList.getKey(mob))) || guard == null
+                        || mob.getAttackTarget() != player) {
+                    throw new CommandException("Expected a tracked Mandril targeting the player.");
+                }
+                if (mob.tasks.taskEntries.stream().anyMatch(task -> task.using
+                        && task.priority == 9 && task.action.getClass() == EntityAILeapAtTarget.class)) {
+                    player.setPosition(mob.posX - 1.30, mob.posY, mob.posZ);
+                    LOGGER.info("coverage cqrMandrilLeap mob={} former={} requested={} taunt={}",
+                            mob.getUniqueID(), player.getUniqueID(), guard.getUniqueID(), actions.taunt(mob, player));
+                    mob.setAttackTarget(guard);
+                    if (mob.getAttackTarget() != guard) {
+                        throw new CommandException("The leaping Mandril did not accept the native target.");
+                    }
+                } else {
+                    player.setPosition(mob.posX - 2.1, mob.posY, mob.posZ);
+                }
+                break;
+            case "cqr-mandril-changed-leap":
+                if (!"cqrepoured:mandril".equals(String.valueOf(EntityList.getKey(mob))) || guard == null
+                        || mob.getAttackTarget() != player) {
+                    throw new CommandException("Expected a tracked Mandril targeting the player.");
+                }
+                EntityAITaskEntry nativeLeap = mob.tasks.taskEntries.stream()
+                        .filter(task -> task.priority == 9 && task.action.getClass() == EntityAILeapAtTarget.class)
+                        .findFirst().orElseThrow(() -> new CommandException("Mandril's native leap was missing."));
+                nativeLeap.action.setMutexBits(4);
+                LOGGER.info("coverage cqrMandrilChangedLeap mob={} player={} guard={} mutex={} taunt={}",
+                        mob.getUniqueID(), player.getUniqueID(), guard.getUniqueID(),
+                        nativeLeap.action.getMutexBits(), actions.taunt(mob, player));
+                mob.setAttackTarget(guard);
+                if (mob.getAttackTarget() != guard) {
+                    throw new CommandException("The modified Mandril did not accept a native target.");
+                }
+                break;
+            case "cqr-reputation-default":
+                if (!isCqrGoblinFaction(mob) || mob.getAttackTarget() != player) {
+                    throw new CommandException("Expected a tracked CQR goblin-faction mob targeting the player.");
+                }
+                EntityPlayerMP newcomer = fixturePlayer(world, String.valueOf(EntityList.getKey(mob)), "CqrNewcomer");
+                place(world, newcomer, "tw_l_cqr_newcomer", mob.posX - 0.9, mob.posY, mob.posZ);
+                LOGGER.info("coverage cqrDefaultReputation mob={} player={} taunt={}",
+                        mob.getUniqueID(), newcomer.getUniqueID(), actions.taunt(mob, newcomer));
+                break;
             case "cqr-zombie-pursuit":
             case "cqr-zombie-pursuit-switch":
             case "cqr-zombie-pursuit-setter":
@@ -1402,6 +1502,13 @@ final class CoverageFixtureCommand extends CommandBase {
                     restorePlayer(player);
                 }
                 attack(mob, player, "hit");
+                if (isCqrGoblinFaction(mob)) {
+                    mob.motionX = 0;
+                    mob.motionZ = 0;
+                    // Native revenge retains the closer incumbent. Both players fit inside the melee lane.
+                    player.setPosition(mob.posX, mob.posY, mob.posZ + 1.2);
+                    guard.setPosition(mob.posX + 0.8, mob.posY, mob.posZ);
+                }
                 if (animatedDread(String.valueOf(EntityList.getKey(mob)))) {
                     player.setPosition(mob.posX - 6.0, mob.posY, mob.posZ);
                     LOGGER.info("coverage dreadBeastOpening mob={} player={} distance={}", mob.getUniqueID(),
@@ -1760,7 +1867,7 @@ final class CoverageFixtureCommand extends CommandBase {
 
     static void report(EntityCreature mob, WorldServer world) {
         Inspection view = EncounterCoordinator.INSTANCE.inspect(mob, 16);
-        EntityLivingBase guard = get(world, EntityIronGolem.class, "tw_i_guard");
+        EntityLivingBase guard = get(world, EntityLivingBase.class, "tw_i_guard");
         EntityLivingBase player = get(world, EntityPlayerMP.class, "tw_i_player");
         LOGGER.info("coverage state tick={} mob={} type={} status={} target={} guardHp={} playerHp={} x={} z={} weapon={} navigator={}",
                 world.getMinecraftServer().getTickCounter(), mob.getUniqueID(), view.typeId, view.status, view.target,
