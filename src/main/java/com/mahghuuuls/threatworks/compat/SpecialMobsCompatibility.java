@@ -8,8 +8,10 @@ import net.minecraft.entity.monster.AbstractSkeleton;
 import net.minecraft.entity.monster.EntityBlaze;
 import net.minecraft.entity.monster.EntityCreeper;
 import net.minecraft.entity.monster.EntityGhast;
+import net.minecraft.entity.monster.EntityMagmaCube;
 import net.minecraft.entity.monster.EntitySkeleton;
 import net.minecraft.entity.monster.EntitySilverfish;
+import net.minecraft.entity.monster.EntitySlime;
 import net.minecraft.entity.monster.EntitySpider;
 import net.minecraft.entity.monster.EntityZombie;
 import net.minecraft.init.Items;
@@ -35,7 +37,7 @@ public final class SpecialMobsCompatibility {
 
     public static void reportVariantVersion(Logger logger) {
         if (Installed.MOD != null && !Installed.VARIANTS_SUPPORTED) {
-            logger.warn("Special Mobs silverfish, skeleton, spider, creeper and blaze variant targeting unavailable for version {}. Update to at least {}.",
+            logger.warn("Special Mobs variant targeting unavailable for version {}. Update to at least {}.",
                     Installed.MOD.getVersion(), VARIANT_MINIMUM);
         } else if (Installed.VARIANTS_SUPPORTED && BlazeRange.ACCESS == null) {
             logger.warn("Special Mobs blaze targeting unavailable because its native ranged attack distance could not be bound.");
@@ -132,6 +134,37 @@ public final class SpecialMobsCompatibility {
 
     public static float ghastRange(EntityLiving mob) {
         return readRange(mob, GhastRange.ACCESS, "ghast");
+    }
+
+    public static boolean isHoppingSlime(MobType type) {
+        return hoppingSlimeClass(type) != null;
+    }
+
+    public static boolean matchesHoppingSlime(MobType type, EntityLiving mob) {
+        String name = hoppingSlimeClass(type);
+        if (name == null || !Installed.VARIANTS_SUPPORTED || !(mob instanceof EntitySlime)) {
+            return false;
+        }
+        return mob.getClass().getName().equals(ENTITY_PACKAGE + (mob instanceof EntityMagmaCube ? "lavaslime." : "slime.") + name);
+    }
+
+    private static String hoppingSlimeClass(MobType type) {
+        if (type == null) {
+            return null;
+        }
+        switch (type) {
+            case SPECIAL_SLIME: return "Entity_SpecialSlime";
+            case BLUEBERRY_SLIME: return "EntityBlueberrySlime";
+            case CARAMEL_SLIME: return "EntityCaramelSlime";
+            case GRAPE_SLIME: return "EntityGrapeSlime";
+            case LEMON_SLIME: return "EntityLemonSlime";
+            case STRAWBERRY_SLIME: return "EntityStrawberrySlime";
+            case WATERMELON_SLIME: return "EntityWatermelonSlime";
+            case SPECIAL_LAVA_SLIME: return "Entity_SpecialLavaSlime";
+            case HARDENED_LAVA_SLIME: return "EntityHardenedLavaSlime";
+            case STICKY_LAVA_SLIME: return "EntityStickyLavaSlime";
+            default: return null;
+        }
     }
 
     private static float readRange(EntityLiving mob, NativeRange access, String family) {

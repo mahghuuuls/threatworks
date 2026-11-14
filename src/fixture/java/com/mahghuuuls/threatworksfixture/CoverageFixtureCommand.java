@@ -27,6 +27,7 @@ import net.minecraft.entity.monster.AbstractSkeleton;
 import net.minecraft.entity.monster.EntityBlaze;
 import net.minecraft.entity.monster.EntityCreeper;
 import net.minecraft.entity.monster.EntityGhast;
+import net.minecraft.entity.monster.EntitySlime;
 import net.minecraft.entity.monster.EntitySkeleton;
 import net.minecraft.entity.monster.EntitySpider;
 import net.minecraft.entity.monster.EntityZombie;
@@ -213,6 +214,10 @@ final class CoverageFixtureCommand extends CommandBase {
             seedGhast(world, (EntityGhast) entity, id, height);
             return;
         }
+        if (entity instanceof EntitySlime) {
+            seedSlime(world, (EntitySlime) entity, id, height);
+            return;
+        }
         if (!(entity instanceof EntityCreature)) {
             throw new CommandException("Unknown coverage fixture mob " + id);
         }
@@ -258,6 +263,37 @@ final class CoverageFixtureCommand extends CommandBase {
         LOGGER.info("coverage actors mob={} player={} guard={}", ghast.getUniqueID(),
                 challenger.getUniqueID(), incumbent.getUniqueID());
         report(ghast, world);
+    }
+
+    private static void seedSlime(WorldServer world, EntitySlime slime, String id, int height) throws CommandException {
+        slime.setPosition(X, height, Z);
+        slime.onInitialSpawn(world.getDifficultyForLocation(slime.getPosition()), null);
+        setFixtureSlimeSize(slime, 4);
+        slime.enablePersistence();
+        slime.getEntityAttribute(SharedMonsterAttributes.MAX_HEALTH).setBaseValue(80);
+        slime.setHealth(80);
+        EntityPlayerMP incumbent = fixturePlayer(world, id, "SlimeIncumbent");
+        EntityPlayerMP challenger = fixturePlayer(world, id, "SlimeChallenger");
+        incumbent.addTag("tw_l_tick_player");
+        challenger.addTag("tw_l_tick_player");
+        challenger.capabilities.disableDamage = true;
+        double startingRange = id.equals("specialmobs:stickylavaslime") || id.equals("specialmobs:caramelslime")
+                ? 5 : 6;
+        place(world, incumbent, "tw_i_guard", X + startingRange, height, Z);
+        place(world, challenger, "tw_i_player", X - 7, height, Z);
+        if (id.startsWith("minecraft:")) {
+            slime.getEntityData().setBoolean("SpecialMobsInit", true);
+        }
+        place(world, slime, "tw_i_mob", X, height, Z);
+        LOGGER.info("coverage actors mob={} player={} guard={}", slime.getUniqueID(),
+                challenger.getUniqueID(), incumbent.getUniqueID());
+        report(slime, world);
+    }
+
+    private static void setFixtureSlimeSize(EntitySlime slime, int size) {
+        NBTTagCompound data = slime.writeToNBT(new NBTTagCompound());
+        data.setInteger("Size", size - 1);
+        slime.readFromNBT(data);
     }
 
     private static void natural(WorldServer world, boolean skeleton) throws CommandException {
@@ -381,6 +417,13 @@ final class CoverageFixtureCommand extends CommandBase {
         FakePlayer player = new FakePlayer(world, new GameProfile(UUID.randomUUID(), name)) {
             @Override
             public void onUpdate() {
+                if (getTags().contains("tw_l_tick_player")) {
+                    onUpdateEntity();
+                    if (hurtResistantTime > 0) {
+                        --hurtResistantTime;
+                    }
+                    return;
+                }
                 // FakePlayer skips the countdown a connected player gets in EntityPlayerMP.
                 if ((WILDFIRE.equals(id) || DREAD_GHOUL.equals(id) || meleeBlazeName(id) != null
                         || getTags().contains("tw_l_tick_hurt_window"))
@@ -471,6 +514,10 @@ final class CoverageFixtureCommand extends CommandBase {
         }
         if (living instanceof EntityGhast) {
             actGhast(world, (EntityGhast) living, player, guard, operation);
+            return;
+        }
+        if (living instanceof EntitySlime) {
+            actSlime(world, (EntitySlime) living, player, guard, operation);
             return;
         }
         EntityCreature mob = (EntityCreature) living;
@@ -1971,6 +2018,83 @@ final class CoverageFixtureCommand extends CommandBase {
             throw new CommandException("Unsupported ghast fixture operation.");
         }
         report(mob, world);
+    }
+
+    private static void actSlime(WorldServer world, EntitySlime slime, EntityPlayerMP player,
+                                 EntityLivingBase guard, String operation) throws CommandException {
+        if ("slime-native-redirect".equals(operation) || "slime-opening".equals(operation)) {
+            if (slime.getAttackTarget() != guard || !slime.onGround) {
+                throw new CommandException("Expected the grounded slime targeting its first participant.");
+            }
+            restorePlayer(player);
+            if ("slime-opening".equals(operation)) {
+                attack(slime, player, "slime");
+                if (player.getRidingEntity() == slime) {
+                    player.dismountRidingEntity();
+                }
+                player.setPosition(slime.posX - 6, slime.posY, slime.posZ);
+                guard.setPosition(slime.posX + 4, slime.posY, slime.posZ);
+                player.hurtResistantTime = 0;
+            } else {
+                player.setPosition(slime.posX - 6, slime.posY, slime.posZ);
+                slime.setAttackTarget(player);
+                if (slime.getAttackTarget() != player) {
+                    throw new CommandException("The slime's native setter rejected the second player.");
+                }
+            }
+        } else if ("slime-bounds".equals(operation)) {
+            ThreatActions actions = ThreatworksMod.threatActions();
+            slime.setPosition(X, Y, Z);
+            guard.setPosition(X + 7, Y, Z);
+            guard.onGround = true;
+            BlockPos obstruction = new BlockPos(X + 3, Y, Z);
+            world.setBlockState(obstruction, Blocks.OBSIDIAN.getDefaultState(), 2);
+            ThreatActions.Result body = actions.taunt(slime, guard);
+            world.setBlockToAir(obstruction);
+            world.setBlockToAir(obstruction.down());
+            ThreatActions.Result gap = actions.taunt(slime, guard);
+            world.setBlockState(obstruction.down(), Blocks.STONE.getDefaultState(), 2);
+            LOGGER.info("coverage slimeBounds mob={} guard={} body={} gap={} clear={}",
+                    slime.getUniqueID(), guard.getUniqueID(), body, gap, actions.taunt(slime, guard));
+        } else if ("slime-changed-selector".equals(operation)) {
+            if (slime.getAttackTarget() != player) {
+                throw new CommandException("Expected a tracked slime targeting the player.");
+            }
+            EntityAITaskEntry nearest = slime.targetTasks.taskEntries.stream()
+                    .filter(task -> task.priority == 3 && task.action.getClass() == net.minecraft.entity.ai.EntityAIFindEntityNearest.class)
+                    .findFirst().orElseThrow(() -> new CommandException("Slime's native golem selector was missing."));
+            slime.targetTasks.removeTask(nearest.action);
+            slime.targetTasks.addTask(3, new net.minecraft.entity.ai.EntityAIFindEntityNearest(slime, EntityZombie.class));
+            LOGGER.info("coverage slimeChangedSelector mob={} guard={} targetClass=Zombie taunt={}",
+                    slime.getUniqueID(), guard.getUniqueID(), ThreatworksMod.threatActions().taunt(slime, player));
+            slime.setAttackTarget(guard);
+            if (slime.getAttackTarget() != guard) {
+                throw new CommandException("The modified slime did not accept its native target.");
+            }
+        } else if ("slime-rider-release".equals(operation)) {
+            if (guard.getRidingEntity() != slime) {
+                throw new CommandException("The incumbent is not held by the slime.");
+            }
+            ThreatActions.Result tauntWhileMounted = ThreatworksMod.threatActions().taunt(slime, player);
+            guard.dismountRidingEntity();
+            guard.setPosition(slime.posX + 4, slime.posY, slime.posZ);
+            LOGGER.info("coverage slimeRiderRelease mob={} guard={} mountedTaunt={} stillRiding={}",
+                    slime.getUniqueID(), guard.getUniqueID(), tauntWhileMounted, guard.getRidingEntity() == slime);
+        } else if ("slime-tiny".equals(operation)) {
+            setFixtureSlimeSize(slime, 1);
+            LOGGER.info("coverage slimeTiny mob={} guard={} taunt={}",
+                    slime.getUniqueID(), guard.getUniqueID(), ThreatworksMod.threatActions().taunt(slime, player));
+            slime.setAttackTarget(guard);
+            if (slime.getAttackTarget() != guard) {
+                throw new CommandException("The tiny slime did not accept its native target.");
+            }
+        } else if (!"read".equals(operation)) {
+            throw new CommandException("Unsupported slime fixture operation.");
+        }
+        LOGGER.info("coverage slimeState mob={} target={} onGround={} size={} x={} y={} z={} playerDistance={} guardDistance={}",
+                slime.getUniqueID(), identity(slime.getAttackTarget()), slime.onGround, slime.getSlimeSize(),
+                slime.posX, slime.posY, slime.posZ, slime.getDistance(player), slime.getDistance(guard));
+        report(slime, world);
     }
 
     static void report(EntityLiving mob, WorldServer world) {

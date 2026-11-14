@@ -104,18 +104,21 @@ final class MobAdmission {
             return BLACKLISTED;
         }
         MobType type = TYPES.get(id);
-        if (entity instanceof EntityLiving && GhastMobPolicy.matchesType(type)) {
+        boolean ghast = GhastMobPolicy.matchesType(type);
+        if (entity instanceof EntityLiving && (ghast || SlimeMobPolicy.matchesType(type))) {
             EntityLiving mob = (EntityLiving) entity;
-            if (!GhastMobPolicy.matches(type, mob)) {
+            if (!(ghast ? GhastMobPolicy.matches(type, mob) : SlimeMobPolicy.matches(type, mob))) {
                 return UNSUPPORTED_TYPE;
             }
             if (tuning == null || !tuning.isEnabled(type)) {
                 return DISABLED;
             }
-            if (!(mob.world instanceof WorldServer) || !GhastMobPolicy.hasNativeContract(type, mob)) {
+            if (!(mob.world instanceof WorldServer)
+                    || !(ghast ? GhastMobPolicy.hasNativeContract(type, mob) : SlimeMobPolicy.hasNativeContract(mob))) {
                 return UNSUPPORTED_STATE;
             }
-            return GhastMobPolicy.isNativePhase(mob) ? NATIVE.get(type) : CONTROL.get(type);
+            boolean nativePhase = ghast ? GhastMobPolicy.isNativePhase(mob) : SlimeMobPolicy.isNativePhase(mob);
+            return nativePhase ? NATIVE.get(type) : CONTROL.get(type);
         }
         if (type == null || !(entity instanceof EntityCreature) || !matches(type, (EntityCreature) entity, foliaath)) {
             return UNSUPPORTED_TYPE;

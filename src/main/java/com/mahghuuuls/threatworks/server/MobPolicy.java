@@ -29,6 +29,16 @@ interface MobPolicy {
         return preservesNativeTarget(world, mob, target);
     }
 
+    static MobPolicy forType(MobType type) {
+        if (GhastMobPolicy.matchesType(type)) {
+            return new GhastMobPolicy(type);
+        }
+        if (SlimeMobPolicy.matchesType(type)) {
+            return new SlimeMobPolicy(type);
+        }
+        return builtIn(type);
+    }
+
     static MobPolicy builtIn(MobType type) {
         return new MobPolicy() {
             @Override

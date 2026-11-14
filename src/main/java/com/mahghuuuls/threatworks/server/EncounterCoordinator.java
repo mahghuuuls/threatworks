@@ -53,7 +53,7 @@ public final class EncounterCoordinator implements ThreatActions {
     private EncounterCoordinator() {
         for (MobType type : MobType.values()) {
             if (type != MobType.FOLIAATH) {
-                policies.put(type, GhastMobPolicy.matchesType(type) ? new GhastMobPolicy(type) : MobPolicy.builtIn(type));
+                policies.put(type, MobPolicy.forType(type));
             }
         }
     }
