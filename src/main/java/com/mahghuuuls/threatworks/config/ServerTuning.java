@@ -165,6 +165,14 @@ public final class ServerTuning {
         EERIE_NETHER_KNIGHT("eerieentities:nether_knight"),
         UNSEEN_ANCIENT_KNIGHT("da:ancient_knight"),
         UNSEEN_KNIGHT_RAPIER("da:ancient_knight_rapier"),
+        CQR_BOARMAN("cqrepoured:boarman"),
+        CQR_MINOTAUR("cqrepoured:minotaur"),
+        CQR_MUMMY("cqrepoured:mummy"),
+        CQR_PIRATE("cqrepoured:pirate"),
+        CQR_SKELETON("cqrepoured:skeleton"),
+        CQR_SPECTRE("cqrepoured:spectre"),
+        CQR_WALKER("cqrepoured:walker"),
+        CQR_ZOMBIE("cqrepoured:zombie"),
         FOLIAATH("mowziesmobs:foliaath");
 
         public final String id;

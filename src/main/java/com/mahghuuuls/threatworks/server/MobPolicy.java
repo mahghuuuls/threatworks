@@ -1,8 +1,6 @@
 package com.mahghuuuls.threatworks.server;
 
 import com.mahghuuuls.threatworks.compat.FoliaathCompatibility;
-import com.mahghuuuls.threatworks.compat.IceAndFireCompatibility;
-import com.mahghuuuls.threatworks.compat.UnseenDungeonCompatibility;
 import com.mahghuuuls.threatworks.config.ServerTuning.MobType;
 import com.mahghuuuls.threatworks.threat.Encounter.TargetObservation;
 import net.minecraft.entity.Entity;
@@ -14,11 +12,16 @@ import net.minecraft.world.WorldServer;
 interface MobPolicy {
     boolean controlsImmediately(EntityCreature mob);
 
-    boolean accepts(EntityLivingBase participant);
+    boolean accepts(EntityCreature mob, EntityLivingBase participant);
 
     EntityLivingBase resolve(WorldServer world, EntityCreature mob, Entity candidate);
 
     TargetObservation observe(WorldServer world, EntityCreature mob, Entity candidate, WorkSample sample);
+
+    /** Lets native combat keep an otherwise legal target when there is no eligible replacement. */
+    default boolean preservesNativeTarget(WorldServer world, EntityCreature mob, EntityLivingBase target) {
+        return false;
+    }
 
     static MobPolicy builtIn(MobType type) {
         return new MobPolicy() {
@@ -28,9 +31,8 @@ interface MobPolicy {
             }
 
             @Override
-            public boolean accepts(EntityLivingBase participant) {
-                return IceAndFireCompatibility.acceptsTarget(type, participant)
-                        && (!UnseenDungeonCompatibility.isSupportedType(type) || UnseenDungeonCompatibility.acceptsTarget(type, participant));
+            public boolean accepts(EntityCreature mob, EntityLivingBase participant) {
+                return MobTargets.providerAccepts(type, mob, participant);
             }
 
             @Override
@@ -41,6 +43,11 @@ interface MobPolicy {
             @Override
             public TargetObservation observe(WorldServer world, EntityCreature mob, Entity candidate, WorkSample sample) {
                 return MobTargets.observe(world, mob, candidate, sample, type);
+            }
+
+            @Override
+            public boolean preservesNativeTarget(WorldServer world, EntityCreature mob, EntityLivingBase target) {
+                return MobTargets.preservesNativeTarget(world, mob, target, type);
             }
         };
     }
@@ -53,7 +60,7 @@ interface MobPolicy {
             }
 
             @Override
-            public boolean accepts(EntityLivingBase participant) {
+            public boolean accepts(EntityCreature mob, EntityLivingBase participant) {
                 return adapter.accepts(participant);
             }
 

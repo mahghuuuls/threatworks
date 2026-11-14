@@ -253,7 +253,7 @@ public final class EncounterCoordinator implements ThreatActions {
     }
 
     private boolean validParticipant(EntityCreature mob, MobType type, EntityLivingBase target) {
-        return MobTargets.isAttackable(mob, target) && policies.get(type).accepts(target);
+        return MobTargets.isAttackable(mob, target) && policies.get(type).accepts(mob, target);
     }
 
     private EntityLivingBase resolve(WorldServer world, EntityCreature mob, MobType type, Entity candidate) {
@@ -279,6 +279,7 @@ public final class EncounterCoordinator implements ThreatActions {
         return binding != null && mob.isEntityAlive()
                 && !state.yielded.contains(mob.getUniqueID()) && !state.rejectedWrites.contains(mob.getUniqueID())
                 && policies.get(binding).controlsImmediately((EntityCreature) mob)
+                && !policies.get(binding).preservesNativeTarget(world, (EntityCreature) mob, mob.getAttackTarget())
                 && state.blocksTargetWrite(mob.getUniqueID(),
                 mob.getAttackTarget() != requestedTarget,
                 target -> resolve(world, (EntityCreature) mob, binding, world.getEntityFromUuid(target)) != null);
@@ -538,7 +539,8 @@ public final class EncounterCoordinator implements ThreatActions {
         }
         UUID selected = state.select(encounter, serverTick, sample, observe);
         state.observations.put(mob.getUniqueID(), observations);
-        if (selected == null && (current == null || !current.getUniqueID().equals(previous))) {
+        if (selected == null && (current == null || !current.getUniqueID().equals(previous)
+                || policies.get(type).preservesNativeTarget(world, mob, current))) {
             return;
         }
         EntityLivingBase target = selected == null ? null
@@ -557,7 +559,7 @@ public final class EncounterCoordinator implements ThreatActions {
                 || mob.getAttackTarget() == target) {
             return;
         }
-        if (target == null ? mob.getAttackTarget() != previous
+        if (target == null ? mob.getAttackTarget() != previous || policies.get(type).preservesNativeTarget(world, mob, previous)
                 : world.getEntityFromUuid(selected) != target || resolve(world, mob, type, target) == null) {
             return;
         }

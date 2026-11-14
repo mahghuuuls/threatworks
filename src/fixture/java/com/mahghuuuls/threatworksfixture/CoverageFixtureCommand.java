@@ -801,8 +801,15 @@ final class CoverageFixtureCommand extends CommandBase {
                 restorePlayer(player);
                 break;
             case "ordinary-guard-revenge":
-                if (guard == null || mob.getAttackTarget() != null) {
-                    throw new CommandException("Expected a fresh mob and its coverage guard.");
+            case "cqr-sword-guard-revenge":
+                if (guard == null || mob.getAttackTarget() != null && mob.getAttackTarget() != guard) {
+                    throw new CommandException("Expected a fresh mob or a mob already targeting its coverage guard.");
+                }
+                if ("cqr-sword-guard-revenge".equals(operation)) {
+                    if (!"cqrepoured:zombie".equals(String.valueOf(EntityList.getKey(mob)))) {
+                        throw new CommandException("Expected the CQR Zombie sword control.");
+                    }
+                    mob.setItemStackToSlot(EntityEquipmentSlot.MAINHAND, new ItemStack(Items.IRON_SWORD));
                 }
                 player.setPosition(X, mob.posY, Z + 13);
                 player.capabilities.disableDamage = true;
@@ -832,6 +839,103 @@ final class CoverageFixtureCommand extends CommandBase {
                     if (mob.getAttackTarget() != guard) {
                         throw new CommandException("The fighting knight did not accept the native target.");
                     }
+                }
+                break;
+            case "cqr-zombie-boundaries": {
+                if (!"cqrepoured:zombie".equals(String.valueOf(EntityList.getKey(mob))) || guard == null
+                        || mob.getAttackTarget() != player || !mob.getHeldItemMainhand().isEmpty()) {
+                    throw new CommandException("Expected the tracked unarmed CQR Zombie.");
+                }
+                Entity ally = EntityList.createEntityByIDFromName(new ResourceLocation("cqrepoured:zombie"), world);
+                if (!(ally instanceof EntityCreature)) {
+                    throw new CommandException("The allied CQR Zombie was unavailable.");
+                }
+                place(world, ally, "tw_l_cqr_ally", mob.posX + 1.0, mob.posY, mob.posZ);
+                ThreatActions.Result sameFaction = actions.taunt(mob, (EntityCreature) ally);
+                Vec3d mobPosition = mob.getPositionVector();
+                Vec3d guardPosition = guard.getPositionVector();
+                guard.setPosition(mob.posX - 4, mob.posY, mob.posZ);
+                boolean beyondVisible = mob.canEntityBeSeen(guard);
+                boolean withinFollowRange = mob.getDistance(guard)
+                        < mob.getEntityAttribute(SharedMonsterAttributes.FOLLOW_RANGE).getAttributeValue();
+                ThreatActions.Result beyond = actions.taunt(mob, guard);
+                double wallX = Math.floor(mob.posX);
+                mob.setPosition(wallX + 0.1, mob.posY, mob.posZ);
+                guard.setPosition(wallX - 1.1, mob.posY, mob.posZ);
+                BlockPos cqrWall = new BlockPos(wallX - 0.5, mob.posY, mob.posZ);
+                for (int height = 0; height < 3; height++) {
+                    world.setBlockState(cqrWall.up(height), Blocks.STONE.getDefaultState(), 2);
+                }
+                ThreatActions.Result blocked;
+                boolean withinReach;
+                try {
+                    withinReach = (boolean) MethodHandles.publicLookup().findVirtual(mob.getClass(), "isInAttackReach",
+                            MethodType.methodType(boolean.class, EntityLivingBase.class))
+                            .asType(MethodType.methodType(boolean.class, EntityCreature.class, EntityLivingBase.class))
+                            .invokeExact(mob, (EntityLivingBase) guard);
+                    blocked = actions.taunt(mob, guard);
+                } catch (RuntimeException | Error failure) {
+                    throw failure;
+                } catch (Throwable failure) {
+                    throw new CommandException("Could not read the CQR Zombie's native reach.");
+                } finally {
+                    for (int height = 0; height < 3; height++) {
+                        world.setBlockToAir(cqrWall.up(height));
+                    }
+                }
+                mob.setPosition(mobPosition.x, mobPosition.y, mobPosition.z);
+                guard.setPosition(guardPosition.x, guardPosition.y, guardPosition.z);
+                LOGGER.info("coverage cqrBounds mob={} player={} allied={} beyond={} beyondVisible={} withinFollowRange={} blocked={} inReach={}",
+                        mob.getUniqueID(), player.getUniqueID(), sameFaction, beyond, beyondVisible, withinFollowRange, blocked, withinReach);
+                mob.setItemStackToSlot(EntityEquipmentSlot.MAINHAND, new ItemStack(Items.BOW));
+                LOGGER.info("coverage cqrBow mob={} former={} requested={} taunt={}",
+                        mob.getUniqueID(), player.getUniqueID(), guard.getUniqueID(), actions.taunt(mob, player));
+                mob.setAttackTarget(guard);
+                if (mob.getAttackTarget() != guard) {
+                    throw new CommandException("The bow-equipped Zombie did not accept the native target.");
+                }
+                report(mob, world);
+                mob.setItemStackToSlot(EntityEquipmentSlot.MAINHAND, ItemStack.EMPTY);
+                try {
+                    MethodHandles.publicLookup().findVirtual(mob.getClass(), "setLeader",
+                            MethodType.methodType(void.class, EntityLivingBase.class))
+                            .asType(MethodType.methodType(void.class, EntityCreature.class, EntityLivingBase.class))
+                            .invokeExact(mob, (EntityLivingBase) ally);
+                } catch (RuntimeException | Error failure) {
+                    throw failure;
+                } catch (Throwable failure) {
+                    throw new CommandException("Could not assign the CQR Zombie's native leader.");
+                }
+                LOGGER.info("coverage cqrLeader mob={} leader={} taunt={}",
+                        mob.getUniqueID(), ally.getUniqueID(), actions.taunt(mob, player));
+                break;
+            }
+            case "cqr-zombie-pursuit":
+            case "cqr-zombie-pursuit-switch":
+            case "cqr-zombie-pursuit-setter":
+                if (!"cqrepoured:zombie".equals(String.valueOf(EntityList.getKey(mob)))
+                        || guard == null || mob.getAttackTarget() != player) {
+                    throw new CommandException("Expected the tracked CQR Zombie targeting the player.");
+                }
+                boolean setterProbe = "cqr-zombie-pursuit-setter".equals(operation);
+                double guardOffset = "cqr-zombie-pursuit".equals(operation) ? 12.0 : 1.3;
+                guard.setPosition(mob.posX + guardOffset, mob.posY, mob.posZ);
+                if (setterProbe) {
+                    mob.setAttackTarget(guard);
+                    if (mob.getAttackTarget() != player) {
+                        throw new CommandException("The initial selected target was not protected at melee reach.");
+                    }
+                }
+                player.setPosition(mob.posX - 5.0, mob.posY, mob.posZ);
+                LOGGER.info("coverage cqrPursuit mob={} player={} distance={} taunt={}", mob.getUniqueID(),
+                        player.getUniqueID(), mob.getDistance(player), actions.taunt(mob, player));
+                if (setterProbe) {
+                    mob.setAttackTarget(guard);
+                    if (mob.getAttackTarget() != guard) {
+                        throw new CommandException("The provider was unable to change its pursuit target.");
+                    }
+                    LOGGER.info("coverage cqrPursuitSetter mob={} guard={} before=blocked after=accepted",
+                            mob.getUniqueID(), guard.getUniqueID());
                 }
                 break;
             case "unseen-opening":

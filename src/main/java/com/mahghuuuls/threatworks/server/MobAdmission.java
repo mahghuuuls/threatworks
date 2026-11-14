@@ -1,5 +1,6 @@
 package com.mahghuuuls.threatworks.server;
 
+import com.mahghuuuls.threatworks.compat.ChocolateQuestCompatibility;
 import com.mahghuuuls.threatworks.compat.DefiledLandsCompatibility;
 import com.mahghuuuls.threatworks.compat.DungeonMobsCompatibility;
 import com.mahghuuuls.threatworks.compat.FishUndeadRisingCompatibility;
@@ -140,6 +141,7 @@ final class MobAdmission {
                 : SpecialMobsCompatibility.matches(type, mob) || DefiledLandsCompatibility.matches(type, mob)
                 || GaiaCompatibility.matches(type, mob) || DungeonMobsCompatibility.matches(type, mob)
                 || IceAndFireCompatibility.matches(type, mob) || FishUndeadRisingCompatibility.matches(type, mob)
-                || GroundMeleeCompatibility.matches(type, mob) || UnseenDungeonCompatibility.matches(type, mob);
+                || GroundMeleeCompatibility.matches(type, mob) || UnseenDungeonCompatibility.matches(type, mob)
+                || ChocolateQuestCompatibility.matches(type, mob);
     }
 }

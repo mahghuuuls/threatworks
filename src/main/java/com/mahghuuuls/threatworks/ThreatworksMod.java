@@ -4,6 +4,7 @@ import com.mahghuuuls.threatworks.api.ItemThreatPointProvider;
 import com.mahghuuuls.threatworks.api.ThreatActions;
 import com.mahghuuuls.threatworks.command.ThreatworksCommand;
 import com.mahghuuuls.threatworks.compat.BaublesCompatibility;
+import com.mahghuuuls.threatworks.compat.ChocolateQuestCompatibility;
 import com.mahghuuuls.threatworks.compat.DefiledLandsCompatibility;
 import com.mahghuuuls.threatworks.compat.DungeonMobsCompatibility;
 import com.mahghuuuls.threatworks.compat.FoliaathCompatibility;
@@ -85,6 +86,7 @@ public final class ThreatworksMod {
         DungeonMobsCompatibility.reportVersion(LOGGER);
         GaiaCompatibility.reportVersion(LOGGER);
         IceAndFireCompatibility.reportVersion(LOGGER);
+        ChocolateQuestCompatibility.initialize();
     }
 
     @Mod.EventHandler

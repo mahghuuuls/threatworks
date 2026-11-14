@@ -1,5 +1,6 @@
 package com.mahghuuuls.threatworks.server;
 
+import com.mahghuuuls.threatworks.compat.ChocolateQuestCompatibility;
 import com.mahghuuuls.threatworks.config.ServerTuning.MobType;
 import com.mahghuuuls.threatworks.compat.DefiledLandsCompatibility;
 import com.mahghuuuls.threatworks.compat.DungeonMobsCompatibility;
@@ -66,10 +67,11 @@ final class MobTargets {
             return false;
         }
         boolean bow = usesBow(mob);
+        boolean cqrGroundMelee = ChocolateQuestCompatibility.isGroundMelee(type);
         Class<?> attack = EntityAIAttackMelee.class;
         Class<?> declaringMob = null;
         String nestedAttack = null;
-        int priority = 4;
+        int priority = cqrGroundMelee ? 18 : 4;
         if (mob instanceof EntityZombie) {
             attack = EntityAIZombieAttack.class;
             priority = 2;
@@ -111,10 +113,12 @@ final class MobTargets {
                 matchesAttack = SpecialMobsCompatibility.isVariantBlazeAttack(goal);
             } else if (UnseenDungeonCompatibility.isSupportedType(type)) {
                 matchesAttack = UnseenDungeonCompatibility.isAttackGoal(type, goal);
+            } else if (cqrGroundMelee) {
+                matchesAttack = ChocolateQuestCompatibility.isAttackGoal(goal);
             }
             if (matchesAttack) {
                 int mutex = entry.action.getMutexBits();
-                if (matched || entry.priority != priority || (specialBlaze ? mutex != 3 : (mutex & 3) != 3)) {
+                if (matched || entry.priority != priority || (specialBlaze || cqrGroundMelee ? mutex != 3 : (mutex & 3) != 3)) {
                     return false;
                 }
                 matched = true;
@@ -134,6 +138,7 @@ final class MobTargets {
                         || !SpecialAiCompatibility.isCombatReaction(entry)
                         && !GaiaCompatibility.isAntWander(type, entry)
                         && !IceAndFireCompatibility.isHorseGoal(type, entry)
+                        && !(cqrGroundMelee && ChocolateQuestCompatibility.isNativeGoal(entry))
                         && (entry.priority > priority ? !entry.action.isInterruptible()
                         : (entry.action.getMutexBits() & 3) != 0 && !nativeCompetingGoal(mob, entry))) {
                     return false;
@@ -158,7 +163,8 @@ final class MobTargets {
 
     static boolean canControlImmediately(EntityCreature mob, MobType type) {
         boolean providerGoalCheck = SpecialMobsCompatibility.requiresLiveGoalContract(type)
-                || providerMeleePriority(type) >= 0 || UnseenDungeonCompatibility.isSupportedType(type);
+                || providerMeleePriority(type) >= 0 || UnseenDungeonCompatibility.isSupportedType(type)
+                || ChocolateQuestCompatibility.isGroundMelee(type);
         return (providerGoalCheck ? matchesBehavior(mob, type) : hasSupportedState(mob, type))
                 && !inNativePhase(mob, type);
     }
@@ -168,6 +174,7 @@ final class MobTargets {
         boolean unseen = UnseenDungeonCompatibility.isSupportedType(type);
         return !mob.isAIDisabled() && !mob.tasks.isControlFlagDisabled(1) && !mob.tasks.isControlFlagDisabled(2)
                 && (unseen ? UnseenDungeonCompatibility.hasNavigator(mob) && UnseenDungeonCompatibility.hasHostileRole(type, mob)
+                : ChocolateQuestCompatibility.isGroundMelee(type) ? ChocolateQuestCompatibility.hasNavigator(mob)
                 : mob instanceof EntityShulker || mob.getNavigator().getClass() == navigator)
                 && (!(mob instanceof EntityZombieVillager) || !((EntityZombieVillager) mob).isConverting())
                 && (GaiaCompatibility.meleePriority(type) < 0 || GaiaCompatibility.isHostile(mob))
@@ -207,6 +214,7 @@ final class MobTargets {
     static boolean inNativePhase(EntityCreature mob, MobType type) {
         if (FishUndeadRisingCompatibility.nativePhase(type, mob) || GaiaCompatibility.isAquaticPhase(type, mob)
                 || GroundMeleeCompatibility.nativePhase(type, mob)
+                || ChocolateQuestCompatibility.isGroundMelee(type) && ChocolateQuestCompatibility.yieldsToNative(mob)
                 || UnseenDungeonCompatibility.isSupportedType(type) && UnseenDungeonCompatibility.yieldsToNative(type, mob)) {
             return true;
         }
@@ -229,6 +237,7 @@ final class MobTargets {
                     || SpecialAiCompatibility.isBlockGriefing(entry)
                     || GaiaCompatibility.isAntWander(type, entry)
                     || IceAndFireCompatibility.isHorseGoal(type, entry)
+                    || ChocolateQuestCompatibility.isGroundMelee(type) && ChocolateQuestCompatibility.usesNativeGoal(entry)
                     || mob instanceof EntityCreeper
                     && (entry.action.getClass() == EntityAICreeperSwell.class || isCreeperAvoidance(entry))
                     || SpecialMobsCompatibility.isVariantSkeleton(type)
@@ -237,6 +246,12 @@ final class MobTargets {
             }
         }
         return false;
+    }
+
+    static boolean preservesNativeTarget(WorldServer world, EntityCreature mob, EntityLivingBase target, MobType type) {
+        return ChocolateQuestCompatibility.isGroundMelee(type) && target != null
+                && world.getEntityFromUuid(target.getUniqueID()) == target && resolve(world, mob, target, type) != null
+                && !ChocolateQuestCompatibility.inNativeReach(mob, target);
     }
 
     private static boolean canAttackWhileAttached(EntityShulker shulker) {
@@ -269,14 +284,19 @@ final class MobTargets {
                     : SpecialMobsCompatibility.blazeRange(mob);
             range = Math.min(range, attackRange);
         }
-        return isAttackable(mob, target) && IceAndFireCompatibility.acceptsTarget(type, target)
-                && (!UnseenDungeonCompatibility.isSupportedType(type) || UnseenDungeonCompatibility.acceptsTarget(type, target))
+        return isAttackable(mob, target) && providerAccepts(type, mob, target)
                 && target.world == world && world.isBlockLoaded(position)
                 && world.getWorldBorder().contains(position)
                 && mob.isWithinHomeDistanceFromPosition(position)
                 && mob.getDistanceSq(target) <= range * range
                 && (!(mob instanceof EntityShulker) || mob.getDistanceSq(target) < 400.0)
                 && (!(mob instanceof EntityBlaze) || mob.getDistanceSq(target) < range * range) ? target : null;
+    }
+
+    static boolean providerAccepts(MobType type, EntityCreature mob, EntityLivingBase target) {
+        return IceAndFireCompatibility.acceptsTarget(type, target)
+                && (!UnseenDungeonCompatibility.isSupportedType(type) || UnseenDungeonCompatibility.acceptsTarget(type, target))
+                && (!ChocolateQuestCompatibility.isGroundMelee(type) || ChocolateQuestCompatibility.acceptsTarget(mob, target));
     }
 
     static TargetObservation observe(WorldServer world, EntityCreature mob, Entity entity, WorkSample sample, MobType type) {
@@ -290,6 +310,12 @@ final class MobTargets {
         boolean needsSight = !(mob instanceof EntityZombie && target instanceof EntityVillager)
                 && !DefiledLandsCompatibility.canAcquireWithoutSight(type, target);
         boolean sightLost = needsSight && !sees(terrain, mob, target, position);
+        if (ChocolateQuestCompatibility.isGroundMelee(type)) {
+            if (!ChocolateQuestCompatibility.inNativeReach(mob, target)) {
+                return TargetObservation.INELIGIBLE;
+            }
+            return sightLost ? TargetObservation.obscured(false) : TargetObservation.IN_REACH;
+        }
         if (UnseenDungeonCompatibility.isSupportedType(type)) {
             if (!UnseenDungeonCompatibility.withinAttackStartRange(type, mob, target)
                     || !terrain.clearLevelGround(mob.getEntityBoundingBox(), position, target.getPositionVector())) {
