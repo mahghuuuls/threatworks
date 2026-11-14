@@ -18,6 +18,7 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.DamageSource;
 import net.minecraft.util.math.ChunkPos;
+import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.WorldServer;
 import net.minecraftforge.common.ForgeChunkManager;
 import net.minecraftforge.event.entity.living.LivingAttackEvent;
@@ -85,11 +86,17 @@ final class NeutralFixtureCommand extends CommandBase {
                     left.rotationYaw = (float) (Math.atan2(z, x) * 180 / Math.PI - 90);
                     left.rotationPitch = (float) (-Math.atan2(y, Math.hypot(x, z)) * 180 / Math.PI);
                     left.prevRotationYaw = left.rotationYaw;
+                    left.rotationYawHead = left.rotationYaw;
+                    left.prevRotationYawHead = left.rotationYaw;
                     left.prevRotationPitch = left.rotationPitch;
                     break;
                 case "away":
                     left.rotationYaw = 0;
                     left.prevRotationYaw = 0;
+                    left.rotationYawHead = 0;
+                    left.prevRotationYawHead = 0;
+                    left.rotationPitch = 0;
+                    left.prevRotationPitch = 0;
                     break;
                 case "pumpkin":
                     left.setItemStackToSlot(EntityEquipmentSlot.HEAD, new ItemStack(Blocks.PUMPKIN));
@@ -173,10 +180,12 @@ final class NeutralFixtureCommand extends CommandBase {
 
     private void report() {
         NBTTagCompound data = mob.writeToNBT(new NBTTagCompound());
-        LOGGER.info("neutral state type={} anger={} peerAnger={} target={} revenge={} status={} hp={} tick={} x={} y={} z={} day={} sky={}",
+        Vec3d eyeDirection = mob.getPositionEyes(1).subtract(left.getPositionEyes(1)).normalize();
+        LOGGER.info("neutral state type={} anger={} peerAnger={} target={} revenge={} status={} hp={} tick={} x={} y={} z={} day={} sky={} gaze={} visible={}",
                 mob instanceof EntityPigZombie ? "pig" : "enderman", data.getShort("Anger"),
                 peer == null ? 0 : peer.writeToNBT(new NBTTagCompound()).getShort("Anger"), name(mob.getAttackTarget()),
                 name(mob.getRevengeTarget()), EncounterCoordinator.INSTANCE.inspect(mob, 2).status, mob.getHealth(),
-                mob.ticksExisted, mob.posX, mob.posY, mob.posZ, world.isDaytime(), world.canSeeSky(mob.getPosition()));
+                mob.ticksExisted, mob.posX, mob.posY, mob.posZ, world.isDaytime(), world.canSeeSky(mob.getPosition()),
+                left.getLook(1).normalize().dotProduct(eyeDirection), left.canEntityBeSeen(mob));
     }
 }
