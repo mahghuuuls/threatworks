@@ -124,6 +124,7 @@ public final class ServerTuning {
         DREAD_THRALL("iceandfire:dread_thrall"),
         DREAD_KNIGHT("iceandfire:dread_knight"),
         DREAD_BEAST("iceandfire:dread_beast"),
+        DREAD_GHOUL("iceandfire:dread_ghoul"),
         GAIA_MUMMY("grimoireofgaia:mummy"),
         GAIA_SLUDGE_GIRL("grimoireofgaia:sludge_girl"),
         GAIA_SUCCUBUS("grimoireofgaia:succubus"),

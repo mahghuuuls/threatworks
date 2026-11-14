@@ -79,6 +79,7 @@ final class CoverageFixtureCommand extends CommandBase {
     private static final String DREAD_THRALL = "iceandfire:dread_thrall";
     private static final String DREAD_KNIGHT = "iceandfire:dread_knight";
     static final String DREAD_BEAST = "iceandfire:dread_beast";
+    static final String DREAD_GHOUL = "iceandfire:dread_ghoul";
     private static final int JOLT_FLOOR = 4;
     private static final double Z = 12.5;
     private final ThreatworksFixture fixture;
@@ -214,7 +215,7 @@ final class CoverageFixtureCommand extends CommandBase {
         }
         configureMob(mob);
         place(world, mob, "tw_i_mob", X, height, Z);
-        if (DREAD_THRALL.equals(id) || DREAD_KNIGHT.equals(id) || DREAD_BEAST.equals(id)) {
+        if (DREAD_THRALL.equals(id) || DREAD_KNIGHT.equals(id) || animatedDread(id)) {
             dreadState(mob, "seed");
         }
         actors(world, mob, solo);
@@ -313,7 +314,8 @@ final class CoverageFixtureCommand extends CommandBase {
             @Override
             public void onUpdate() {
                 // FakePlayer skips the countdown a connected player gets in EntityPlayerMP.
-                if ((WILDFIRE.equals(id) || meleeBlazeName(id) != null || getTags().contains("tw_l_cinder_player"))
+                if ((WILDFIRE.equals(id) || DREAD_GHOUL.equals(id) || meleeBlazeName(id) != null
+                        || getTags().contains("tw_l_cinder_player"))
                         && hurtResistantTime > 0) {
                     --hurtResistantTime;
                 }
@@ -380,8 +382,8 @@ final class CoverageFixtureCommand extends CommandBase {
                 dreadState(mob, "read");
                 break;
             case "dread-beast-emergence":
-                if (!DREAD_BEAST.equals(String.valueOf(EntityList.getKey(mob)))) {
-                    throw new CommandException("Expected a Dread Beast.");
+                if (!animatedDread(String.valueOf(EntityList.getKey(mob)))) {
+                    throw new CommandException("Expected an animated Dread mob.");
                 }
                 restorePlayer(player);
                 player.setPosition(mob.posX - 2.5, mob.posY, mob.posZ);
@@ -390,8 +392,8 @@ final class CoverageFixtureCommand extends CommandBase {
                         mob.getUniqueID(), player.getUniqueID(), actions.taunt(mob, player));
                 break;
             case "dread-beast-range":
-                if (!DREAD_BEAST.equals(String.valueOf(EntityList.getKey(mob))) || !mob.onGround || guard == null) {
-                    throw new CommandException("Expected a grounded Dread Beast and a live guard.");
+                if (!animatedDread(String.valueOf(EntityList.getKey(mob))) || !mob.onGround || guard == null) {
+                    throw new CommandException("Expected a grounded animated Dread mob and a live guard.");
                 }
                 restorePlayer(player);
                 // The gap isolates the immediate bite rule from the ground pursuit check.
@@ -955,7 +957,7 @@ final class CoverageFixtureCommand extends CommandBase {
                     restorePlayer(player);
                 }
                 attack(mob, player, "hit");
-                if (DREAD_BEAST.equals(String.valueOf(EntityList.getKey(mob)))) {
+                if (animatedDread(String.valueOf(EntityList.getKey(mob)))) {
                     player.setPosition(mob.posX - 6.0, mob.posY, mob.posZ);
                     LOGGER.info("coverage dreadBeastOpening mob={} player={} distance={}", mob.getUniqueID(),
                             player.getUniqueID(), mob.getDistance(player));
@@ -1344,16 +1346,24 @@ final class CoverageFixtureCommand extends CommandBase {
         }
     }
 
-    static void recordDreadBeastBite(EntityCreature mob, EntityLivingBase victim) {
+    static boolean animatedDread(String id) {
+        return DREAD_BEAST.equals(id) || DREAD_GHOUL.equals(id);
+    }
+
+    static void recordDreadAttack(EntityCreature mob, EntityLivingBase victim, String id) {
         try {
-            Class<?> beast = mob.getClass();
-            boolean bite = beast.getMethod("getAnimation").invoke(mob) == beast.getField("ANIMATION_BITE").get(null);
-            Object frame = beast.getMethod("getAnimationTick").invoke(mob);
-            LOGGER.info("coverage dreadBeastBite mob={} victim={} target={} tick={} bite={} frame={} distance={} visible={}",
+            boolean ghoul = DREAD_GHOUL.equals(id);
+            Class<?> entityClass = mob.getClass();
+            Object attack = entityClass.getField(ghoul ? "ANIMATION_SLASH" : "ANIMATION_BITE").get(null);
+            boolean animated = entityClass.getMethod("getAnimation").invoke(mob) == attack;
+            Object frame = entityClass.getMethod("getAnimationTick").invoke(mob);
+            LOGGER.info("coverage {} mob={} victim={} target={} tick={} {}={} frame={} distance={} visible={}",
+                    ghoul ? "dreadGhoulSlash" : "dreadBeastBite",
                     mob.getUniqueID(), victim.getUniqueID(), ArrowFixtureCommand.identity(mob.getAttackTarget()),
-                    mob.world.getTotalWorldTime(), bite, frame, mob.getDistance(victim), mob.canEntityBeSeen(victim));
+                    mob.world.getTotalWorldTime(), ghoul ? "slash" : "bite", animated, frame,
+                    mob.getDistance(victim), mob.canEntityBeSeen(victim));
         } catch (ReflectiveOperationException failure) {
-            LOGGER.warn("Could not read the native Beast bite.", failure);
+            LOGGER.warn("Could not read the native Dread attack for {}.", id, failure);
         }
     }
 

@@ -59,29 +59,26 @@ public final class IceAndFireCompatibility {
                 return "EntityDreadKnight";
             case DREAD_BEAST:
                 return "EntityDreadBeast";
+            case DREAD_GHOUL:
+                return "EntityDreadGhoul";
             default:
                 return null;
         }
     }
 
-    public static boolean beastBiteReaches(Vec3d from, EntityLivingBase target) {
+    public static boolean usesAnimatedMelee(MobType type) {
+        return type == MobType.DREAD_BEAST || type == MobType.DREAD_GHOUL;
+    }
+
+    public static boolean animatedMeleeReaches(Vec3d from, EntityLivingBase target) {
         float x = (float) (from.x - target.posX);
         float y = (float) (from.y - target.posY);
         float z = (float) (from.z - target.posZ);
         return MathHelper.sqrt(x * x + y * y + z * z) < 4.0F;
     }
 
-    public static boolean beastUnavailable(EntityCreature mob) {
-        if (Beast.ANIMATION == null || Beast.SPAWN == null || Beast.readFailed) {
-            return true;
-        }
-        try {
-            return Beast.ANIMATION.invoke(mob) == Beast.SPAWN;
-        } catch (ReflectiveOperationException | LinkageError | RuntimeException failure) {
-            Beast.readFailed = true;
-            LOGGER.warn("Disabling Ice and Fire Dread Beast targeting because its animation read failed.", failure);
-            return true;
-        }
+    public static boolean animatedMeleeUnavailable(EntityCreature mob) {
+        return ANIMATION.get(mob.getClass()).unavailable(mob);
     }
 
     public static boolean isHorseGoal(MobType type, EntityAITaskEntry entry) {
@@ -146,29 +143,49 @@ public final class IceAndFireCompatibility {
         }
     }
 
-    private static final class Beast {
-        private static final Method ANIMATION;
-        private static final Object SPAWN;
-        private static boolean readFailed;
-
-        static {
-            Method animation = null;
-            Object spawn = null;
+    private static final ClassValue<SpawnAnimation> ANIMATION = new ClassValue<SpawnAnimation>() {
+        @Override
+        protected SpawnAnimation computeValue(Class<?> entityClass) {
             try {
-                Class<?> entity = Class.forName(ENTITY_PACKAGE + "EntityDreadBeast", false, Loader.instance().getModClassLoader())
-                        .asSubclass(EntityCreature.class);
-                Method getter = entity.getMethod("getAnimation");
-                Field field = entity.getField("ANIMATION_SPAWN");
+                Method getter = entityClass.getMethod("getAnimation");
+                Field field = entityClass.getField("ANIMATION_SPAWN");
                 if (!Modifier.isStatic(getter.getModifiers()) && Modifier.isStatic(field.getModifiers())
                         && getter.getReturnType() == field.getType()) {
-                    spawn = field.get(null);
-                    animation = getter;
+                    Object spawn = field.get(null);
+                    if (spawn != null) {
+                        return new SpawnAnimation(getter, spawn);
+                    }
                 }
+                LOGGER.warn("Could not bind the Ice and Fire spawn animation for {}.", entityClass.getName());
             } catch (ReflectiveOperationException | LinkageError | RuntimeException failure) {
-                LOGGER.warn("Ice and Fire Dread Beast targeting unavailable because its animation could not be bound.", failure);
+                LOGGER.warn("Could not bind the Ice and Fire spawn animation for {}.", entityClass.getName(), failure);
             }
-            ANIMATION = animation;
-            SPAWN = spawn;
+            return new SpawnAnimation(null, null);
+        }
+    };
+
+    private static final class SpawnAnimation {
+        private final Method getter;
+        private final Object spawn;
+        private boolean readFailed;
+
+        private SpawnAnimation(Method getter, Object spawn) {
+            this.getter = getter;
+            this.spawn = spawn;
+        }
+
+        private boolean unavailable(EntityCreature mob) {
+            if (getter == null || readFailed) {
+                return true;
+            }
+            try {
+                return getter.invoke(mob) == spawn;
+            } catch (ReflectiveOperationException | LinkageError | RuntimeException failure) {
+                readFailed = true;
+                LOGGER.warn("Disabling Ice and Fire targeting for {} because the animation read failed.",
+                        mob.getClass().getName(), failure);
+                return true;
+            }
         }
     }
 }
