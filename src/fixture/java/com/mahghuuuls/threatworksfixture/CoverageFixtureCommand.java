@@ -2054,8 +2054,15 @@ final class CoverageFixtureCommand extends CommandBase {
             world.setBlockToAir(obstruction.down());
             ThreatActions.Result gap = actions.taunt(slime, guard);
             world.setBlockState(obstruction.down(), Blocks.STONE.getDefaultState(), 2);
-            LOGGER.info("coverage slimeBounds mob={} guard={} body={} gap={} clear={}",
-                    slime.getUniqueID(), guard.getUniqueID(), body, gap, actions.taunt(slime, guard));
+            BlockPos overhead = obstruction.up(3);
+            world.setBlockState(overhead, Blocks.OBSIDIAN.getDefaultState(), 2);
+            Vec3d eye = slime.getPositionVector().add(0, slime.getEyeHeight(), 0);
+            Vec3d guardEye = guard.getPositionVector().add(0, guard.getEyeHeight(), 0);
+            boolean openSight = world.rayTraceBlocks(eye, guardEye, false, true, false) == null;
+            ThreatActions.Result roof = actions.taunt(slime, guard);
+            world.setBlockToAir(overhead);
+            LOGGER.info("coverage slimeBounds mob={} guard={} body={} gap={} openSight={} roof={} clear={}",
+                    slime.getUniqueID(), guard.getUniqueID(), body, gap, openSight, roof, actions.taunt(slime, guard));
         } else if ("slime-changed-selector".equals(operation)) {
             if (slime.getAttackTarget() != player) {
                 throw new CommandException("Expected a tracked slime targeting the player.");

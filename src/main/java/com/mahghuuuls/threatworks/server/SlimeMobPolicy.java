@@ -15,6 +15,8 @@ import net.minecraft.entity.monster.EntityMagmaCube;
 import net.minecraft.entity.monster.EntitySlime;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.init.MobEffects;
+import net.minecraft.util.EntitySelectors;
+import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.EnumDifficulty;
@@ -150,10 +152,7 @@ final class SlimeMobPolicy implements MobPolicy {
         boolean visible = terrain.clearLine(from.add(0, mob.getEyeHeight(), 0), to.add(0, target.getEyeHeight(), 0));
         double contact = 0.6 * ((EntitySlime) mob).getSlimeSize();
         double contactSquared = providerContact ? mob.width * mob.width + target.width * target.width : contact * contact;
-        boolean contactDispatch = target instanceof EntityPlayer
-                ? target.getEntityBoundingBox().grow(1.0, 0.5, 1.0).intersects(mob.getEntityBoundingBox())
-                : mob.getEntityBoundingBox().intersects(target.getEntityBoundingBox());
-        if (distanceSquared < contactSquared && contactDispatch) {
+        if (distanceSquared < contactSquared && canDispatchContact(mob, target)) {
             return visible ? TargetObservation.IN_REACH : TargetObservation.obscured(false);
         }
         if (!target.onGround || from.y < to.y - 0.125 || from.y > to.y + 5.0) {
@@ -164,12 +163,28 @@ final class SlimeMobPolicy implements MobPolicy {
         }
         // Mid-hop, check a supported landing approach and the current airborne collision corridor.
         Vec3d footing = new Vec3d(from.x, to.y, from.z);
-        if (!terrain.clearLevelGround(mob.getEntityBoundingBox().offset(0, footing.y - from.y, 0), footing, to)
-                || !mob.onGround && !terrain.clearFlight(mob.getEntityBoundingBox(),
-                new Vec3d(to.x - from.x, 0, to.z - from.z))) {
+        Vec3d approach = new Vec3d(to.x - from.x, 0, to.z - from.z);
+        AxisAlignedBB body = mob.getEntityBoundingBox();
+        AxisAlignedBB landingBody = body.offset(0, footing.y - from.y, 0);
+        double headroom = mob instanceof EntityMagmaCube ? 5.0 : 2.0;
+        if (!terrain.clearLevelGround(landingBody, footing, to)
+                || !terrain.clearFlight(landingBody.expand(0, headroom, 0).union(body), approach)) {
             return TargetObservation.INELIGIBLE;
         }
         return visible ? TargetObservation.pursuit(Math.sqrt(distanceSquared)) : TargetObservation.obscured(false);
+    }
+
+    private static boolean canDispatchContact(EntityLiving mob, EntityLivingBase target) {
+        AxisAlignedBB targetBox = target.getEntityBoundingBox();
+        AxisAlignedBB slimeBox = mob.getEntityBoundingBox();
+        if (target instanceof EntityPlayer) {
+            Entity mount = target.getRidingEntity();
+            AxisAlignedBB sweep = mount != null && !mount.isDead
+                    ? targetBox.union(mount.getEntityBoundingBox()).grow(1.0, 0, 1.0)
+                    : targetBox.grow(1.0, 0.5, 1.0);
+            return sweep.intersects(slimeBox);
+        }
+        return targetBox.intersects(slimeBox) && EntitySelectors.getTeamCollisionPredicate(target).apply(mob);
     }
 
     @Override
