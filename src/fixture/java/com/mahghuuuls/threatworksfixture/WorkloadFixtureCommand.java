@@ -85,7 +85,10 @@ final class WorkloadFixtureCommand extends CommandBase {
                 if (mob.getAttackTarget() != guard(world, 0, 0)) {
                     throw new CommandException("Expected the original guard immediately before movement.");
                 }
-                challenger.setPositionAndUpdate(x(0) + 1.5, HEIGHT, z(0) + 1.5);
+                challenger.setPositionAndUpdate(mob.posX, mob.posY, mob.posZ + 0.8);
+                if (!WorkloadEligibility.attacksImmediately(world, mob, challenger, MobType.ZOMBIE)) {
+                    throw new CommandException("Expected the moved guard to be immediately attackable.");
+                }
                 LOGGER.info("work_move mob={} challenger={} x={} z={} serverTick={}", mob.getUniqueID(),
                         challenger.getUniqueID(), challenger.posX, challenger.posZ, server.getTickCounter());
                 break;
