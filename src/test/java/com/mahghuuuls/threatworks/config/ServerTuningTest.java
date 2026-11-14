@@ -18,6 +18,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 import static com.mahghuuuls.threatworks.config.ServerTuning.MobType.SKELETON;
+import static com.mahghuuuls.threatworks.config.ServerTuning.MobType.CREEPER;
 import static com.mahghuuuls.threatworks.config.ServerTuning.MobType.SPECIAL_SKELETON;
 import static com.mahghuuuls.threatworks.config.ServerTuning.MobType.SPECIAL_ZOMBIE;
 import static com.mahghuuuls.threatworks.config.ServerTuning.MobType.ZOMBIE;
@@ -63,11 +64,13 @@ class ServerTuningTest {
         ServerTuning created = TuningFiles.load(file, null, id -> true, warnings);
         assertTrue(Files.isRegularFile(file));
         ServerTuning reloaded = TuningFiles.load(file, null, id -> true, warnings);
+        Set<String> freshVanilla = new HashSet<>(VANILLA_DEFAULTS);
+        freshVanilla.add(CREEPER.id);
         for (ServerTuning tuning : new ServerTuning[] {created, reloaded}) {
-            assertEquals(VANILLA_DEFAULTS, enabledVanilla(tuning));
+            assertEquals(freshVanilla, enabledVanilla(tuning));
             assertTrue(tuning.isEnabled(SPECIAL_ZOMBIE));
             assertTrue(tuning.isEnabled(SPECIAL_SKELETON));
-            assertEquals(234, Arrays.stream(MobType.values()).filter(tuning::isEnabled).count());
+            assertEquals(235, Arrays.stream(MobType.values()).filter(tuning::isEnabled).count());
             assertNull(tuning.assignedPoints("minecraft:stick", null));
             Rules rules = tuning.rulesFor(ZOMBIE);
             assertArrayEquals(new double[] {0.2, 0.4, 8, 16, 10, 60, 200, 40}, new double[] {
@@ -111,6 +114,47 @@ class ServerTuningTest {
         assertTrue(tuning.isEnabled(ZOMBIE));
         assertTrue(tuning.isBlacklisted("specialmobs:specialzombie"));
         assertTrue(warnings.stream().anyMatch(message -> message.contains("ancientwarfarenpc=invalid")));
+    }
+
+    @Test
+    void savedExpandedRostersAndStaleVanillaOptInStayUnchangedUntilExplicitlyAdopted() throws Exception {
+        for (boolean modded : new boolean[] {false, true}) {
+            Path file = directory.resolve("previous-" + modded + ".cfg");
+            ServerTuning previous = TuningFiles.load(file, "S:mobCoverage=expanded\nB:enableVerifiedModdedMobs=" + modded
+                    + "\nS:mobOptIn <\n minecraft:creeper\n specialmobs:specialskeleton\n >"
+                    + "\nS:mobBlacklist <\n minecraft:creeper\n >\nmodtargeting {\n B:ancientwarfarenpc=false\n }",
+                    id -> true, warnings);
+            ServerTuning restarted = TuningFiles.load(file, null, id -> true, warnings);
+            for (ServerTuning tuning : new ServerTuning[] {previous, restarted}) {
+                assertEquals(VANILLA_DEFAULTS, enabledVanilla(tuning));
+                assertTrue(tuning.isEnabled(SPECIAL_SKELETON));
+                assertEquals(modded, tuning.isEnabled(MobType.FISH_WRAITH));
+            }
+            String saved = new String(Files.readAllBytes(file), java.nio.charset.StandardCharsets.UTF_8);
+            assertTrue(saved.contains("B:enableVerifiedVanillaMobs=false"));
+            assertTrue(java.util.regex.Pattern.compile("S:mobOptIn\\s*<\\s*minecraft:creeper\\s+specialmobs:specialskeleton\\s*>")
+                    .matcher(saved).find());
+            for (String selection : new String[] {
+                    saved.replace("B:enableVerifiedVanillaMobs=false", "B:enableVerifiedVanillaMobs=true"),
+                    saved.replace("S:mobCoverage=expanded", "S:mobCoverage=expanded-all")}) {
+                Files.write(file, selection.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                ServerTuning updated = TuningFiles.load(file, null, id -> true, warnings);
+                assertTrue(updated.isEnabled(CREEPER));
+                assertEquals(modded || selection.contains("S:mobCoverage=expanded-all"),
+                        updated.isEnabled(MobType.FISH_WRAITH));
+                assertTrue(updated.isBlacklisted(CREEPER.id));
+                assertFalse(updated.isEnabled(MobType.ANCIENT_WARFARE_ARCHER));
+            }
+        }
+    }
+
+    @Test
+    void explicitVanillaOptInEnablesATypeOnTheEarlierRoster() throws Exception {
+        ServerTuning tuning = TuningFiles.load(directory.resolve("vanilla-opt-in.cfg"),
+                "S:mobCoverage=expanded\nS:vanillaMobOptIn <\n minecraft:creeper\n >", id -> true, warnings);
+        assertTrue(tuning.isEnabled(CREEPER));
+        assertFalse(tuning.isEnabled(SPECIAL_SKELETON));
+        assertTrue(warnings.isEmpty(), warnings.toString());
     }
 
     @Test

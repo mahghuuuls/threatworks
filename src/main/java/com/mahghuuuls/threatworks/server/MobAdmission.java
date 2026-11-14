@@ -19,6 +19,7 @@ import net.minecraft.entity.EntityLiving;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.monster.EntityBlaze;
 import net.minecraft.entity.monster.EntityCaveSpider;
+import net.minecraft.entity.monster.EntityCreeper;
 import net.minecraft.entity.monster.EntityEndermite;
 import net.minecraft.entity.monster.EntityHusk;
 import net.minecraft.entity.monster.EntityShulker;
@@ -61,6 +62,7 @@ final class MobAdmission {
         VANILLA_CLASSES.put(MobType.WITHER_SKELETON, EntityWitherSkeleton.class);
         VANILLA_CLASSES.put(MobType.SPIDER, EntitySpider.class);
         VANILLA_CLASSES.put(MobType.CAVE_SPIDER, EntityCaveSpider.class);
+        VANILLA_CLASSES.put(MobType.CREEPER, EntityCreeper.class);
         VANILLA_CLASSES.put(MobType.SILVERFISH, EntitySilverfish.class);
         VANILLA_CLASSES.put(MobType.ENDERMITE, EntityEndermite.class);
         VANILLA_CLASSES.put(MobType.VINDICATOR, EntityVindicator.class);

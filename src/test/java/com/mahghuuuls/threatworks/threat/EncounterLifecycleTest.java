@@ -34,6 +34,25 @@ class EncounterLifecycleTest {
     }
 
     @Test
+    void nativeAttackKeepsValidTauntAndScoresWithoutStartingReset() {
+        Encounter encounter = Encounter.recordHit(null, player, npc, 5, 18, DEFAULT_RULES);
+        Encounter.tryTaunt(encounter, player, npc, 10, id -> IN_REACH, DEFAULT_RULES);
+
+        encounter.observeNativeAttack(11, player, id -> IN_REACH);
+        assertEquals(player, encounter.getTaunter());
+        assertNull(encounter.remainingResetTicks(11));
+
+        encounter.observeNativeAttack(12, npc, id -> id.equals(player) ? INELIGIBLE : IN_REACH);
+        assertNull(encounter.getTaunter());
+        assertNull(encounter.remainingResetTicks(12));
+        assertEquals(18.0, encounter.copyScores().get(player), 0.0);
+
+        encounter.observeNativeAttack(13, null, id -> INELIGIBLE);
+        encounter.observeNativeAttack(14, null, id -> INELIGIBLE);
+        assertEquals(Integer.valueOf(199), encounter.remainingResetTicks(14));
+    }
+
+    @Test
     void preparingATauntLeavesExistingScoresAndFocusUntouchedUntilApplied() {
         Encounter encounter = Encounter.recordHit(null, player, npc, 5, 18, DEFAULT_RULES);
         Encounter.Taunt pending = Encounter.prepareTaunt(encounter, npc, npc, 10, id -> IN_REACH, DEFAULT_RULES);

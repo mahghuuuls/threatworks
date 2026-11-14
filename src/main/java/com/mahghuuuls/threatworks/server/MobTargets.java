@@ -368,7 +368,7 @@ final class MobTargets {
         }
         if (mob instanceof EntityCreeper) {
             EntityCreeper creeper = (EntityCreeper) mob;
-            if (creeper.getCreeperState() > 0 || creeper.hasIgnited() || creeper.isWet() || creeper.isBurning()) {
+            if (creeperFuseLit(creeper) || creeper.isWet() || creeper.isBurning()) {
                 return true;
             }
         }
@@ -404,6 +404,16 @@ final class MobTargets {
             }
         }
         return false;
+    }
+
+    static boolean committedCreeperFuse(EntityCreeper creeper) {
+        return creeperFuseLit(creeper)
+                || creeper.tasks.taskEntries.stream().anyMatch(entry -> entry.using
+                && entry.action.getClass() == EntityAICreeperSwell.class);
+    }
+
+    private static boolean creeperFuseLit(EntityCreeper creeper) {
+        return creeper.getCreeperState() > 0 || creeper.hasIgnited();
     }
 
     static boolean preservesNativeTarget(WorldServer world, EntityCreature mob, EntityLivingBase target, MobType type) {

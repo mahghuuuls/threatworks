@@ -3,6 +3,7 @@ package com.mahghuuuls.threatworks.threat;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Function;
 
@@ -141,6 +142,24 @@ public final class Encounter {
     public void resumeFromNative(UUID incumbent, Function<UUID, TargetObservation> observe) {
         if (incumbent != null && scores.containsKey(incumbent) && observe.apply(incumbent).isEligible()) {
             setTarget(incumbent);
+        }
+    }
+
+    /** A native attack may own the target while the participants remain eligible for the encounter. */
+    public void observeNativeAttack(int tick, UUID nativeTarget, Function<UUID, TargetObservation> observe) {
+        opening = false;
+        selectionPending = false;
+        if (!Objects.equals(target, nativeTarget)) {
+            setTarget(null);
+        }
+        boolean incumbentEligible = target != null && retainsIncumbent(tick, observe.apply(target));
+        if (taunter != null && (!taunter.equals(nativeTarget) || !incumbentEligible || remainingTauntTicks(tick) == 0)) {
+            taunter = null;
+        }
+        if (incumbentEligible || scores.keySet().stream().anyMatch(id -> observe.apply(id).isEligible())) {
+            resetStartedAt = null;
+        } else if (resetStartedAt == null) {
+            resetStartedAt = tick;
         }
     }
 

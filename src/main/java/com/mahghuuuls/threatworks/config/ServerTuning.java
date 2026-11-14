@@ -58,6 +58,7 @@ public final class ServerTuning {
         MAGMA_CUBE("minecraft:magma_cube", true),
         WITCH("minecraft:witch", true),
         SHULKER("minecraft:shulker", true),
+        CREEPER("minecraft:creeper"),
         SPECIAL_ZOMBIE("specialmobs:specialzombie", true),
         PVJ_BANSHEE("pvj:pvj_banshee"),
         PVJ_SHADE("pvj:pvj_shade"),
@@ -292,6 +293,10 @@ public final class ServerTuning {
             return id.substring(0, id.indexOf(':'));
         }
 
+        private boolean isVanilla() {
+            return id.startsWith("minecraft:");
+        }
+
         private static MobType find(String id) {
             for (MobType type : values()) {
                 if (type.id.equals(id)) {
@@ -307,7 +312,7 @@ public final class ServerTuning {
     static {
         for (MobType type : MobType.values()) {
             String namespace = type.namespace();
-            if (!"minecraft".equals(namespace)) {
+            if (!type.isVanilla()) {
                 MODDED_NAMESPACES.add(namespace);
             }
         }
@@ -448,15 +453,19 @@ public final class ServerTuning {
         boolean hasLegacyList = config.hasKey(CATEGORY, "enabledMobs");
         String fallback = hasLegacyList ? "legacy" : "expanded";
         Property selection = config.get(CATEGORY, "mobCoverage", fallback,
-                "Use expanded for the verified roster and mod switches, or legacy to keep the old enabledMobs list.");
+                "Use expanded-all to adopt both verified rosters, expanded for the individual coverage settings, "
+                        + "or legacy to keep the old enabledMobs list.");
         String mode = selection.isList() ? "<list>" : selection.getString().trim();
-        if (!"legacy".equals(mode) && !"expanded".equals(mode)) {
+        boolean fullCoverage = "expanded-all".equals(mode);
+        if (!fullCoverage && !"legacy".equals(mode) && !"expanded".equals(mode)) {
             warn.accept("mobCoverage=" + mode + " is invalid; using " + fallback);
             mode = fallback;
         }
         // Previously saved server configurations keep their effective expanded selections until the operator enables the full roster.
         boolean enableVerified = coverageToggle(config, CATEGORY, "enableVerifiedModdedMobs", !existingServerSettings,
                 "Enable all verified modded mobs in expanded mode. When false, use the base Special Mobs zombie and mobOptIn.", warn);
+        boolean enableVanilla = coverageToggle(config, CATEGORY, "enableVerifiedVanillaMobs", !existingServerSettings,
+                "Enable all verified vanilla mobs in expanded mode. When false, use the earlier vanilla roster and vanillaMobOptIn.", warn);
         config.setCategoryComment(MOD_TARGETING, "Enable Threatworks targeting for each mob registry namespace in expanded mode.");
         Set<String> disabledNamespaces = new HashSet<>();
         for (String namespace : MODDED_NAMESPACES) {
@@ -465,22 +474,19 @@ public final class ServerTuning {
             }
         }
         Set<String> optIn = mobIds(config, "mobOptIn",
-                "Exact verified IDs to enable individually in expanded mode when enableVerifiedModdedMobs is false.", warn);
-        if ("expanded".equals(mode)) {
+                "Exact verified modded IDs to enable individually in expanded mode.", warn);
+        Set<String> vanillaOptIn = mobIds(config, "vanillaMobOptIn",
+                "Exact verified vanilla IDs to enable individually in expanded mode, such as minecraft:creeper.", warn);
+        if (fullCoverage || "expanded".equals(mode)) {
             Set<MobType> enabled = EnumSet.noneOf(MobType.class);
             for (MobType type : MobType.values()) {
-                if (enableVerified || type.originalExpandedDefault) {
+                boolean enableRoster = type.isVanilla() ? enableVanilla : enableVerified;
+                if (fullCoverage || enableRoster || type.originalExpandedDefault) {
                     enabled.add(type);
                 }
             }
-            for (String id : optIn) {
-                MobType type = MobType.find(id);
-                if (type == null) {
-                    warn.accept("mobOptIn entry '" + id + "' has no supported mob policy; ignoring it");
-                } else {
-                    enabled.add(type);
-                }
-            }
+            addOptIns(enabled, optIn, false, warn);
+            addOptIns(enabled, vanillaOptIn, true, warn);
             enabled.removeIf(type -> disabledNamespaces.contains(type.namespace()));
             return enabled;
         }
@@ -497,6 +503,18 @@ public final class ServerTuning {
             }
         }
         return enabled;
+    }
+
+    private static void addOptIns(Set<MobType> enabled, Set<String> ids, boolean vanilla, Consumer<String> warn) {
+        String setting = vanilla ? "vanillaMobOptIn" : "mobOptIn";
+        for (String id : ids) {
+            MobType type = MobType.find(id);
+            if (type != null && type.isVanilla() == vanilla) {
+                enabled.add(type);
+            } else if (type == null || !type.originalExpandedDefault || vanilla) {
+                warn.accept(setting + " entry '" + id + "' has no supported mob policy for this list; ignoring it");
+            }
+        }
     }
 
     private static boolean coverageToggle(Configuration config, String category, String key, boolean defaultValue,

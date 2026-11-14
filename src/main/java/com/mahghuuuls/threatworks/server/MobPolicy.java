@@ -8,6 +8,7 @@ import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityCreature;
 import net.minecraft.entity.EntityLiving;
 import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.entity.monster.EntityCreeper;
 import net.minecraft.world.WorldServer;
 
 /** Native combat observations used by the coordinator's shared encounter rules. */
@@ -19,6 +20,14 @@ interface MobPolicy {
     EntityLivingBase resolve(WorldServer world, EntityLiving mob, Entity candidate);
 
     TargetObservation observe(WorldServer world, EntityLiving mob, Entity candidate, WorkSample sample);
+
+    default boolean keepsEncounterDuringNativePhase() {
+        return false;
+    }
+
+    default boolean protectsCommittedTarget(EntityLiving mob) {
+        return false;
+    }
 
     /** Lets native combat keep an otherwise legal target when there is no eligible replacement. */
     default boolean preservesNativeTarget(WorldServer world, EntityLiving mob, EntityLivingBase target) {
@@ -45,6 +54,16 @@ interface MobPolicy {
 
     static MobPolicy builtIn(MobType type) {
         return new MobPolicy() {
+            @Override
+            public boolean keepsEncounterDuringNativePhase() {
+                return type == MobType.CREEPER;
+            }
+
+            @Override
+            public boolean protectsCommittedTarget(EntityLiving mob) {
+                return type == MobType.CREEPER && MobTargets.committedCreeperFuse((EntityCreeper) mob);
+            }
+
             @Override
             public boolean controlsImmediately(EntityLiving mob) {
                 return MobTargets.canControlImmediately((EntityCreature) mob, type);

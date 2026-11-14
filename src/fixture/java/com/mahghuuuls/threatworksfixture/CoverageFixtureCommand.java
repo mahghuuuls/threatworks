@@ -452,7 +452,7 @@ final class CoverageFixtureCommand extends CommandBase {
         boolean twoPlayers = cqrGoblinFaction || "cqrepoured:gremlin".equals(id) || spectre
                 || mob instanceof net.minecraft.entity.monster.EntityWitch || mocDarkMelee || nativePlayerMelee
                 || "deeperdepths:bogged".equals(id) || providerRanged || stygianPlayers || ancientWarfare
-                || id.startsWith("natura:") && mob instanceof EntitySpider;
+                || id.startsWith("natura:") && mob instanceof EntitySpider || "vanilla-creeper".equals(scene);
         if (!solo && twoPlayers) {
             EntityPlayerMP incumbent = fixturePlayer(world, id, "MeleeIncumbent");
             if (cqrGoblinFaction) {
@@ -473,6 +473,9 @@ final class CoverageFixtureCommand extends CommandBase {
             }
             if (ancientWarfare) {
                 spacing = id.contains("archer") ? 7.0 : 1.65;
+            }
+            if ("vanilla-creeper".equals(scene)) {
+                spacing = 9.0;
             }
             if (mob.getTags().contains("tw_l_toro_raid")) {
                 incumbent.capabilities.disableDamage = true;
@@ -2196,14 +2199,59 @@ final class CoverageFixtureCommand extends CommandBase {
                 if (!(mob instanceof EntityCreeper)) {
                     throw new CommandException("Expected a creeper.");
                 }
-                LOGGER.info("coverage creeperFuse mob={} player={} distance={} burning={} fuse={} ignited={}",
+                LOGGER.info("coverage creeperFuse mob={} player={} distance={} burning={} fuse={} ignited={} fuseTicks={}",
                         mob.getUniqueID(), player.getUniqueID(), mob.getDistance(player), mob.isBurning(),
-                        ((EntityCreeper) mob).getCreeperState(), ((EntityCreeper) mob).hasIgnited());
+                        ((EntityCreeper) mob).getCreeperState(), ((EntityCreeper) mob).hasIgnited(),
+                        creeperFuseTicks((EntityCreeper) mob));
                 break;
+            case "creeper-interrupt":
+                if (!(mob instanceof EntityCreeper) || mob.getAttackTarget() != player
+                        || ((EntityCreeper) mob).getCreeperState() <= 0 || ((EntityCreeper) mob).hasIgnited()) {
+                    throw new CommandException("Expected a combat fuse on the selected challenger.");
+                }
+                player.setPosition(mob.posX - 9.0, mob.posY, mob.posZ);
+                LOGGER.info("coverage creeperInterrupt mob={} player={} distance={} fuseTicks={}",
+                        mob.getUniqueID(), player.getUniqueID(), mob.getDistance(player),
+                        creeperFuseTicks((EntityCreeper) mob));
+                break;
+            case "creeper-committed-target": {
+                if (!(mob instanceof EntityCreeper) || guard == null || mob.getAttackTarget() != player
+                        || ((EntityCreeper) mob).getCreeperState() <= 0) {
+                    throw new CommandException("Expected a committed Creeper fuse aimed at the challenger.");
+                }
+                mob.setAttackTarget(null);
+                EntityLivingBase afterClear = mob.getAttackTarget();
+                mob.setAttackTarget(guard);
+                EntityLivingBase afterReplacement = mob.getAttackTarget();
+                LOGGER.info("coverage creeperCommitment mob={} expected={} afterClear={} afterReplacement={}",
+                        mob.getUniqueID(), player.getUniqueID(), identity(afterClear), identity(afterReplacement));
+                if (afterClear != player || afterReplacement != player) {
+                    throw new CommandException("The live target changed during the native Creeper fuse.");
+                }
+                break;
+            }
+            case "creeper-manual-ignite": {
+                if (!(mob instanceof EntityCreeper) || ((EntityCreeper) mob).getCreeperState() > 0) {
+                    throw new CommandException("Expected an unlit creeper.");
+                }
+                restorePlayer(player);
+                player.setPosition(mob.posX - 3.5, mob.posY, mob.posZ);
+                player.setHeldItem(net.minecraft.util.EnumHand.MAIN_HAND, new ItemStack(Items.FLINT_AND_STEEL));
+                if (!mob.processInitialInteract(player, net.minecraft.util.EnumHand.MAIN_HAND)
+                        || !((EntityCreeper) mob).hasIgnited()) {
+                    throw new CommandException("Native flint and steel use did not ignite the creeper.");
+                }
+                LOGGER.info("coverage creeperManualIgnition mob={} player={} taunt={}",
+                        mob.getUniqueID(), player.getUniqueID(), actions.taunt(mob, player));
+                break;
+            }
             case "creeper-ocelot":
                 if (!(mob instanceof EntityCreeper) || guard == null || mob.getAttackTarget() != player
                         || ((EntityCreeper) mob).getCreeperState() > 0) {
                     throw new CommandException("Expected a creeper pursuing the selected player before swelling.");
+                }
+                if ("minecraft:creeper".equals(String.valueOf(EntityList.getKey(mob)))) {
+                    player.setPosition(mob.posX - 9.0, mob.posY, mob.posZ);
                 }
                 EntityOcelot ocelot = new EntityOcelot(world);
                 ocelot.setNoAI(true);
@@ -2213,6 +2261,7 @@ final class CoverageFixtureCommand extends CommandBase {
                         ocelot.posX, ocelot.posZ);
                 break;
             case "creeper-ocelot-handoff":
+            case "creeper-ocelot-incumbent":
                 EntityOcelot cat = get(world, EntityOcelot.class, "tw_l_creeper_ocelot");
                 boolean avoiding = mob.tasks.taskEntries.stream().anyMatch(entry -> entry.using && entry.priority == 3
                         && entry.action.getClass() == EntityAIAvoidEntity.class);
@@ -2221,6 +2270,11 @@ final class CoverageFixtureCommand extends CommandBase {
                 }
                 Path retreat = mob.getNavigator().getPath();
                 if (avoiding && retreat != null && !retreat.isFinished()) {
+                    boolean incumbentProbe = "creeper-ocelot-incumbent".equals(operation);
+                    int tick = world.getMinecraftServer().getTickCounter();
+                    if (incumbentProbe && (tick + 1 + mob.getEntityId()) % Encounter.SELECTION_INTERVAL == 0) {
+                        break;
+                    }
                     Vec3d end = retreat.getVectorFromIndex(mob, retreat.getCurrentPathLength() - 1);
                     if (end.squareDistanceTo(cat.getPositionVector()) <= cat.getDistanceSq(mob)) {
                         break;
@@ -2231,6 +2285,15 @@ final class CoverageFixtureCommand extends CommandBase {
                     mob.setAttackTarget(guard);
                     if (mob.getAttackTarget() != guard) {
                         throw new CommandException("The native setter was blocked during ocelot avoidance.");
+                    }
+                    if (incumbentProbe) {
+                        LOGGER.info("coverage creeperNativeIncumbent mob={} guard={} tick={} entityId={}",
+                                mob.getUniqueID(), guard.getUniqueID(), world.getMinecraftServer().getTickCounter(),
+                                mob.getEntityId());
+                        report(mob, world);
+                        cat.setDead();
+                        mob.getNavigator().clearPath();
+                        return;
                     }
                     mob.setAttackTarget(player);
                     if (mob.getAttackTarget() != player) {
@@ -2595,6 +2658,10 @@ final class CoverageFixtureCommand extends CommandBase {
         player.capabilities.disableDamage = false;
         player.setInvisible(false);
         player.hurtResistantTime = 0;
+    }
+
+    private static int creeperFuseTicks(EntityCreeper creeper) {
+        return ReflectionHelper.getPrivateValue(EntityCreeper.class, creeper, "timeSinceIgnited", "field_70833_d");
     }
 
     private static void setHorseFixtureForm(EntityCreature horse, int form) throws CommandException {

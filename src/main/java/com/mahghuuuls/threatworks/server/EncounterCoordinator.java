@@ -218,7 +218,9 @@ public final class EncounterCoordinator implements ThreatActions {
             if (existing == null) {
                 return;
             }
-            yieldToNative(state, mobId, existing, tick);
+            if (!policies.get(type).keepsEncounterDuringNativePhase()) {
+                yieldToNative(state, mobId, existing, tick);
+            }
         }
 
         DamageAttribution hit = DamageAttribution.resolve(source, state.launchSession, summons);
@@ -277,12 +279,19 @@ public final class EncounterCoordinator implements ThreatActions {
         }
         WorldServer world = (WorldServer) mob.world;
         WorldEncounters state = worlds.get(world);
-        MobType binding = state == null ? null : state.coverage.get(mob.getUniqueID());
-        return binding != null && mob.isEntityAlive()
-                && !state.yielded.contains(mob.getUniqueID()) && !state.rejectedWrites.contains(mob.getUniqueID())
-                && policies.get(binding).controlsImmediately(mob)
-                && !policies.get(binding).releasesNativeWrite(world, mob, mob.getAttackTarget())
-                && state.blocksTargetWrite(mob.getUniqueID(), true,
+        UUID id = mob.getUniqueID();
+        MobType binding = state == null ? null : state.coverage.get(id);
+        if (binding == null || !mob.isEntityAlive() || state.rejectedWrites.contains(id)) {
+            return false;
+        }
+        MobPolicy policy = policies.get(binding);
+        if (policy.protectsCommittedTarget(mob)) {
+            EntityLivingBase current = mob.getAttackTarget();
+            return current != null && resolve(world, mob, binding, current) != null;
+        }
+        return !state.yielded.contains(id) && policy.controlsImmediately(mob)
+                && !policy.releasesNativeWrite(world, mob, mob.getAttackTarget())
+                && state.blocksTargetWrite(id, true,
                 target -> resolve(world, mob, binding, world.getEntityFromUuid(target)) != null);
     }
 
@@ -431,9 +440,11 @@ public final class EncounterCoordinator implements ThreatActions {
                     ? eligibility(world, mob, admission.type, encounter, id, tick, state.observations.get(mobId))
                     : phase));
         }
-        int remaining = controls ? encounter.remainingTauntTicks(tick) : 0;
+        int remaining = controls || (!assignmentRejected && policies.get(admission.type).keepsEncounterDuringNativePhase())
+                ? encounter.remainingTauntTicks(tick) : 0;
         UUID taunter = remaining == 0 ? null : encounter.getTaunter();
-        if (taunter != null && resolve(world, mob, admission.type, world.getEntityFromUuid(taunter)) == null) {
+        if (taunter != null && ((!controls && !taunter.equals(target))
+                || resolve(world, mob, admission.type, world.getEntityFromUuid(taunter)) == null)) {
             taunter = null;
             remaining = 0;
         }
@@ -503,8 +514,16 @@ public final class EncounterCoordinator implements ThreatActions {
             }
             EntityLiving mob = (EntityLiving) entity;
             MobAdmission admission = admission(mob);
-            if (state.rejectedWrites.contains(id) || admission.yieldsToNative()) {
+            if (state.rejectedWrites.contains(id)) {
                 yieldToNative(state, id, encounter, serverTick);
+                return encounter.resetDue(serverTick);
+            }
+            if (admission.yieldsToNative()) {
+                if (policies.get(admission.type).keepsEncounterDuringNativePhase()) {
+                    observeNativeAttack(world, state, mob, admission.type, encounter, serverTick, sample);
+                } else {
+                    yieldToNative(state, id, encounter, serverTick);
+                }
                 return encounter.resetDue(serverTick);
             }
             if (!admission.controls()) {
@@ -520,6 +539,22 @@ public final class EncounterCoordinator implements ThreatActions {
         targetUpdates.forEach(Runnable::run);
     }
 
+    private void observeNativeAttack(WorldServer world, WorldEncounters state, EntityLiving mob, MobType type,
+                                     Encounter encounter, int serverTick, WorkSample sample) {
+        UUID id = mob.getUniqueID();
+        boolean entering = state.yielded.add(id);
+        EntityLivingBase current = mob.getAttackTarget();
+        UUID currentId = current == null ? null : current.getUniqueID();
+        if (!entering && (encounter.getTarget() == null || Objects.equals(encounter.getTarget(), currentId))
+                && !encounter.shouldReevaluate(serverTick, mob.getEntityId())) {
+            return;
+        }
+        Map<UUID, TargetObservation> observations = new HashMap<>();
+        encounter.observeNativeAttack(serverTick, currentId, participant -> observations.computeIfAbsent(participant,
+                key -> observe(world, mob, type, world.getEntityFromUuid(key), sample)));
+        state.observations.put(id, observations);
+    }
+
     private void reconcileTarget(WorldServer world, WorldEncounters state, EntityLiving mob, MobType type,
                                  Encounter encounter, int serverTick, List<Runnable> updates, WorkSample sample) {
         boolean returning = state.yielded.remove(mob.getUniqueID());
@@ -527,7 +562,7 @@ public final class EncounterCoordinator implements ThreatActions {
         EntityLivingBase previousTarget = previous == null ? null
                 : resolve(world, mob, type, world.getEntityFromUuid(previous));
         boolean lostTarget = previous != null && previousTarget == null;
-        if (!lostTarget && (encounter.holdsOpeningTarget(mob.ticksExisted)
+        if (!returning && !lostTarget && (encounter.holdsOpeningTarget(mob.ticksExisted)
                 || !encounter.shouldReevaluate(serverTick, mob.getEntityId()))) {
             return;
         }
