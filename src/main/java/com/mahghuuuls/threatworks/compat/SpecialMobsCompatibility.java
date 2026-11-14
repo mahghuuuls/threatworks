@@ -14,6 +14,7 @@ import net.minecraft.entity.monster.EntitySilverfish;
 import net.minecraft.entity.monster.EntitySlime;
 import net.minecraft.entity.monster.EntitySpider;
 import net.minecraft.entity.monster.EntityZombie;
+import net.minecraft.entity.monster.EntityWitch;
 import net.minecraft.init.Items;
 import net.minecraftforge.fml.common.Loader;
 import net.minecraftforge.fml.common.ModContainer;
@@ -137,6 +138,21 @@ public final class SpecialMobsCompatibility {
 
     public static float ghastRange(EntityLiving mob) {
         return readRange(mob, GhastRange.ACCESS, "ghast");
+    }
+
+    public static boolean matchesWitch(MobType type, EntityWitch witch) {
+        if (!Installed.VARIANTS_SUPPORTED) {
+            return false;
+        }
+        String name;
+        switch (type) {
+            case SPECIAL_WITCH: name = "Entity_SpecialWitch"; break;
+            case DOMINATION_WITCH: name = "EntityDominationWitch"; break;
+            case SHADOWS_WITCH: name = "EntityShadowsWitch"; break;
+            case UNDEAD_WITCH: name = "EntityUndeadWitch"; break;
+            default: return false;
+        }
+        return witch.getClass().getName().equals(ENTITY_PACKAGE + "witch." + name);
     }
 
     public static boolean isHoppingSlime(MobType type) {

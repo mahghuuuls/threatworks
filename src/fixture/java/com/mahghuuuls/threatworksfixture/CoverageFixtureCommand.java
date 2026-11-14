@@ -1063,6 +1063,24 @@ final class CoverageFixtureCommand extends CommandBase {
                     mob.setAttackTarget(player);
                 }
                 break;
+            case "witch-drinking-handoff": {
+                if (!(mob instanceof net.minecraft.entity.monster.EntityWitch) || guard == null
+                        || mob.getAttackTarget() != player) {
+                    throw new CommandException("Expected a tracked Witch targeting the challenger.");
+                }
+                net.minecraft.entity.monster.EntityWitch witch = (net.minecraft.entity.monster.EntityWitch) mob;
+                witch.setDrinkingPotion(true);
+                try {
+                    witch.setAttackTarget(guard);
+                    LOGGER.info("coverage witchDrinkingHandoff mob={} guard={} target={} taunt={}",
+                            witch.getUniqueID(), guard.getUniqueID(), identity(witch.getAttackTarget()),
+                            actions.taunt(witch, player));
+                    report(witch, world);
+                } finally {
+                    witch.setDrinkingPotion(false);
+                }
+                return;
+            }
             case "pvj-burning-handoff": {
                 if (guard == null || mob.getAttackTarget() != player) {
                     throw new CommandException("Expected a tracked light-avoiding mob targeting the player.");

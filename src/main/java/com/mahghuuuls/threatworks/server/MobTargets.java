@@ -19,6 +19,7 @@ import net.minecraft.entity.EntityLiving;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.SharedMonsterAttributes;
 import net.minecraft.entity.ai.EntityAIAttackMelee;
+import net.minecraft.entity.ai.EntityAIAttackRanged;
 import net.minecraft.entity.ai.EntityAIAttackRangedBow;
 import net.minecraft.entity.ai.EntityAITasks.EntityAITaskEntry;
 import net.minecraft.entity.ai.EntityAIAvoidEntity;
@@ -26,6 +27,7 @@ import net.minecraft.entity.ai.EntityAICreeperSwell;
 import net.minecraft.entity.ai.EntityAIFleeSun;
 import net.minecraft.entity.ai.EntityAILeapAtTarget;
 import net.minecraft.entity.ai.EntityAIWatchClosest;
+import net.minecraft.entity.ai.EntityAIWanderAvoidWater;
 import net.minecraft.entity.ai.EntityAIZombieAttack;
 import net.minecraft.entity.monster.AbstractSkeleton;
 import net.minecraft.entity.monster.EntityBlaze;
@@ -33,6 +35,7 @@ import net.minecraft.entity.monster.EntityCreeper;
 import net.minecraft.entity.monster.EntityEndermite;
 import net.minecraft.entity.monster.EntityShulker;
 import net.minecraft.entity.monster.EntitySpider;
+import net.minecraft.entity.monster.EntityWitch;
 import net.minecraft.entity.monster.EntityZombie;
 import net.minecraft.entity.monster.EntityZombieVillager;
 import net.minecraft.entity.passive.EntityVillager;
@@ -69,6 +72,7 @@ final class MobTargets {
         boolean bow = usesBow(mob);
         boolean cqrGroundMelee = ChocolateQuestCompatibility.isGroundMelee(type);
         boolean rejectEliteGoals = GroundMeleeCompatibility.requiresNonEliteCombat(type)
+                || mob instanceof EntityWitch
                 || type == MobType.GAIA_BONE_KNIGHT || type == MobType.GAIA_VAMPIRE
                 || FishUndeadRisingCompatibility.usesWildAnimalMelee(type);
         Class<?> attack = EntityAIAttackMelee.class;
@@ -90,6 +94,9 @@ final class MobTargets {
         } else if (mob instanceof EntityShulker) {
             declaringMob = EntityShulker.class;
             nestedAttack = "AIAttack";
+        } else if (mob instanceof EntityWitch) {
+            attack = EntityAIAttackRanged.class;
+            priority = 2;
         } else if (mob instanceof EntityEndermite) {
             priority = 2;
         } else if (groundMeleePriority < 0) {
@@ -125,7 +132,8 @@ final class MobTargets {
             }
             if (matchesAttack) {
                 int mutex = entry.action.getMutexBits();
-                if (matched || entry.priority != priority || (specialBlaze || cqrGroundMelee ? mutex != 3 : (mutex & 3) != 3)) {
+                boolean exactMutex = specialBlaze || cqrGroundMelee || mob instanceof EntityWitch;
+                if (matched || entry.priority != priority || (exactMutex ? mutex != 3 : (mutex & 3) != 3)) {
                     return false;
                 }
                 matched = true;
@@ -163,6 +171,8 @@ final class MobTargets {
     private static boolean nativeCompetingGoal(EntityCreature mob, EntityAITaskEntry entry) {
         Class<?> goal = entry.action.getClass();
         return mob instanceof AbstractSkeleton && (goal == EntityAIFleeSun.class || goal == EntityAIAvoidEntity.class)
+                || mob instanceof EntityWitch && entry.priority == 2 && goal == EntityAIWanderAvoidWater.class
+                && entry.action.getMutexBits() == 1
                 || mob instanceof EntitySpider && goal == EntityAILeapAtTarget.class
                 || mob instanceof EntityShulker && goal == EntityAIWatchClosest.class
                 || mob instanceof EntityCreeper && isCreeperAvoidance(entry);
@@ -175,6 +185,7 @@ final class MobTargets {
 
     static boolean canControlImmediately(EntityCreature mob, MobType type) {
         boolean providerGoalCheck = SpecialMobsCompatibility.requiresLiveGoalContract(type)
+                || mob instanceof EntityWitch
                 || providerMeleePriority(type) >= 0 || UnseenDungeonCompatibility.isSupportedType(type)
                 || ChocolateQuestCompatibility.isGroundMelee(type);
         return (providerGoalCheck ? matchesBehavior(mob, type) : hasSupportedState(mob, type))
@@ -225,6 +236,9 @@ final class MobTargets {
     }
 
     static boolean inNativePhase(EntityCreature mob, MobType type) {
+        if (mob instanceof EntityWitch && WitchCombat.nativePhase((EntityWitch) mob)) {
+            return true;
+        }
         if (FishUndeadRisingCompatibility.nativePhase(type, mob) || GaiaCompatibility.isAquaticPhase(type, mob)
                 || GroundMeleeCompatibility.nativePhase(type, mob)
                 || ChocolateQuestCompatibility.isGroundMelee(type) && ChocolateQuestCompatibility.yieldsToNative(mob)
@@ -310,7 +324,8 @@ final class MobTargets {
     }
 
     static boolean providerAccepts(MobType type, EntityCreature mob, EntityLivingBase target) {
-        return IceAndFireCompatibility.acceptsTarget(type, target)
+        return (!(mob instanceof EntityWitch) || target instanceof EntityPlayer)
+                && IceAndFireCompatibility.acceptsTarget(type, target)
                 && (!UnseenDungeonCompatibility.isSupportedType(type) || UnseenDungeonCompatibility.acceptsTarget(type, target))
                 && (!ChocolateQuestCompatibility.isGroundMelee(type) || ChocolateQuestCompatibility.acceptsTarget(mob, target));
     }
@@ -326,6 +341,9 @@ final class MobTargets {
         boolean needsSight = !(mob instanceof EntityZombie && target instanceof EntityVillager)
                 && !DefiledLandsCompatibility.canAcquireWithoutSight(type, target);
         boolean sightLost = needsSight && !sees(terrain, mob, target, position);
+        if (mob instanceof EntityWitch) {
+            return WitchCombat.observe(terrain, (EntityWitch) mob, target, sightLost);
+        }
         if (ChocolateQuestCompatibility.isGroundMelee(type)) {
             if (!ChocolateQuestCompatibility.inNativeReach(mob, target)) {
                 return TargetObservation.INELIGIBLE;

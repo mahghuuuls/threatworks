@@ -33,7 +33,7 @@ class ServerTuningTest {
             "minecraft:zombie", "minecraft:husk", "minecraft:zombie_villager", "minecraft:skeleton",
             "minecraft:stray", "minecraft:wither_skeleton", "minecraft:spider", "minecraft:cave_spider",
             "minecraft:silverfish", "minecraft:endermite", "minecraft:vindication_illager", "minecraft:blaze",
-            "minecraft:ghast", "minecraft:slime", "minecraft:magma_cube", "minecraft:shulker"));
+            "minecraft:ghast", "minecraft:slime", "minecraft:magma_cube", "minecraft:witch", "minecraft:shulker"));
 
     private static Set<String> enabledVanilla(ServerTuning tuning) {
         return Arrays.stream(MobType.values()).filter(tuning::isEnabled).map(type -> type.id)

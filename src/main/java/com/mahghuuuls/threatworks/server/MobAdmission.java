@@ -28,6 +28,7 @@ import net.minecraft.entity.monster.EntityStray;
 import net.minecraft.entity.monster.EntityVindicator;
 import net.minecraft.entity.monster.EntityWitherSkeleton;
 import net.minecraft.entity.monster.EntityZombie;
+import net.minecraft.entity.monster.EntityWitch;
 import net.minecraft.entity.monster.EntityZombieVillager;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.world.WorldServer;
@@ -64,6 +65,7 @@ final class MobAdmission {
         VANILLA_CLASSES.put(MobType.VINDICATOR, EntityVindicator.class);
         VANILLA_CLASSES.put(MobType.BLAZE, EntityBlaze.class);
         VANILLA_CLASSES.put(MobType.SHULKER, EntityShulker.class);
+        VANILLA_CLASSES.put(MobType.WITCH, EntityWitch.class);
         for (MobType type : MobType.values()) {
             TYPES.put(new ResourceLocation(type.id), type);
             CONTROL.put(type, new MobAdmission(type, State.CONTROL));
@@ -153,6 +155,9 @@ final class MobAdmission {
         Class<? extends EntityCreature> entityClass = VANILLA_CLASSES.get(type);
         if (entityClass != null) {
             return mob.getClass() == entityClass;
+        }
+        if (mob instanceof EntityWitch) {
+            return SpecialMobsCompatibility.matchesWitch(type, (EntityWitch) mob);
         }
         return type == MobType.FOLIAATH ? foliaath != null && foliaath.matches(mob)
                 : SpecialMobsCompatibility.matches(type, mob) || DefiledLandsCompatibility.matches(type, mob)
