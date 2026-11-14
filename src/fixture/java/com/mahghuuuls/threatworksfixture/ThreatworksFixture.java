@@ -122,6 +122,9 @@ public final class ThreatworksFixture {
         WitherFixtureCommand wither = new WitherFixtureCommand();
         event.registerServerCommand(wither);
         MinecraftForge.EVENT_BUS.register(wither);
+        GuardianFixtureCommand guardian = new GuardianFixtureCommand();
+        event.registerServerCommand(guardian);
+        MinecraftForge.EVENT_BUS.register(guardian);
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)

@@ -15,6 +15,7 @@ import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.boss.EntityDragon;
 import net.minecraft.entity.boss.dragon.phase.IPhase;
 import net.minecraft.entity.boss.dragon.phase.PhaseList;
+import net.minecraft.entity.monster.EntityGuardian;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.entity.projectile.EntityArrow;
@@ -363,13 +364,21 @@ public final class EncounterCoordinator implements ThreatActions {
         }
         MobPolicy policy = policies.get(binding);
         if (policy.protectsCommittedTarget(mob)) {
-            EntityLivingBase current = mob.getAttackTarget();
-            return current != null && resolve(world, mob, binding, current) != null;
+            return policy.blocksCommittedWrite(world, mob, requestedTarget);
         }
         return !state.yielded.contains(id) && policy.controlsImmediately(mob)
                 && !policy.releasesNativeWrite(world, mob, mob.getAttackTarget())
                 && state.blocksTargetWrite(id, true,
                 target -> resolve(world, mob, binding, world.getEntityFromUuid(target)) != null);
+    }
+
+    public void clearGuardianBeamTarget(EntityGuardian guardian) {
+        WorldEncounters state = worlds.get(guardian.world);
+        if (state != null && GuardianMobPolicy.matchesType(state.coverage.get(guardian.getUniqueID()))) {
+            performTargetWrite(guardian, null);
+        } else {
+            guardian.setAttackTarget(null);
+        }
     }
 
     @Override
@@ -496,6 +505,10 @@ public final class EncounterCoordinator implements ThreatActions {
         }
         UUID target = actualTarget == null ? null : actualTarget.getUniqueID();
         MobAdmission admission = MobAdmission.resolve(tuning, foliaath, victim, registryId);
+        if (GuardianMobPolicy.matchesType(admission.type)) {
+            actualTarget = policies.get(admission.type).effectiveTarget((EntityLiving) victim);
+            target = actualTarget == null ? null : actualTarget.getUniqueID();
+        }
         WorldEncounters state = worlds.get(victim.world);
         UUID mobId = victim.getUniqueID();
         boolean assignmentRejected = state != null && state.rejectedWrites.contains(mobId);
@@ -657,7 +670,7 @@ public final class EncounterCoordinator implements ThreatActions {
                                      Encounter encounter, int serverTick, WorkSample sample) {
         UUID id = mob.getUniqueID();
         boolean entering = state.yielded.add(id);
-        EntityLivingBase current = mob.getAttackTarget();
+        EntityLivingBase current = policies.get(type).effectiveTarget(mob);
         UUID currentId = current == null ? null : current.getUniqueID();
         if (!entering && (encounter.getTarget() == null || Objects.equals(encounter.getTarget(), currentId))
                 && !encounter.shouldReevaluate(serverTick, mob.getEntityId())) {
@@ -744,6 +757,11 @@ public final class EncounterCoordinator implements ThreatActions {
         if (mob.getAttackTarget() == target) {
             return true;
         }
+        performTargetWrite(mob, target);
+        return mob.getAttackTarget() == target;
+    }
+
+    private void performTargetWrite(EntityLiving mob, EntityLivingBase target) {
         TargetWrite saved = targetWrite;
         targetWrite = new TargetWrite(mob, target, saved);
         try {
@@ -751,7 +769,6 @@ public final class EncounterCoordinator implements ThreatActions {
         } finally {
             targetWrite = saved;
         }
-        return mob.getAttackTarget() == target;
     }
 
     private TargetWrite activeWrite(EntityLiving mob) {

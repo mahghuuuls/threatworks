@@ -29,6 +29,15 @@ interface MobPolicy {
         return false;
     }
 
+    default boolean blocksCommittedWrite(WorldServer world, EntityLiving mob, EntityLivingBase requested) {
+        EntityLivingBase current = effectiveTarget(mob);
+        return current != null && resolve(world, mob, current) != null;
+    }
+
+    default EntityLivingBase effectiveTarget(EntityLiving mob) {
+        return mob.getAttackTarget();
+    }
+
     /** Lets native combat keep an otherwise legal target when there is no eligible replacement. */
     default boolean preservesNativeTarget(WorldServer world, EntityLiving mob, EntityLivingBase target) {
         return false;
@@ -42,6 +51,9 @@ interface MobPolicy {
     static MobPolicy forType(MobType type) {
         if (type == MobType.WITHER) {
             return new WitherMobPolicy();
+        }
+        if (GuardianMobPolicy.matchesType(type)) {
+            return new GuardianMobPolicy();
         }
         if (GhastMobPolicy.matchesType(type)) {
             return new GhastMobPolicy(type);

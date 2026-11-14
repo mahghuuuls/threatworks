@@ -24,6 +24,8 @@ import net.minecraft.entity.monster.EntityCaveSpider;
 import net.minecraft.entity.monster.EntityCreeper;
 import net.minecraft.entity.monster.EntityEndermite;
 import net.minecraft.entity.monster.EntityHusk;
+import net.minecraft.entity.monster.EntityGuardian;
+import net.minecraft.entity.monster.EntityElderGuardian;
 import net.minecraft.entity.monster.EntityShulker;
 import net.minecraft.entity.monster.EntitySilverfish;
 import net.minecraft.entity.monster.EntitySkeleton;
@@ -73,6 +75,8 @@ final class MobAdmission {
         VANILLA_CLASSES.put(MobType.SHULKER, EntityShulker.class);
         VANILLA_CLASSES.put(MobType.WITCH, EntityWitch.class);
         VANILLA_CLASSES.put(MobType.WITHER, EntityWither.class);
+        VANILLA_CLASSES.put(MobType.GUARDIAN, EntityGuardian.class);
+        VANILLA_CLASSES.put(MobType.ELDER_GUARDIAN, EntityElderGuardian.class);
         for (MobType type : MobType.values()) {
             TYPES.put(new ResourceLocation(type.id), type);
             CONTROL.put(type, new MobAdmission(type, State.CONTROL));
@@ -172,6 +176,13 @@ final class MobAdmission {
                 return UNSUPPORTED_STATE;
             }
             return WitherMobPolicy.isNativePhase(wither) ? NATIVE.get(type) : CONTROL.get(type);
+        }
+        if (GuardianMobPolicy.matchesType(type)) {
+            EntityGuardian guardian = (EntityGuardian) mob;
+            if (!GuardianMobPolicy.hasNativeContract(guardian)) {
+                return UNSUPPORTED_STATE;
+            }
+            return GuardianMobPolicy.isNativePhase(guardian) ? NATIVE.get(type) : CONTROL.get(type);
         }
         if (type == MobType.FOLIAATH) {
             if (!foliaath.matchesGoals(mob)) {

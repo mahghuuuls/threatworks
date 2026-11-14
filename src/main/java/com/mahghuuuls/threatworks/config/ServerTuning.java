@@ -61,6 +61,8 @@ public final class ServerTuning {
         CREEPER("minecraft:creeper"),
         ENDER_DRAGON("minecraft:ender_dragon"),
         WITHER("minecraft:wither"),
+        GUARDIAN("minecraft:guardian"),
+        ELDER_GUARDIAN("minecraft:elder_guardian"),
         SPECIAL_ZOMBIE("specialmobs:specialzombie", true),
         PVJ_BANSHEE("pvj:pvj_banshee"),
         PVJ_SHADE("pvj:pvj_shade"),
