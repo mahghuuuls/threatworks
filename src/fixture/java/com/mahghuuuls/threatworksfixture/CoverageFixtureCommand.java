@@ -203,6 +203,14 @@ final class CoverageFixtureCommand extends CommandBase {
                 world.setBlockState(roof, Blocks.STONE.getDefaultState(), 2);
             }
         }
+        if (id.startsWith("grimoireofgaia:")) {
+            ResourceLocation web = new ResourceLocation("grimoireofgaia:web_temp");
+            for (BlockPos pos : BlockPos.getAllInBox(new BlockPos(0, height, 0), new BlockPos(28, height + 2, 28))) {
+                if (web.equals(world.getBlockState(pos).getBlock().getRegistryName())) {
+                    world.setBlockToAir(pos);
+                }
+            }
+        }
         if (id.equals("specialmobs:webspider") || id.equals("specialmobs:webcavespider")) {
             for (BlockPos pos : BlockPos.getAllInBox(new BlockPos(0, height, 0), new BlockPos(27, height + 3, 27))) {
                 if (world.getBlockState(pos).getBlock() == Blocks.WEB) {
@@ -250,7 +258,7 @@ final class CoverageFixtureCommand extends CommandBase {
         if (DREAD_THRALL.equals(id) || DREAD_KNIGHT.equals(id) || animatedDread(id)) {
             dreadState(mob, "seed");
         }
-        actors(world, mob, "solo".equals(scene));
+        actors(world, mob, scene);
     }
 
     private static void seedGhast(WorldServer world, EntityGhast ghast, String id, int height) throws CommandException {
@@ -345,7 +353,7 @@ final class CoverageFixtureCommand extends CommandBase {
         configureMob(selected);
         LOGGER.info("coverage naturalOutput={} uuid={} goals={}", EntityList.getKey(selected), selected.getUniqueID(),
                 selected.tasks.taskEntries.size());
-        actors(world, selected, false);
+        actors(world, selected, "");
     }
 
     private static void configureMob(EntityCreature mob) {
@@ -383,22 +391,26 @@ final class CoverageFixtureCommand extends CommandBase {
         report(child, world);
     }
 
-    private static void actors(WorldServer world, EntityCreature mob, boolean solo) throws CommandException {
+    private static void actors(WorldServer world, EntityCreature mob, String scene) throws CommandException {
         String id = String.valueOf(EntityList.getKey(mob));
+        boolean solo = "solo".equals(scene);
+        boolean providerRanged = "provider-ranged".equals(scene);
         boolean cqrGoblinFaction = isCqrGoblinFaction(mob);
         boolean spectre = "charm:spectre".equals(id);
         boolean mocDarkMelee = id.startsWith("mocreatures:") && !"mocreatures:horsemob".equals(id);
         boolean nativePlayerMelee = id.equals("dungeonmobs:dmghost") || id.startsWith("toroquest:toroquest_zombie");
         boolean twoPlayers = cqrGoblinFaction || "cqrepoured:gremlin".equals(id) || spectre
                 || mob instanceof net.minecraft.entity.monster.EntityWitch || mocDarkMelee || nativePlayerMelee
-                || "deeperdepths:bogged".equals(id) || id.startsWith("natura:") && mob instanceof EntitySpider;
+                || "deeperdepths:bogged".equals(id) || providerRanged
+                || id.startsWith("natura:") && mob instanceof EntitySpider;
         if (!solo && twoPlayers) {
             EntityPlayerMP incumbent = fixturePlayer(world, id, "MeleeIncumbent");
             if (cqrGoblinFaction) {
                 setCqrHostileReputation(mob, incumbent);
             }
             incumbent.addTag("tw_l_tick_hurt_window");
-            double spacing = spectre ? 7 : mob instanceof net.minecraft.entity.monster.EntityWitch
+            double spacing = spectre || "grimoireofgaia:ant_ranger".equals(id) || "grimoireofgaia:cecaelia".equals(id)
+                    ? 7 : providerRanged || mob instanceof net.minecraft.entity.monster.EntityWitch
                     || "deeperdepths:bogged".equals(id) ? 6 : 2;
             if (mob.getTags().contains("tw_l_toro_raid")) {
                 incumbent.capabilities.disableDamage = true;
@@ -686,6 +698,95 @@ final class CoverageFixtureCommand extends CommandBase {
                         guard != null && guard.isPotionActive(MobEffects.POISON), player.isBurning(),
                         player.isPotionActive(MobEffects.POISON));
                 break;
+            case "gaia-ant-hide":
+                if (!"grimoireofgaia:ant_ranger".equals(String.valueOf(EntityList.getKey(mob))) || guard == null
+                        || mob.getAttackTarget() != player) {
+                    throw new CommandException("Expected an exposed Ant Ranger targeting the challenger.");
+                }
+                player.setPosition(mob.posX + 2.0, mob.posY, mob.posZ);
+                guard.setPosition(mob.posX + 7.0, mob.posY, mob.posZ);
+                break;
+            case "gaia-fireball-bounds":
+                if (!"grimoireofgaia:flesh_lich".equals(String.valueOf(EntityList.getKey(mob))) || guard == null
+                        || mob.getAttackTarget() != player) {
+                    throw new CommandException("Expected a tracked Flesh Lich targeting the challenger.");
+                }
+                double arenaHeight = mob.posY;
+                mob.setPosition(X, arenaHeight, Z);
+                guard.setPosition(X + 11, arenaHeight, Z);
+                ThreatActions.Result outside = actions.taunt(mob, guard);
+                guard.setPosition(X + 7, arenaHeight + 3, Z);
+                ThreatActions.Result high = actions.taunt(mob, guard);
+                guard.setPosition(X + 7, arenaHeight, Z);
+                BlockPos ceiling = new BlockPos(X + 3, arenaHeight + 2, Z);
+                // A narrow launch-room obstruction above both sight endpoints.
+                world.setBlockState(ceiling, Blocks.OBSIDIAN.getDefaultState(), 2);
+                boolean eyeClear = world.rayTraceBlocks(mob.getPositionEyes(1), guard.getPositionEyes(1),
+                        false, true, false) == null;
+                ThreatActions.Result blocked = actions.taunt(mob, guard);
+                world.setBlockToAir(ceiling);
+                player.setPosition(X - 11, arenaHeight, Z);
+                guard.setPosition(X + 11, arenaHeight, Z);
+                mob.setAttackTarget(guard);
+                LOGGER.info("coverage gaiaFireballNative mob={} guard={} target={} distance={}",
+                        mob.getUniqueID(), guard.getUniqueID(), identity(mob.getAttackTarget()), mob.getDistance(guard));
+                guard.setPosition(X + 7, arenaHeight, Z);
+                guard.addPotionEffect(new PotionEffect(MobEffects.FIRE_RESISTANCE, 80, 0));
+                ThreatActions.Result resistant = actions.taunt(mob, guard);
+                guard.removePotionEffect(MobEffects.FIRE_RESISTANCE);
+                ThreatActions.Result clear = actions.taunt(mob, guard);
+                LOGGER.info("coverage gaiaFireballBounds mob={} guard={} far={} high={} eyeClear={} blocked={} resistant={} clear={}",
+                        mob.getUniqueID(), guard.getUniqueID(), outside, high, eyeClear, blocked, resistant, clear);
+                break;
+            case "gaia-shaman-undead":
+                if (!"grimoireofgaia:shaman".equals(String.valueOf(EntityList.getKey(mob))) || mob.getAttackTarget() != player) {
+                    throw new CommandException("Expected a tracked Shaman targeting the challenger.");
+                }
+                EntityZombie zombie = new EntityZombie(world);
+                zombie.setNoAI(true);
+                zombie.getEntityData().setBoolean("SpecialMobsInit", true);
+                place(world, zombie, "tw_l_gaia_shaman_target", mob.posX + 4, mob.posY, mob.posZ);
+                LOGGER.info("coverage gaiaShamanPoison mob={} undead={} undeadTaunt={} playerTaunt={}",
+                        mob.getUniqueID(), zombie.isEntityUndead(), actions.taunt(mob, zombie), actions.taunt(mob, player));
+                break;
+            case "gaia-ant-hidden":
+                if (!"grimoireofgaia:ant_ranger".equals(String.valueOf(EntityList.getKey(mob))) || guard == null) {
+                    throw new CommandException("Expected the Ant Ranger fixture.");
+                }
+                try {
+                    boolean hidden = (Boolean) mob.getClass().getMethod("getHidding").invoke(mob);
+                    if (!hidden) {
+                        throw new CommandException("The native Ant Ranger did not hide.");
+                    }
+                    mob.setAttackTarget(guard);
+                    LOGGER.info("coverage gaiaAntHidden mob={} guard={} hidden=true target={} taunt={}", mob.getUniqueID(),
+                            guard.getUniqueID(), identity(mob.getAttackTarget()), actions.taunt(mob, player));
+                } catch (ReflectiveOperationException failure) {
+                    throw new CommandException("Could not read native Ant Ranger hiding.");
+                }
+                break;
+            case "gaia-arachne-climbing":
+                if (!"grimoireofgaia:arachne".equals(String.valueOf(EntityList.getKey(mob))) || guard == null
+                        || mob.getAttackTarget() != player) {
+                    throw new CommandException("Expected an Arachne targeting the challenger.");
+                }
+                try {
+                    java.lang.reflect.Method climbing = mob.getClass().getDeclaredMethod("setBesideClimbableBlock", boolean.class);
+                    climbing.setAccessible(true);
+                    climbing.invoke(mob, true);
+                    try {
+                        mob.setAttackTarget(guard);
+                        LOGGER.info("coverage gaiaArachneClimb mob={} guard={} target={} climbing={} taunt={}",
+                                mob.getUniqueID(), guard.getUniqueID(), identity(mob.getAttackTarget()),
+                                mob.isOnLadder(), actions.taunt(mob, player));
+                        report(mob, world);
+                    } finally {
+                        climbing.invoke(mob, false);
+                    }
+                } catch (ReflectiveOperationException failure) {
+                    throw new CommandException("Could not set the disposable Arachne's native climbing state.");
+                }
+                return;
             case "natura-climbing-handoff":
                 if (!(mob instanceof EntitySpider) || guard == null || mob.getAttackTarget() != player
                         || !String.valueOf(EntityList.getKey(mob)).startsWith("natura:")) {
@@ -1091,15 +1192,27 @@ final class CoverageFixtureCommand extends CommandBase {
                 restorePlayer(player);
                 break;
             case "ground-player-opening":
+            case "ranged-player-opening": {
                 if (!(guard instanceof EntityPlayerMP) || mob.getAttackTarget() != guard) {
                     throw new CommandException("Expected the native player incumbent.");
                 }
                 restorePlayer(player);
                 attack(mob, player, "hit");
                 mob.setRevengeTarget(guard);
-                player.setPosition(mob.posX - 3.5, mob.posY, mob.posZ);
-                guard.setPosition(mob.posX + 3.2, mob.posY, mob.posZ);
+                String openingId = String.valueOf(EntityList.getKey(mob));
+                double playerSpacing = "grimoireofgaia:ant_ranger".equals(openingId)
+                        || "grimoireofgaia:cecaelia".equals(openingId) ? 7.0 : "ranged-player-opening".equals(operation) ? 5.0 : 3.5;
+                player.setPosition(mob.posX - playerSpacing, mob.posY, mob.posZ);
+                guard.setPosition(mob.posX + playerSpacing - 0.3, mob.posY, mob.posZ);
+                if ("grimoireofgaia:ant_ranger".equals(openingId)) {
+                    BlockPos feet = new BlockPos(player);
+                    LOGGER.info("coverage gaiaAntLane mob={} guard={} player={} y={} guardY={} sight={} playerBlock={} support={}",
+                            mob.getUniqueID(), guard.getUniqueID(), player.getUniqueID(), mob.posY, guard.posY,
+                            mob.canEntityBeSeen(player), world.getBlockState(feet).getBlock().getRegistryName(),
+                            world.getBlockState(feet.down()).getBlock().getRegistryName());
+                }
                 break;
+            }
             case "revenant-burning-handoff":
                 if (guard == null || mob.getAttackTarget() != player
                         || !"dungeonmobs:dmrevenant".equals(String.valueOf(EntityList.getKey(mob)))) {

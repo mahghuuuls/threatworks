@@ -40,6 +40,7 @@ public final class GroundMeleeCompatibility {
         bind(unsupported, MobType.EERIE_CURSED_ARMOR, "eerieentities", "1.0.7", "com.jarhax.eerieentities.entities.EntityCursedArmor", 2);
         bind(unsupported, MobType.EERIE_NETHER_KNIGHT, "eerieentities", "1.0.7", "com.jarhax.eerieentities.entities.EntityNetherKnight", 2);
         bind(unsupported, MobType.ILLAGERS_FURANTUR, "illagers_plus", "1.1", "com.litewolf101.objects.entities.EntityFurantur", 4);
+        bind(unsupported, MobType.ILLAGERS_ARCHER, "illagers_plus", "1.1", "com.litewolf101.objects.entities.EntityArcher", 6);
         bind(unsupported, MobType.GAIA_MITE, "grimoireofgaia", "1.7.2", "gaia.entity.monster.EntityGaiaMite", 2);
         bind(unsupported, MobType.PVJ_BANSHEE, "pvj", "1.6.4", "vibrantjourneys.entities.monster.EntityBanshee", 2);
         bind(unsupported, MobType.PVJ_SHADE, "pvj", "1.6.4", "vibrantjourneys.entities.monster.EntityShade", 2);
@@ -130,7 +131,8 @@ public final class GroundMeleeCompatibility {
 
     public static boolean requiresNonEliteCombat(MobType type) {
         return isQuarkSkeleton(type) || type == MobType.QUARK_DWELLER || type == MobType.QUARK_WRAITH
-                || type == MobType.ILLAGERS_FURANTUR || type == MobType.GAIA_MITE || isLightAvoiding(type)
+                || type == MobType.ILLAGERS_FURANTUR || type == MobType.ILLAGERS_ARCHER
+                || type == MobType.GAIA_MITE || isLightAvoiding(type)
                 || type == MobType.CHARM_SPECTRE || type == MobType.MOC_HORSE_MOB || usesMocDarkMelee(type)
                 || isToroZombieRaider(type) || isNaturaSpider(type)
                 || type == MobType.NATURA_NITRO_CREEPER || type == MobType.DEEPER_DEPTHS_BOGGED;

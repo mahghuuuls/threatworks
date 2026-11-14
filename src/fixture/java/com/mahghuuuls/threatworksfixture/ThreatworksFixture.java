@@ -27,6 +27,7 @@ import net.minecraft.init.Blocks;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraft.potion.PotionEffect;
+import net.minecraft.util.DamageSource;
 import net.minecraft.potion.PotionUtils;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
@@ -82,6 +83,9 @@ public final class ThreatworksFixture {
     private long largeFireballImpactTick;
     private EntityPotion witchImpact;
     private long witchImpactTick;
+    private EntityFireball gaiaImpact;
+    private Entity gaiaVictim;
+    private long gaiaImpactTick;
     private EntityLiving emberAttacker;
     private EntityLivingBase emberVictim;
     private EntityLiving jolt;
@@ -119,6 +123,13 @@ public final class ThreatworksFixture {
         EntityLivingBase victim = event.getEntityLiving();
         Entity source = event.getSource().getTrueSource();
         Entity immediate = event.getSource().getImmediateSource();
+        if (gaiaImpact != null && gaiaImpact.getEntityWorld() == victim.world && gaiaVictim == victim
+                && gaiaImpactTick == victim.world.getTotalWorldTime() && source == null && event.getAmount() > 0
+                && event.getSource() == DamageSource.MAGIC) {
+            LOGGER.info("coverage gaiaMagicDamage mob={} target={} shot={} tick={} amount={}",
+                    gaiaImpact.shootingEntity.getUniqueID(), victim.getUniqueID(), gaiaImpact.getUniqueID(),
+                    gaiaImpactTick, event.getAmount());
+        }
         if (!victim.world.isRemote && victim == jolt && victim.world.getTotalWorldTime() == joltTick
                 && "reactive".equals(joltPhase) && source instanceof EntityPlayerMP
                 && source.getTags().contains("tw_l_jolt_opening") && jolt.getAttackTarget() != null
@@ -140,7 +151,7 @@ public final class ThreatworksFixture {
             LOGGER.info("coverage nativeImpact mob={} target={} source={} amount={}", source.getUniqueID(),
                     victim.getUniqueID(), event.getSource().getDamageType(), event.getAmount());
             String sourceId = String.valueOf(EntityList.getKey(source));
-            if (source instanceof EntityWitch && immediate instanceof EntityPotion) {
+            if (immediate instanceof EntityPotion && immediate.getTags().contains("tw_l_witch_potion")) {
                 LOGGER.info("coverage witchInstant shot={} target={} tick={} amount={}", immediate.getUniqueID(),
                         victim.getUniqueID(), victim.world.getTotalWorldTime(), event.getAmount());
             }
@@ -212,6 +223,16 @@ public final class ThreatworksFixture {
                 && projectile.getTags().contains(CoverageFixtureCommand.TAG)) {
             largeFireballImpact = (EntityLargeFireball) projectile;
             largeFireballImpactTick = projectile.world.getTotalWorldTime();
+        }
+        Entity hit = event.getRayTraceResult().entityHit;
+        if (!event.isCanceled() && hit instanceof EntityLivingBase && projectile.shootingEntity != null
+                && projectile.getTags().contains("tw_l_gaia_projectile")) {
+            gaiaImpact = projectile;
+            gaiaVictim = hit;
+            gaiaImpactTick = projectile.world.getTotalWorldTime();
+            LOGGER.info("coverage gaiaProjectileImpact mob={} target={} shot={} tick={} kind={}",
+                    projectile.shootingEntity.getUniqueID(), hit.getUniqueID(), projectile.getUniqueID(),
+                    gaiaImpactTick, projectile.getClass().getSimpleName());
         }
     }
 
@@ -352,8 +373,9 @@ public final class ThreatworksFixture {
         if (spawned instanceof EntityPotion) {
             EntityPotion potion = (EntityPotion) spawned;
             EntityLivingBase thrower = potion.getThrower();
-            if (thrower instanceof EntityWitch && thrower.getTags().contains("tw_i_mob") && logsCoverageCombat(thrower)) {
-                EntityLivingBase target = ((EntityWitch) thrower).getAttackTarget();
+            if (thrower instanceof EntityLiving && thrower.getTags().contains("tw_i_mob") && logsCoverageCombat(thrower)
+                    && (thrower instanceof EntityWitch || String.valueOf(EntityList.getKey(thrower)).startsWith("grimoireofgaia:"))) {
+                EntityLivingBase target = ((EntityLiving) thrower).getAttackTarget();
                 potion.addTag(CoverageFixtureCommand.TAG);
                 potion.addTag("tw_l_witch_potion");
                 LOGGER.info("coverage witchThrow mob={} target={} shot={} tick={} effects={}", thrower.getUniqueID(),
@@ -365,6 +387,9 @@ public final class ThreatworksFixture {
             EntityLivingBase shooter = ((EntityFireball) spawned).shootingEntity;
             if (shooter instanceof EntityLiving && shooter.getTags().contains("tw_i_mob") && logsCoverageCombat(shooter)) {
                 spawned.addTag(CoverageFixtureCommand.TAG);
+                if (String.valueOf(EntityList.getKey(shooter)).startsWith("grimoireofgaia:")) {
+                    spawned.addTag("tw_l_gaia_projectile");
+                }
                 EntityLivingBase target = ((EntityLiving) shooter).getAttackTarget();
                 LOGGER.info("coverage blazeLaunch mob={} target={} shot={} tick={} onGround={} y={} distance={} projectile={}",
                         shooter.getUniqueID(), ArrowFixtureCommand.identity(target), spawned.getUniqueID(),

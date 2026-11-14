@@ -65,6 +65,11 @@ interface MobPolicy {
             public boolean preservesNativeTarget(WorldServer world, EntityLiving mob, EntityLivingBase target) {
                 return MobTargets.preservesNativeTarget(world, (EntityCreature) mob, target, type);
             }
+
+            @Override
+            public boolean releasesNativeWrite(WorldServer world, EntityLiving mob, EntityLivingBase target) {
+                return MobTargets.releasesNativeWrite(world, (EntityCreature) mob, target, type);
+            }
         };
     }
 

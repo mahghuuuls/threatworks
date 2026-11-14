@@ -7,6 +7,7 @@ import com.mahghuuuls.threatworks.compat.DungeonMobsCompatibility;
 import com.mahghuuuls.threatworks.compat.FishUndeadRisingCompatibility;
 import com.mahghuuuls.threatworks.compat.FoliaathCompatibility;
 import com.mahghuuuls.threatworks.compat.GaiaCompatibility;
+import com.mahghuuuls.threatworks.compat.GaiaCompatibility.RangedAttack;
 import com.mahghuuuls.threatworks.compat.GroundMeleeCompatibility;
 import com.mahghuuuls.threatworks.compat.IceAndFireCompatibility;
 import com.mahghuuuls.threatworks.compat.SpecialAiCompatibility;
@@ -51,6 +52,7 @@ import net.minecraft.pathfinding.PathNavigateClimber;
 import net.minecraft.pathfinding.PathNavigateGround;
 import net.minecraft.pathfinding.WalkNodeProcessor;
 import net.minecraft.util.EnumFacing;
+import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
@@ -71,10 +73,12 @@ final class MobTargets {
             return false;
         }
         boolean bow = usesBow(mob);
+        boolean gaiaRangedContract = GaiaCompatibility.hasRangedContract(type);
         boolean cqrGroundMelee = ChocolateQuestCompatibility.isGroundMelee(type);
         boolean rejectEliteGoals = GroundMeleeCompatibility.requiresNonEliteCombat(type)
                 || mob instanceof EntityWitch
                 || type == MobType.GAIA_BONE_KNIGHT || type == MobType.GAIA_VAMPIRE
+                || gaiaRangedContract || type == MobType.GAIA_CECAELIA || type == MobType.GAIA_ORC
                 || type == MobType.DUNGEON_GHOST || type == MobType.DUNGEON_REVENANT
                 || FishUndeadRisingCompatibility.usesWildAnimalMelee(type);
         Class<?> attack = EntityAIAttackMelee.class;
@@ -99,6 +103,8 @@ final class MobTargets {
         } else if (mob instanceof EntityWitch) {
             attack = EntityAIAttackRanged.class;
             priority = 2;
+        } else if (type == MobType.ILLAGERS_ARCHER) {
+            attack = EntityAIAttackRangedBow.class;
         } else if (mob instanceof EntityEndermite) {
             priority = 2;
         } else if (groundMeleePriority < 0) {
@@ -134,10 +140,18 @@ final class MobTargets {
                 matchesAttack = ChocolateQuestCompatibility.isAttackGoal(goal);
             } else if (GroundMeleeCompatibility.usesMocDarkMelee(type)) {
                 matchesAttack = GroundMeleeCompatibility.isMocDarkMeleeGoal(type, goal);
+            } else if (gaiaRangedContract) {
+                matchesAttack = GaiaCompatibility.isRangedVariantMelee(type, mob, goal);
             }
-            if (matchesAttack) {
+            if (gaiaRangedContract && GaiaCompatibility.isRangedGoal(type, mob, entry)) {
+                if (matched) {
+                    return false;
+                }
+                matched = true;
+            } else if (matchesAttack) {
                 int mutex = entry.action.getMutexBits();
-                boolean exactMutex = specialBlaze || cqrGroundMelee || mob instanceof EntityWitch;
+                boolean exactMutex = specialBlaze || cqrGroundMelee || mob instanceof EntityWitch
+                        || gaiaRangedContract || type == MobType.ILLAGERS_ARCHER;
                 if (matched || entry.priority != priority || (exactMutex ? mutex != 3 : (mutex & 3) != 3)) {
                     return false;
                 }
@@ -163,6 +177,7 @@ final class MobTargets {
                         || mob instanceof EntityWitch && SpecialAiCompatibility.hasUnknownWitchRider(entry)
                         || GroundMeleeCompatibility.hasUnknownMocGoal(type, entry)
                         || GroundMeleeCompatibility.hasUnknownToroRaiderGoal(type, entry)
+                        || GaiaCompatibility.hasUnexpectedRangedGoal(type, mob, entry)
                         || DungeonMobsCompatibility.hasUnknownRevenantGoal(type, entry)
                         || rejectEliteGoals && SpecialAiCompatibility.isEliteGoal(entry)
                         || FishUndeadRisingCompatibility.usesWildAnimalMelee(type)
@@ -175,6 +190,7 @@ final class MobTargets {
                         && !DungeonMobsCompatibility.isRevenantGoal(type, entry)
                         && !GaiaCompatibility.isAntWander(type, entry)
                         && !GaiaCompatibility.isFleeSun(type, entry)
+                        && !GaiaCompatibility.isRangedVariantUtility(type, entry)
                         && !IceAndFireCompatibility.isHorseGoal(type, entry)
                         && !(cqrGroundMelee && ChocolateQuestCompatibility.isNativeGoal(type, entry))
                         && (entry.priority > priority ? !entry.action.isInterruptible()
@@ -183,7 +199,8 @@ final class MobTargets {
                 }
             }
         }
-        return matched && (!creeper || foundSwell) && (!GroundMeleeCompatibility.isNaturaSpider(type) || foundNaturaLeap)
+        return (matched || GaiaCompatibility.isAntRangerHidden(type, mob))
+                && (!creeper || foundSwell) && (!GroundMeleeCompatibility.isNaturaSpider(type) || foundNaturaLeap)
                 && FishUndeadRisingCompatibility.hasNativeGoals(type, fishGoals);
     }
 
@@ -232,7 +249,8 @@ final class MobTargets {
                 || mob instanceof EntityCreeper || type == MobType.GAIA_DULLAHAN || type == MobType.DEFILED_SCUTTLER)
                 || !mob.isRiding() && !mob.isBeingRidden())
                 && (type != MobType.SPECIAL_SKELETON || usesBow(mob))
-                && (type != MobType.DEEPER_DEPTHS_BOGGED || mob.getHeldItemMainhand().getItem() == Items.BOW);
+                && (!(type == MobType.DEEPER_DEPTHS_BOGGED || type == MobType.ILLAGERS_ARCHER)
+                || mob.getHeldItemMainhand().getItem() == Items.BOW);
     }
 
     private static int providerMeleePriority(MobType type) {
@@ -265,6 +283,7 @@ final class MobTargets {
             return true;
         }
         if (FishUndeadRisingCompatibility.nativePhase(type, mob) || GaiaCompatibility.isAquaticPhase(type, mob)
+                || GaiaCompatibility.isNativePhase(type, mob)
                 || GroundMeleeCompatibility.nativePhase(type, mob)
                 || ChocolateQuestCompatibility.isGroundMelee(type) && ChocolateQuestCompatibility.yieldsToNative(mob)
                 || UnseenDungeonCompatibility.isSupportedType(type) && UnseenDungeonCompatibility.yieldsToNative(type, mob)) {
@@ -298,6 +317,7 @@ final class MobTargets {
                     || SpecialAiCompatibility.isBlockGriefing(entry)
                     || GaiaCompatibility.isAntWander(type, entry)
                     || GaiaCompatibility.isFleeSun(type, entry)
+                    || GaiaCompatibility.isOrcDoorGoal(type, entry)
                     || IceAndFireCompatibility.isHorseGoal(type, entry)
                     || ChocolateQuestCompatibility.isGroundMelee(type) && ChocolateQuestCompatibility.usesNativeGoal(type, entry)
                     || mob instanceof EntityCreeper
@@ -312,9 +332,33 @@ final class MobTargets {
     }
 
     static boolean preservesNativeTarget(WorldServer world, EntityCreature mob, EntityLivingBase target, MobType type) {
-        return ChocolateQuestCompatibility.isGroundMelee(type) && target != null
+        if (releasesNativeWrite(world, mob, target, type)) {
+            return true;
+        }
+        RangedAttack attack = GaiaCompatibility.currentRangedAttack(type, mob);
+        return isGaiaProjectile(attack) && target != null && world.getEntityFromUuid(target.getUniqueID()) == target
+                && resolve(world, mob, target, type) != null
+                && observe(world, mob, target, null, type) == TargetObservation.INELIGIBLE;
+    }
+
+    static boolean releasesNativeWrite(WorldServer world, EntityCreature mob, EntityLivingBase target, MobType type) {
+        boolean cqr = ChocolateQuestCompatibility.isGroundMelee(type);
+        RangedAttack attack = GaiaCompatibility.currentRangedAttack(type, mob);
+        return (cqr || isGaiaProjectile(attack)) && target != null
                 && world.getEntityFromUuid(target.getUniqueID()) == target && resolve(world, mob, target, type) != null
-                && !ChocolateQuestCompatibility.inNativeReach(mob, target);
+                && (cqr ? !ChocolateQuestCompatibility.inNativeReach(mob, target) : !withinGaiaProjectileLane(mob, target, type, attack));
+    }
+
+    private static boolean isGaiaProjectile(RangedAttack attack) {
+        return attack == RangedAttack.MAGIC || attack == RangedAttack.FIREBALL || attack == RangedAttack.POTION;
+    }
+
+    private static boolean withinGaiaProjectileLane(EntityCreature mob, EntityLivingBase target, MobType type, RangedAttack attack) {
+        if (attack == RangedAttack.POTION) {
+            return WitchCombat.withinLane(mob, target) && (type != MobType.GAIA_SHAMAN || !target.isEntityUndead());
+        }
+        return mob.getDistanceSq(target) <= 100.0 && Math.abs(mob.posY - target.posY) <= 2.0
+                && (attack != RangedAttack.FIREBALL || !target.isImmuneToFire() && !target.isPotionActive(MobEffects.FIRE_RESISTANCE));
     }
 
     private static boolean canAttackWhileAttached(EntityShulker shulker) {
@@ -372,12 +416,20 @@ final class MobTargets {
         }
         Vec3d position = mob.getPositionVector();
         LoadedPathTerrain terrain = new LoadedPathTerrain(world);
-        boolean bow = usesBow(mob);
+        RangedAttack gaiaAttack = GaiaCompatibility.currentRangedAttack(type, mob);
+        boolean bow = usesBow(mob) || type == MobType.ILLAGERS_ARCHER || gaiaAttack == RangedAttack.ARROW;
         boolean needsSight = !(mob instanceof EntityZombie && target instanceof EntityVillager)
                 && !DefiledLandsCompatibility.canAcquireWithoutSight(type, target);
         boolean sightLost = needsSight && !sees(terrain, mob, target, position);
         if (mob instanceof EntityWitch) {
             return WitchCombat.observe(terrain, (EntityWitch) mob, target, sightLost);
+        }
+        if (gaiaAttack == RangedAttack.POTION) {
+            return type == MobType.GAIA_SHAMAN && target.isEntityUndead()
+                    ? TargetObservation.INELIGIBLE : WitchCombat.observe(terrain, mob, target, sightLost);
+        }
+        if (gaiaAttack == RangedAttack.FIREBALL || gaiaAttack == RangedAttack.MAGIC) {
+            return observeGaiaProjectile(terrain, mob, target, sightLost, type, gaiaAttack);
         }
         if (ChocolateQuestCompatibility.isGroundMelee(type)) {
             if (!ChocolateQuestCompatibility.inNativeReach(mob, target)) {
@@ -456,6 +508,22 @@ final class MobTargets {
             }
         }
         return terrain.clearLine(from, to) ? TargetObservation.IN_REACH : TargetObservation.INELIGIBLE;
+    }
+
+    private static TargetObservation observeGaiaProjectile(LoadedPathTerrain terrain, EntityCreature mob,
+                                                            EntityLivingBase target, boolean sightLost, MobType type, RangedAttack attack) {
+        if (!withinGaiaProjectileLane(mob, target, type, attack)) {
+            return TargetObservation.INELIGIBLE;
+        }
+        if (sightLost) {
+            return TargetObservation.obscured(false);
+        }
+        Vec3d from = mob.getPositionVector().add(0.0, mob.height * 0.5, 0.0);
+        Vec3d to = target.getPositionVector().add(0.0, target.height * 0.5, 0.0);
+        // Individual Gaia shots launch at half height or up to half a block above it.
+        return terrain.clearFlight(new AxisAlignedBB(from.x - 0.3, Math.max(mob.posY, from.y - 0.3), from.z - 0.3,
+                from.x + 0.3, from.y + 0.8, from.z + 0.3), to.subtract(from))
+                ? TargetObservation.IN_REACH : TargetObservation.INELIGIBLE;
     }
 
     static boolean hasShulkerLaunch(BlockPos origin, EnumFacing.Axis attachmentAxis, Vec3d targetCenter,

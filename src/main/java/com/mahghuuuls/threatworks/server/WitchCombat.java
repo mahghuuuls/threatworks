@@ -23,9 +23,9 @@ final class WitchCombat {
                 || witch.world.getDifficulty() == EnumDifficulty.PEACEFUL;
     }
 
-    static TargetObservation observe(LoadedPathTerrain terrain, EntityWitch witch, EntityLivingBase target,
+    static TargetObservation observe(LoadedPathTerrain terrain, EntityLivingBase witch, EntityLivingBase target,
                                      boolean sightLost) {
-        if (witch.getDistanceSq(target) > POTION_LANE_RANGE_SQUARED || Math.abs(witch.posY - target.posY) > 2.0) {
+        if (!withinLane(witch, target)) {
             return TargetObservation.INELIGIBLE;
         }
         if (sightLost) {
@@ -39,6 +39,10 @@ final class WitchCombat {
                 from.x + 0.35, from.y + 1.5, from.z + 0.35);
         return terrain.clearFlight(corridor, travel)
                 ? TargetObservation.IN_REACH : TargetObservation.INELIGIBLE;
+    }
+
+    static boolean withinLane(EntityLivingBase thrower, EntityLivingBase target) {
+        return thrower.getDistanceSq(target) <= POTION_LANE_RANGE_SQUARED && Math.abs(thrower.posY - target.posY) <= 2.0;
     }
 
     @SuppressWarnings("unchecked")
