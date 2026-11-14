@@ -54,6 +54,12 @@ public final class GroundMeleeCompatibility {
         String toro = "net.torocraft.toroquest.entities.Entity";
         bind(unsupported, MobType.TORO_ZOMBIE_RAIDER, "toroquest", "1.12.2-5.3", toro + "ZombieRaider", 3);
         bind(unsupported, MobType.TORO_ZOMBIE_VILLAGER_RAIDER, "toroquest", "1.12.2-5.3", toro + "ZombieVillagerRaider", 3);
+        String natura = "com.progwml6.natura.entities.entity.monster.Entity";
+        bind(unsupported, MobType.NATURA_HEATSCAR, "natura", "4.6.1", natura + "HeatscarSpider", 4);
+        bind(unsupported, MobType.NATURA_BABY_HEATSCAR, "natura", "4.6.1", natura + "BabyHeatscarSpider", 4);
+        bind(unsupported, MobType.NATURA_NITRO_CREEPER, "natura", "4.6.1", natura + "NitroCreeper", 3);
+        bind(unsupported, MobType.DEEPER_DEPTHS_BOGGED, "deeperdepths", "1.1.2a",
+                "com.deeperdepths.common.entities.EntityBogged", 4);
         bindHorseGroundState();
         String quark = "vazkii.quark.world.entity.Entity";
         bind(unsupported, MobType.QUARK_ASHEN, "quark", "r1.6-192", quark + "Ashen", 4);
@@ -126,7 +132,17 @@ public final class GroundMeleeCompatibility {
         return isQuarkSkeleton(type) || type == MobType.QUARK_DWELLER || type == MobType.QUARK_WRAITH
                 || type == MobType.ILLAGERS_FURANTUR || type == MobType.GAIA_MITE || isLightAvoiding(type)
                 || type == MobType.CHARM_SPECTRE || type == MobType.MOC_HORSE_MOB || usesMocDarkMelee(type)
-                || isToroZombieRaider(type);
+                || isToroZombieRaider(type) || isNaturaSpider(type)
+                || type == MobType.NATURA_NITRO_CREEPER || type == MobType.DEEPER_DEPTHS_BOGGED;
+    }
+
+    public static boolean isNaturaSpider(MobType type) {
+        return type == MobType.NATURA_HEATSCAR || type == MobType.NATURA_BABY_HEATSCAR;
+    }
+
+    public static boolean isNaturaSpiderLeap(MobType type, EntityAITaskEntry entry) {
+        return isNaturaSpider(type) && entry.priority == 3 && entry.action.getMutexBits() == 5
+                && entry.action.getClass() == EntityAILeapAtTarget.class;
     }
 
     private static boolean isLightAvoiding(MobType type) {
@@ -187,8 +203,10 @@ public final class GroundMeleeCompatibility {
         }
         String name = entry.action.getClass().getName();
         int mutex = entry.action.getMutexBits();
+        // The constructor and persisted raid location can register distinct instances of the native raid task.
+        int locationPriority = type == MobType.TORO_ZOMBIE_RAIDER ? 3 : 4;
         return entry.priority == 2 && mutex == 0 && name.equals(TORO_ZOMBIE_LEAP)
-                || entry.priority == 7 && mutex == 1 && name.equals(TORO_RAID);
+                || (entry.priority == 7 || entry.priority == locationPriority) && mutex == 1 && name.equals(TORO_RAID);
     }
 
     public static boolean hasUnknownToroRaiderGoal(MobType type, EntityAITaskEntry entry) {
@@ -203,7 +221,7 @@ public final class GroundMeleeCompatibility {
         return BINDINGS.containsKey(type) && (mob.isRiding() || mob.isBeingRidden() || mob.isInWater() || mob.isInLava()
                 || isLightAvoiding(type) && mob.isBurning()
                 || usesMocDarkMelee(type) && mob.getBrightness() >= 0.5F
-                || usesClimbingNavigator(type) && mob.isOnLadder()
+                || (usesClimbingNavigator(type) || isNaturaSpider(type)) && mob.isOnLadder()
                 || type == MobType.MOC_HORSE_MOB && horseUsesNativeControl(mob)
                 || type == MobType.STYGIAN_WATCHLING && mob.isChild()
                 || (type == MobType.STYGIAN_GLUTTERMITE || type == MobType.STYGIAN_ENDERMITE

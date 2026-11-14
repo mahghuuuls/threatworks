@@ -7,6 +7,7 @@ import com.mahghuuuls.threatworks.compat.BaublesCompatibility;
 import com.mahghuuuls.threatworks.compat.ChocolateQuestCompatibility;
 import com.mahghuuuls.threatworks.compat.DefiledLandsCompatibility;
 import com.mahghuuuls.threatworks.compat.DungeonMobsCompatibility;
+import com.mahghuuuls.threatworks.compat.BetterEndCompatibility;
 import com.mahghuuuls.threatworks.compat.FishUndeadRisingCompatibility;
 import com.mahghuuuls.threatworks.compat.FoliaathCompatibility;
 import com.mahghuuuls.threatworks.compat.GaiaCompatibility;
@@ -85,6 +86,7 @@ public final class ThreatworksMod {
         SpecialAiCompatibility.reportVersion(LOGGER);
         SpecialMobsCompatibility.reportVariantVersion(LOGGER);
         DefiledLandsCompatibility.reportVersion(LOGGER);
+        BetterEndCompatibility.reportVersion(LOGGER);
         DungeonMobsCompatibility.reportVersion(LOGGER);
         FishUndeadRisingCompatibility.reportVersion(LOGGER);
         GaiaCompatibility.reportVersion(LOGGER);

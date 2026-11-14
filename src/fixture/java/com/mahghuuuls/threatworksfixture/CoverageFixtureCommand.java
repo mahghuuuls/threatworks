@@ -141,7 +141,7 @@ final class CoverageFixtureCommand extends CommandBase {
         }
         switch (operation) {
             case "seed":
-                seed(world, args[1], args.length > 2 && "solo".equals(args[2]));
+                seed(world, args[1], args.length > 2 ? args[2] : "");
                 break;
             case "natural":
                 natural(world, "skeleton".equals(args[1]));
@@ -189,7 +189,7 @@ final class CoverageFixtureCommand extends CommandBase {
         }
     }
 
-    private static void seed(WorldServer world, String id, boolean solo) throws CommandException {
+    private static void seed(WorldServer world, String id, String scene) throws CommandException {
         int height = id.startsWith("grimoireofgaia:") ? 64 : "defiledlands:shambler".equals(id) ? 60
                 : JOLT.equals(id) ? JOLT_FLOOR : Y;
         arena(world, height);
@@ -211,6 +211,15 @@ final class CoverageFixtureCommand extends CommandBase {
             }
         }
         Entity entity = EntityList.createEntityByIDFromName(new ResourceLocation(id), world);
+        boolean configuredRaid = "configured-raid".equals(scene) && id.startsWith("toroquest:toroquest_zombie");
+        if (configuredRaid && entity != null) {
+            try {
+                entity = entity.getClass().getConstructor(World.class, int.class, int.class).newInstance(world, 28, 28);
+                entity.addTag("tw_l_toro_raid");
+            } catch (ReflectiveOperationException failure) {
+                throw new CommandException("Could not use the native configured raider constructor.");
+            }
+        }
         if (entity instanceof EntityGhast) {
             seedGhast(world, (EntityGhast) entity, id, height);
             return;
@@ -241,7 +250,7 @@ final class CoverageFixtureCommand extends CommandBase {
         if (DREAD_THRALL.equals(id) || DREAD_KNIGHT.equals(id) || animatedDread(id)) {
             dreadState(mob, "seed");
         }
-        actors(world, mob, solo);
+        actors(world, mob, "solo".equals(scene));
     }
 
     private static void seedGhast(WorldServer world, EntityGhast ghast, String id, int height) throws CommandException {
@@ -381,14 +390,20 @@ final class CoverageFixtureCommand extends CommandBase {
         boolean mocDarkMelee = id.startsWith("mocreatures:") && !"mocreatures:horsemob".equals(id);
         boolean nativePlayerMelee = id.equals("dungeonmobs:dmghost") || id.startsWith("toroquest:toroquest_zombie");
         boolean twoPlayers = cqrGoblinFaction || "cqrepoured:gremlin".equals(id) || spectre
-                || mob instanceof net.minecraft.entity.monster.EntityWitch || mocDarkMelee || nativePlayerMelee;
+                || mob instanceof net.minecraft.entity.monster.EntityWitch || mocDarkMelee || nativePlayerMelee
+                || "deeperdepths:bogged".equals(id) || id.startsWith("natura:") && mob instanceof EntitySpider;
         if (!solo && twoPlayers) {
             EntityPlayerMP incumbent = fixturePlayer(world, id, "MeleeIncumbent");
             if (cqrGoblinFaction) {
                 setCqrHostileReputation(mob, incumbent);
             }
             incumbent.addTag("tw_l_tick_hurt_window");
-            double spacing = spectre ? 7 : mob instanceof net.minecraft.entity.monster.EntityWitch ? 6 : 2;
+            double spacing = spectre ? 7 : mob instanceof net.minecraft.entity.monster.EntityWitch
+                    || "deeperdepths:bogged".equals(id) ? 6 : 2;
+            if (mob.getTags().contains("tw_l_toro_raid")) {
+                incumbent.capabilities.disableDamage = true;
+                spacing = 23;
+            }
             place(world, incumbent, "tw_i_guard", X + spacing, mob.posY, Z);
         } else if (!solo) {
             EntityIronGolem guard = new EntityIronGolem(world);
@@ -664,6 +679,49 @@ final class CoverageFixtureCommand extends CommandBase {
                         mob.getUniqueID(), player.getUniqueID(), player.isPotionActive(MobEffects.SLOWNESS),
                         player.isPotionActive(MobEffects.WEAKNESS), player.isPotionActive(MobEffects.POISON),
                         player.isPotionActive(MobEffects.JUMP_BOOST), mob.isPotionActive(MobEffects.JUMP_BOOST));
+                break;
+            case "provider-attack-effects":
+                LOGGER.info("coverage providerAttackEffects mob={} guardBurning={} guardPoison={} playerBurning={} playerPoison={}",
+                        mob.getUniqueID(), guard != null && guard.isBurning(),
+                        guard != null && guard.isPotionActive(MobEffects.POISON), player.isBurning(),
+                        player.isPotionActive(MobEffects.POISON));
+                break;
+            case "natura-climbing-handoff":
+                if (!(mob instanceof EntitySpider) || guard == null || mob.getAttackTarget() != player
+                        || !String.valueOf(EntityList.getKey(mob)).startsWith("natura:")) {
+                    throw new CommandException("Expected a Heatscar Spider targeting the challenger.");
+                }
+                ((EntitySpider) mob).setBesideClimbableBlock(true);
+                try {
+                    mob.setAttackTarget(guard);
+                    LOGGER.info("coverage naturaClimbing mob={} guard={} target={} climbing={} taunt={}",
+                            mob.getUniqueID(), guard.getUniqueID(), identity(mob.getAttackTarget()),
+                            mob.isOnLadder(), actions.taunt(mob, player));
+                    report(mob, world);
+                } finally {
+                    ((EntitySpider) mob).setBesideClimbableBlock(false);
+                }
+                return;
+            case "toro-raid-read":
+            case "toro-raid-engage":
+                if (!(guard instanceof EntityPlayerMP) || !mob.getTags().contains("tw_l_toro_raid")) {
+                    throw new CommandException("Expected a configured ToroQuest raider.");
+                }
+                try {
+                    Object raidX = mob.getClass().getMethod("getRaidLocationX").invoke(mob);
+                    Object raidZ = mob.getClass().getMethod("getRaidLocationZ").invoke(mob);
+                    LOGGER.info("coverage toroRaid mob={} raidX={} raidZ={} target={} raidGoals={}", mob.getUniqueID(),
+                            raidX, raidZ, identity(mob.getAttackTarget()), mob.tasks.taskEntries.stream()
+                                    .filter(entry -> entry.action.getClass().getSimpleName().equals("EntityAIRaid"))
+                                    .map(entry -> entry.priority + "/" + entry.action.getMutexBits() + "/" + entry.using)
+                                    .collect(java.util.stream.Collectors.joining(",")));
+                } catch (ReflectiveOperationException failure) {
+                    throw new CommandException("Could not read the native raid location.");
+                }
+                if ("toro-raid-engage".equals(operation)) {
+                    guard.setPosition(mob.posX + 1.7, mob.posY, mob.posZ);
+                    restorePlayer((EntityPlayerMP) guard);
+                }
                 break;
             case "witch-spider-prepare":
                 player.addPotionEffect(new PotionEffect(MobEffects.JUMP_BOOST, 1200));
@@ -2263,7 +2321,10 @@ final class CoverageFixtureCommand extends CommandBase {
                                  EntityLivingBase guard, String operation) throws CommandException {
         if ("slime-native-redirect".equals(operation) || "slime-opening".equals(operation)) {
             if (slime.getAttackTarget() != guard || !slime.onGround) {
-                throw new CommandException("Expected the grounded slime targeting its first participant.");
+                LOGGER.info("coverage slimeOpeningRetry mob={} target={} onGround={}", slime.getUniqueID(),
+                        identity(slime.getAttackTarget()), slime.onGround);
+                report(slime, world);
+                return;
             }
             restorePlayer(player);
             if ("slime-opening".equals(operation)) {

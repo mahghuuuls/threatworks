@@ -40,6 +40,7 @@ import net.minecraft.entity.monster.EntityZombie;
 import net.minecraft.entity.monster.EntityZombieVillager;
 import net.minecraft.entity.passive.EntityVillager;
 import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.init.Items;
 import net.minecraft.init.MobEffects;
 import net.minecraft.inventory.EntityEquipmentSlot;
 import net.minecraft.item.ItemBow;
@@ -113,6 +114,7 @@ final class MobTargets {
         boolean creeper = mob instanceof EntityCreeper;
         boolean specialBlaze = SpecialMobsCompatibility.isVariantBlaze(type);
         boolean foundSwell = false;
+        boolean foundNaturaLeap = false;
         int fishGoals = 0;
         for (EntityAITaskEntry entry : mob.tasks.taskEntries) {
             Class<?> goal = entry.action.getClass();
@@ -145,6 +147,11 @@ final class MobTargets {
                     return false;
                 }
                 foundSwell = true;
+            } else if (GroundMeleeCompatibility.isNaturaSpider(type) && goal == EntityAILeapAtTarget.class) {
+                if (foundNaturaLeap || !GroundMeleeCompatibility.isNaturaSpiderLeap(type, entry)) {
+                    return false;
+                }
+                foundNaturaLeap = true;
             } else {
                 int fishGoal = FishUndeadRisingCompatibility.nativeGoal(type, entry);
                 if (fishGoal != 0) {
@@ -176,7 +183,8 @@ final class MobTargets {
                 }
             }
         }
-        return matched && (!creeper || foundSwell) && FishUndeadRisingCompatibility.hasNativeGoals(type, fishGoals);
+        return matched && (!creeper || foundSwell) && (!GroundMeleeCompatibility.isNaturaSpider(type) || foundNaturaLeap)
+                && FishUndeadRisingCompatibility.hasNativeGoals(type, fishGoals);
     }
 
     private static boolean nativeCompetingGoal(EntityCreature mob, EntityAITaskEntry entry) {
@@ -223,7 +231,8 @@ final class MobTargets {
                 && (!(SpecialMobsCompatibility.isVariantSpider(type) || DungeonMobsCompatibility.meleePriority(type) >= 0
                 || mob instanceof EntityCreeper || type == MobType.GAIA_DULLAHAN || type == MobType.DEFILED_SCUTTLER)
                 || !mob.isRiding() && !mob.isBeingRidden())
-                && (type != MobType.SPECIAL_SKELETON || usesBow(mob));
+                && (type != MobType.SPECIAL_SKELETON || usesBow(mob))
+                && (type != MobType.DEEPER_DEPTHS_BOGGED || mob.getHeldItemMainhand().getItem() == Items.BOW);
     }
 
     private static int providerMeleePriority(MobType type) {
@@ -279,6 +288,7 @@ final class MobTargets {
                     || mob instanceof EntityWitch && SpecialAiCompatibility.isWitchRider(entry)
                     || GroundMeleeCompatibility.isLightAvoidance(type, entry)
                     || GroundMeleeCompatibility.isMocScorpionLeap(type, entry)
+                    || GroundMeleeCompatibility.isNaturaSpiderLeap(type, entry)
                     || GroundMeleeCompatibility.isToroRaiderGoal(type, entry)
                     || DungeonMobsCompatibility.isRevenantGoal(type, entry)
                     || entry.priority == GroundMeleeCompatibility.meleePriority(type)
@@ -292,7 +302,8 @@ final class MobTargets {
                     || ChocolateQuestCompatibility.isGroundMelee(type) && ChocolateQuestCompatibility.usesNativeGoal(type, entry)
                     || mob instanceof EntityCreeper
                     && (entry.action.getClass() == EntityAICreeperSwell.class || isCreeperAvoidance(entry))
-                    || (SpecialMobsCompatibility.isVariantSkeleton(type) || GroundMeleeCompatibility.isQuarkSkeleton(type))
+                    || (SpecialMobsCompatibility.isVariantSkeleton(type) || GroundMeleeCompatibility.isQuarkSkeleton(type)
+                    || type == MobType.DEEPER_DEPTHS_BOGGED)
                     && (entry.action.getClass() == EntityAIFleeSun.class || entry.action.getClass() == EntityAIAvoidEntity.class))) {
                 return true;
             }

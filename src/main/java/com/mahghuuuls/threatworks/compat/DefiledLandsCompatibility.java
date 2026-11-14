@@ -3,6 +3,7 @@ package com.mahghuuuls.threatworks.compat;
 import com.mahghuuuls.threatworks.config.ServerTuning.MobType;
 import net.minecraft.entity.EntityCreature;
 import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.entity.EntityLiving;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraftforge.fml.common.Loader;
 import net.minecraftforge.fml.common.ModContainer;
@@ -14,6 +15,10 @@ public final class DefiledLandsCompatibility {
     private static final String MINIMUM = "1.4.3";
 
     private DefiledLandsCompatibility() {
+    }
+
+    public static boolean matchesSlime(EntityLiving mob) {
+        return Installed.SUPPORTED && mob.getClass().getName().equals(ENTITY_PACKAGE + "EntitySlimeDefiled");
     }
 
     public static void reportVersion(Logger logger) {

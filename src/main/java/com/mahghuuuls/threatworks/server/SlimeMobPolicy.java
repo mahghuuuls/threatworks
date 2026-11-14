@@ -1,5 +1,7 @@
 package com.mahghuuuls.threatworks.server;
 
+import com.mahghuuuls.threatworks.compat.BetterEndCompatibility;
+import com.mahghuuuls.threatworks.compat.DefiledLandsCompatibility;
 import com.mahghuuuls.threatworks.compat.SpecialMobsCompatibility;
 import com.mahghuuuls.threatworks.config.ServerTuning.MobType;
 import com.mahghuuuls.threatworks.threat.Encounter.TargetObservation;
@@ -30,13 +32,16 @@ final class SlimeMobPolicy implements MobPolicy {
     private static final double LOCAL_HOP_RANGE = 12;
     private static final Field NEAREST_CLASS = nearestClassField();
     private final boolean providerContact;
+    private final double hopHeadroom;
 
     SlimeMobPolicy(MobType type) {
         providerContact = SpecialMobsCompatibility.isHoppingSlime(type);
+        hopHeadroom = type == MobType.DEFILED_SLIME ? 3.0 : 2.0;
     }
 
     static boolean matchesType(MobType type) {
-        return type == MobType.SLIME || type == MobType.MAGMA_CUBE || SpecialMobsCompatibility.isHoppingSlime(type);
+        return type == MobType.SLIME || type == MobType.MAGMA_CUBE || type == MobType.DEFILED_SLIME
+                || type == MobType.BETTEREND_SLIME || SpecialMobsCompatibility.isHoppingSlime(type);
     }
 
     static boolean matches(MobType type, EntityLiving mob) {
@@ -46,28 +51,24 @@ final class SlimeMobPolicy implements MobPolicy {
         if (type == MobType.MAGMA_CUBE) {
             return mob.getClass() == EntityMagmaCube.class;
         }
+        if (type == MobType.DEFILED_SLIME) {
+            return mob instanceof EntitySlime && DefiledLandsCompatibility.matchesSlime(mob);
+        }
+        if (type == MobType.BETTEREND_SLIME) {
+            return mob instanceof EntitySlime && BetterEndCompatibility.matchesSlime(mob);
+        }
         return SpecialMobsCompatibility.matchesHoppingSlime(type, mob);
     }
 
     static boolean hasNativeContract(EntityLiving mob) {
         if (mob.isAIDisabled() || mob.tasks.isControlFlagDisabled(1) || mob.tasks.isControlFlagDisabled(2)
-                || mob.tasks.isControlFlagDisabled(4) || !matchesInner(mob.getMoveHelper().getClass(), "SlimeMoveHelper")
-                || mob.tasks.taskEntries.size() != 4 || mob.targetTasks.taskEntries.size() != 2) {
+                || mob.tasks.isControlFlagDisabled(4) || mob.tasks.taskEntries.size() != 4
+                || mob.targetTasks.taskEntries.size() != 2) {
             return false;
         }
-        int goalMask = 0;
-        for (EntityAITaskEntry task : mob.tasks.taskEntries) {
-            Class<?> goal = task.action.getClass();
-            int mutex = task.action.getMutexBits();
-            if (task.priority == 1 && mutex == 5 && matchesInner(goal, "AISlimeFloat")) {
-                goalMask |= 1;
-            } else if (task.priority == 2 && mutex == 2 && matchesInner(goal, "AISlimeAttack")) {
-                goalMask |= 2;
-            } else if (task.priority == 3 && mutex == 2 && matchesInner(goal, "AISlimeFaceRandom")) {
-                goalMask |= 4;
-            } else if (task.priority == 5 && mutex == 5 && matchesInner(goal, "AISlimeHop")) {
-                goalMask |= 8;
-            }
+        if (!(BetterEndCompatibility.matchesSlime(mob) ? BetterEndCompatibility.hasSlimeMovement(mob)
+                : hasVanillaMovement(mob))) {
+            return false;
         }
         int selectorMask = 0;
         for (EntityAITaskEntry task : mob.targetTasks.taskEntries) {
@@ -81,10 +82,31 @@ final class SlimeMobPolicy implements MobPolicy {
                 selectorMask |= 2;
             }
         }
-        return goalMask == 15 && selectorMask == 3;
+        return selectorMask == 3;
     }
 
-    private static boolean matchesInner(Class<?> actual, String name) {
+    private static boolean hasVanillaMovement(EntityLiving mob) {
+        if (!matchesVanillaGoal(mob.getMoveHelper().getClass(), "SlimeMoveHelper")) {
+            return false;
+        }
+        int goals = 0;
+        for (EntityAITaskEntry entry : mob.tasks.taskEntries) {
+            Class<?> goal = entry.action.getClass();
+            int mutex = entry.action.getMutexBits();
+            if (entry.priority == 1 && mutex == 5 && matchesVanillaGoal(goal, "AISlimeFloat")) {
+                goals |= 1;
+            } else if (entry.priority == 2 && mutex == 2 && matchesVanillaGoal(goal, "AISlimeAttack")) {
+                goals |= 2;
+            } else if (entry.priority == 3 && mutex == 2 && matchesVanillaGoal(goal, "AISlimeFaceRandom")) {
+                goals |= 4;
+            } else if (entry.priority == 5 && mutex == 5 && matchesVanillaGoal(goal, "AISlimeHop")) {
+                goals |= 8;
+            }
+        }
+        return goals == 15;
+    }
+
+    private static boolean matchesVanillaGoal(Class<?> actual, String name) {
         return actual.getEnclosingClass() == EntitySlime.class && actual.getSimpleName().equals(name);
     }
 
@@ -166,7 +188,7 @@ final class SlimeMobPolicy implements MobPolicy {
         Vec3d approach = new Vec3d(to.x - from.x, 0, to.z - from.z);
         AxisAlignedBB body = mob.getEntityBoundingBox();
         AxisAlignedBB landingBody = body.offset(0, footing.y - from.y, 0);
-        double headroom = mob instanceof EntityMagmaCube ? 5.0 : 2.0;
+        double headroom = mob instanceof EntityMagmaCube ? 5.0 : hopHeadroom;
         if (!terrain.clearLevelGround(landingBody, footing, to)
                 || !terrain.clearFlight(landingBody.expand(0, headroom, 0).union(body), approach)) {
             return TargetObservation.INELIGIBLE;
@@ -196,4 +218,5 @@ final class SlimeMobPolicy implements MobPolicy {
     public boolean releasesNativeWrite(WorldServer world, EntityLiving mob, EntityLivingBase target) {
         return resolve(world, mob, target) != null && mob.getDistanceSq(target) > LOCAL_HOP_RANGE * LOCAL_HOP_RANGE;
     }
+
 }
