@@ -41,14 +41,14 @@ class ServerTuningTest {
     }
 
     @Test
-    void specialZombieVariantsRequireAnExactOptInInExpandedMode() throws Exception {
+    void anExistingExpandedConfigKeepsItsExactOptIns() throws Exception {
         ServerTuning fresh = TuningFiles.load(directory.resolve("fresh.cfg"), null, id -> true, warnings);
         String optIn = "S:mobOptIn <\n specialmobs:brutezombie\n specialmobs:plaguezombie\n >";
         ServerTuning expanded = TuningFiles.load(directory.resolve("expanded.cfg"), optIn, id -> true, warnings);
         ServerTuning legacy = TuningFiles.load(directory.resolve("legacy-zombies.cfg"),
                 "S:enabledMobs <\n minecraft:zombie\n specialmobs:brutezombie\n >\n" + optIn, id -> true, warnings);
 
-        assertFalse(fresh.isEnabled(MobType.BRUTE_ZOMBIE));
+        assertTrue(fresh.isEnabled(MobType.BRUTE_ZOMBIE));
         assertTrue(expanded.isEnabled(MobType.BRUTE_ZOMBIE));
         assertTrue(expanded.isEnabled(MobType.PLAGUE_ZOMBIE));
         assertFalse(expanded.isEnabled(MobType.GIANT_ZOMBIE));
@@ -66,7 +66,8 @@ class ServerTuningTest {
         for (ServerTuning tuning : new ServerTuning[] {created, reloaded}) {
             assertEquals(VANILLA_DEFAULTS, enabledVanilla(tuning));
             assertTrue(tuning.isEnabled(SPECIAL_ZOMBIE));
-            assertFalse(tuning.isEnabled(SPECIAL_SKELETON));
+            assertTrue(tuning.isEnabled(SPECIAL_SKELETON));
+            assertEquals(234, Arrays.stream(MobType.values()).filter(tuning::isEnabled).count());
             assertNull(tuning.assignedPoints("minecraft:stick", null));
             Rules rules = tuning.rulesFor(ZOMBIE);
             assertArrayEquals(new double[] {0.2, 0.4, 8, 16, 10, 60, 200, 40}, new double[] {
@@ -75,6 +76,41 @@ class ServerTuningTest {
             });
         }
         assertTrue(warnings.isEmpty(), warnings.toString());
+    }
+
+    @Test
+    void migratedExpandedSettingsStaySelectiveUntilFullCoverageIsChosen() throws Exception {
+        Path file = directory.resolve("upgraded.cfg");
+        ServerTuning first = TuningFiles.load(file, "S:mobCoverage=expanded\nD:openingThreat=16",
+                id -> true, warnings);
+        ServerTuning restarted = TuningFiles.load(file, null, id -> true, warnings);
+        for (ServerTuning tuning : new ServerTuning[] {first, restarted}) {
+            assertTrue(tuning.isEnabled(SPECIAL_ZOMBIE));
+            assertFalse(tuning.isEnabled(SPECIAL_SKELETON));
+            assertEquals(16, tuning.rulesFor(ZOMBIE).openingThreat);
+        }
+        String saved = new String(Files.readAllBytes(file), java.nio.charset.StandardCharsets.UTF_8);
+        assertTrue(saved.contains("B:enableVerifiedModdedMobs=false"));
+        Files.write(file, saved.replace("B:enableVerifiedModdedMobs=false", "B:enableVerifiedModdedMobs=true")
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        assertTrue(TuningFiles.load(file, null, id -> true, warnings).isEnabled(SPECIAL_SKELETON));
+        assertTrue(warnings.isEmpty(), warnings.toString());
+    }
+
+    @Test
+    void disablingOneModOverridesItsDefaultsAndExactOptIns() throws Exception {
+        Path file = directory.resolve("provider-disabled.cfg");
+        ServerTuning tuning = TuningFiles.load(file, "B:enableVerifiedModdedMobs=true\n"
+                + "S:mobOptIn <\n specialmobs:specialskeleton\n >\n"
+                + "S:mobBlacklist <\n specialmobs:specialzombie\n >\n"
+                + "modtargeting {\n B:specialmobs=false\n B:ancientwarfarenpc=invalid\n }", id -> true, warnings);
+        assertFalse(tuning.isEnabled(SPECIAL_ZOMBIE));
+        assertFalse(tuning.isEnabled(SPECIAL_SKELETON));
+        assertFalse(tuning.isEnabled(MobType.ANCIENT_WARFARE_ARCHER));
+        assertTrue(tuning.isEnabled(MobType.FISH_WRAITH));
+        assertTrue(tuning.isEnabled(ZOMBIE));
+        assertTrue(tuning.isBlacklisted("specialmobs:specialzombie"));
+        assertTrue(warnings.stream().anyMatch(message -> message.contains("ancientwarfarenpc=invalid")));
     }
 
     @Test

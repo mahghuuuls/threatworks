@@ -28,6 +28,7 @@ public final class ServerTuning {
     public static final double MAX_ITEM_POINTS = Double.MAX_VALUE / 8.0;
 
     private static final String CATEGORY = "server";
+    private static final String MOD_TARGETING = CATEGORY + ".modtargeting";
     private static final double ORDINARY_LEAD = 0.2;
     private static final double MAXIMUM_LEAD = 0.4;
     private static final double CHASE_START = 8.0;
@@ -276,15 +277,19 @@ public final class ServerTuning {
         FOLIAATH("mowziesmobs:foliaath");
 
         public final String id;
-        private final boolean defaultEnabled;
+        private final boolean originalExpandedDefault;
 
         MobType(String id) {
             this(id, false);
         }
 
-        MobType(String id, boolean defaultEnabled) {
+        MobType(String id, boolean originalExpandedDefault) {
             this.id = id;
-            this.defaultEnabled = defaultEnabled;
+            this.originalExpandedDefault = originalExpandedDefault;
+        }
+
+        private String namespace() {
+            return id.substring(0, id.indexOf(':'));
         }
 
         private static MobType find(String id) {
@@ -294,6 +299,17 @@ public final class ServerTuning {
                 }
             }
             return null;
+        }
+    }
+
+    private static final Set<String> MODDED_NAMESPACES = new LinkedHashSet<>();
+
+    static {
+        for (MobType type : MobType.values()) {
+            String namespace = type.namespace();
+            if (!"minecraft".equals(namespace)) {
+                MODDED_NAMESPACES.add(namespace);
+            }
         }
     }
 
@@ -331,15 +347,17 @@ public final class ServerTuning {
 
     public static ServerTuning load(File file, Predicate<String> registeredItem, Consumer<String> warn) {
         Configuration fileConfig = new Configuration(file);
+        boolean existingServerSettings = fileConfig.hasCategory(CATEGORY);
         fileConfig.setCategoryComment(CATEGORY, "Server combat settings. Changes take effect on server restart.");
-        ServerTuning tuning = read(fileConfig, registeredItem, warn);
+        ServerTuning tuning = read(fileConfig, registeredItem, warn, existingServerSettings);
         if (fileConfig.hasChanged()) {
             fileConfig.save();
         }
         return tuning;
     }
 
-    private static ServerTuning read(Configuration config, Predicate<String> registeredItem, Consumer<String> warn) {
+    private static ServerTuning read(Configuration config, Predicate<String> registeredItem, Consumer<String> warn,
+                                     boolean existingServerSettings) {
         double ordinary = number(config, "ordinarySwitchLead", ORDINARY_LEAD, 0, Double.MAX_VALUE, false,
                 "Fraction a challenger must exceed the current threat by (0.2 means 20%).", warn);
         double maximum = number(config, "maximumChaseLead", MAXIMUM_LEAD, 0, Double.MAX_VALUE, false,
@@ -368,7 +386,7 @@ public final class ServerTuning {
         int sight = duration(config, "sightLossGrace", SIGHT_SECONDS, false,
                 "How long a mob retains its target after losing sight.", warn);
 
-        Set<MobType> enabled = readMobCoverage(config, warn);
+        Set<MobType> enabled = readMobCoverage(config, warn, existingServerSettings);
         Set<String> blacklist = mobIds(config, "mobBlacklist",
                 "Exact entity IDs to exclude from Threatworks control, e.g. minecraft:zombie.", warn);
         Map<MobType, Double> seeds = new EnumMap<>(MobType.class);
@@ -425,22 +443,33 @@ public final class ServerTuning {
         return new ServerTuning(enabled, blacklist, rules, assignments);
     }
 
-    private static Set<MobType> readMobCoverage(Configuration config, Consumer<String> warn) {
+    private static Set<MobType> readMobCoverage(Configuration config, Consumer<String> warn,
+                                                 boolean existingServerSettings) {
         boolean hasLegacyList = config.hasKey(CATEGORY, "enabledMobs");
         String fallback = hasLegacyList ? "legacy" : "expanded";
         Property selection = config.get(CATEGORY, "mobCoverage", fallback,
-                "Use expanded for current defaults and mobOptIn, or legacy to keep the old enabledMobs list.");
+                "Use expanded for the verified roster and mod switches, or legacy to keep the old enabledMobs list.");
         String mode = selection.isList() ? "<list>" : selection.getString().trim();
         if (!"legacy".equals(mode) && !"expanded".equals(mode)) {
             warn.accept("mobCoverage=" + mode + " is invalid; using " + fallback);
             mode = fallback;
         }
+        // Previously saved server configurations keep their effective expanded selections until the operator enables the full roster.
+        boolean enableVerified = coverageToggle(config, CATEGORY, "enableVerifiedModdedMobs", !existingServerSettings,
+                "Enable all verified modded mobs in expanded mode. When false, use the base Special Mobs zombie and mobOptIn.", warn);
+        config.setCategoryComment(MOD_TARGETING, "Enable Threatworks targeting for each mob registry namespace in expanded mode.");
+        Set<String> disabledNamespaces = new HashSet<>();
+        for (String namespace : MODDED_NAMESPACES) {
+            if (!coverageToggle(config, MOD_TARGETING, namespace, true, null, warn)) {
+                disabledNamespaces.add(namespace);
+            }
+        }
         Set<String> optIn = mobIds(config, "mobOptIn",
-                "Exact IDs of verified opt-in mobs in expanded mode, e.g. specialmobs:specialskeleton.", warn);
+                "Exact verified IDs to enable individually in expanded mode when enableVerifiedModdedMobs is false.", warn);
         if ("expanded".equals(mode)) {
             Set<MobType> enabled = EnumSet.noneOf(MobType.class);
             for (MobType type : MobType.values()) {
-                if (type.defaultEnabled) {
+                if (enableVerified || type.originalExpandedDefault) {
                     enabled.add(type);
                 }
             }
@@ -452,6 +481,7 @@ public final class ServerTuning {
                     enabled.add(type);
                 }
             }
+            enabled.removeIf(type -> disabledNamespaces.contains(type.namespace()));
             return enabled;
         }
 
@@ -467,6 +497,19 @@ public final class ServerTuning {
             }
         }
         return enabled;
+    }
+
+    private static boolean coverageToggle(Configuration config, String category, String key, boolean defaultValue,
+                                          String comment, Consumer<String> warn) {
+        Property property = config.get(category, key, Boolean.toString(defaultValue), comment, Property.Type.BOOLEAN);
+        String value = property.isList() ? "<list>" : property.getString().trim();
+        if ("true".equalsIgnoreCase(value)) {
+            return true;
+        }
+        if (!"false".equalsIgnoreCase(value)) {
+            warn.accept(category + "." + key + "=" + value + " requires true or false; using false");
+        }
+        return false;
     }
 
     private static Set<String> mobIds(Configuration config, String key, String comment, Consumer<String> warn) {
