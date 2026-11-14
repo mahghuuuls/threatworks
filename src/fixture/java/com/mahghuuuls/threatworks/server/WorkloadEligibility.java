@@ -13,7 +13,7 @@ public final class WorkloadEligibility {
     public static boolean attacksImmediately(WorldServer world, EntityCreature mob, EntityLivingBase guard, MobType type) {
         com.mahghuuuls.threatworks.threat.Encounter.TargetObservation observation =
                 MobTargets.observe(world, mob, guard, null, type);
-        return observation.isEligible() && observation.canAttackImmediately;
+        return observation == com.mahghuuuls.threatworks.threat.Encounter.TargetObservation.IN_REACH;
     }
 
     public static boolean observesEligible(WorldServer world, EntityCreature mob, EntityLivingBase guard, MobType type) {
