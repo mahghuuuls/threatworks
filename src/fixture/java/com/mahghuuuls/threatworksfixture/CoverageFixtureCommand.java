@@ -706,7 +706,7 @@ final class CoverageFixtureCommand extends CommandBase {
                 player.setPosition(mob.posX + 2.0, mob.posY, mob.posZ);
                 guard.setPosition(mob.posX + 7.0, mob.posY, mob.posZ);
                 break;
-            case "gaia-fireball-bounds":
+            case "gaia-fireball-bounds": {
                 if (!"grimoireofgaia:flesh_lich".equals(String.valueOf(EntityList.getKey(mob))) || guard == null
                         || mob.getAttackTarget() != player) {
                     throw new CommandException("Expected a tracked Flesh Lich targeting the challenger.");
@@ -738,7 +738,8 @@ final class CoverageFixtureCommand extends CommandBase {
                 LOGGER.info("coverage gaiaFireballBounds mob={} guard={} far={} high={} eyeClear={} blocked={} resistant={} clear={}",
                         mob.getUniqueID(), guard.getUniqueID(), outside, high, eyeClear, blocked, resistant, clear);
                 break;
-            case "gaia-shaman-undead":
+            }
+            case "gaia-shaman-undead": {
                 if (!"grimoireofgaia:shaman".equals(String.valueOf(EntityList.getKey(mob))) || mob.getAttackTarget() != player) {
                     throw new CommandException("Expected a tracked Shaman targeting the challenger.");
                 }
@@ -749,6 +750,7 @@ final class CoverageFixtureCommand extends CommandBase {
                 LOGGER.info("coverage gaiaShamanPoison mob={} undead={} undeadTaunt={} playerTaunt={}",
                         mob.getUniqueID(), zombie.isEntityUndead(), actions.taunt(mob, zombie), actions.taunt(mob, player));
                 break;
+            }
             case "gaia-ant-hidden":
                 if (!"grimoireofgaia:ant_ranger".equals(String.valueOf(EntityList.getKey(mob))) || guard == null) {
                     throw new CommandException("Expected the Ant Ranger fixture.");
