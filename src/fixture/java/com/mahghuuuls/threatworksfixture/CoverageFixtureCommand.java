@@ -523,7 +523,7 @@ final class CoverageFixtureCommand extends CommandBase {
         report(mob, world);
     }
 
-    private static EntityPlayerMP fixturePlayer(WorldServer world, String id, String name) {
+    static EntityPlayerMP fixturePlayer(WorldServer world, String id, String name) {
         FakePlayer player = new FakePlayer(world, new GameProfile(UUID.randomUUID(), name)) {
             @Override
             public void onUpdate() {

@@ -116,6 +116,9 @@ public final class ThreatworksFixture {
         event.registerServerCommand(new WorkloadFixtureCommand());
         event.registerServerCommand(new CoverageFixtureCommand(this));
         event.registerServerCommand(new DimensionCoverageCommand(this));
+        DragonFixtureCommand dragon = new DragonFixtureCommand(this);
+        event.registerServerCommand(dragon);
+        MinecraftForge.EVENT_BUS.register(dragon);
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)

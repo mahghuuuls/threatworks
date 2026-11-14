@@ -7,6 +7,9 @@
   "mixins": [
     "EntityArrowMixin",
     "EntityLivingBaseMixin",
-    "EntityLivingMixin"
+    "EntityLivingMixin",
+    "EntityDragonMixin",
+    "PhaseHoldingPatternMixin",
+    "PhaseStrafePlayerMixin"
   ]
 }

@@ -12,13 +12,19 @@ import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityList;
 import net.minecraft.entity.EntityLiving;
 import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.entity.boss.EntityDragon;
+import net.minecraft.entity.boss.dragon.phase.IPhase;
+import net.minecraft.entity.boss.dragon.phase.PhaseList;
+import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.entity.projectile.EntityArrow;
 import net.minecraft.stats.StatList;
 import net.minecraft.util.DamageSource;
 import net.minecraft.util.ResourceLocation;
+import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import net.minecraft.world.WorldServer;
+import net.minecraft.world.gen.feature.WorldGenEndPodium;
 import net.minecraftforge.event.world.WorldEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.entity.living.LivingDeathEvent;
@@ -44,6 +50,7 @@ public final class EncounterCoordinator implements ThreatActions {
     private final Map<WorldServer, WorldEncounters> worlds = new IdentityHashMap<>();
     private final Map<EntityPlayerMP, Integer> pendingPlayerDeaths = new IdentityHashMap<>();
     private final Map<MobType, MobPolicy> policies = new EnumMap<>(MobType.class);
+    private final DragonTargeting dragonTargeting = new DragonTargeting();
     private ServerTuning tuning;
     private ThreatPoints points;
     private DamageAttribution.SummonSource summons;
@@ -52,7 +59,9 @@ public final class EncounterCoordinator implements ThreatActions {
 
     private EncounterCoordinator() {
         for (MobType type : MobType.values()) {
-            if (type != MobType.FOLIAATH) {
+            if (type == MobType.ENDER_DRAGON) {
+                policies.put(type, dragonTargeting);
+            } else if (type != MobType.FOLIAATH) {
                 policies.put(type, MobPolicy.forType(type));
             }
         }
@@ -68,7 +77,7 @@ public final class EncounterCoordinator implements ThreatActions {
         WorldEncounters state = worlds.get(mob.world);
         return admission.type != null && state != null && activeWrite((EntityLiving) mob) == null
                 && !state.rejectedWrites.contains(mob.getUniqueID())
-                && (admission.controls() || admission.yieldsToNative()
+                && (admission.controls() || admission.usesStrafeChoice() || admission.yieldsToNative()
                 && state.encounters.containsKey(mob.getUniqueID()));
     }
 
@@ -229,14 +238,82 @@ public final class EncounterCoordinator implements ThreatActions {
             return;
         }
         state.recordHit(mobId, () -> creditRecipient(world, mob, type, hit, source), mob.ticksExisted,
-                admission.controls() && hit.mayOpenEncounter(),
+                (admission.controls() || admission.usesStrafeChoice()) && hit.mayOpenEncounter(),
                 before, after, tuning.rulesFor(type), () -> hit.multiplier(() -> points.multiplier(hit.attacker, tuning)),
                 () -> incumbent != null && world.getEntityFromUuid(incumbent.getUniqueID()) == incumbent
                         && observe(world, mob, type, incumbent, null).isEligible()
-                        ? incumbent.getUniqueID() : null);
-        if (state.encounters.containsKey(mobId)) {
+                        ? incumbent.getUniqueID() : null,
+                () -> !admission.usesStrafeChoice() || (dragonWorld((EntityDragon) mob) == state
+                        && admission(mob).usesStrafeChoice()));
+        if (!admission.usesStrafeChoice() && state.encounters.containsKey(mobId)) {
             state.coverage.putIfAbsent(mobId, type);
         }
+    }
+
+    public void finishDragonHit(EntityDragon dragon, DamageSource source, EntityLivingBase incumbent,
+                                float before, float after) {
+        WorldEncounters state = dragonWorld(dragon);
+        if (state == null) {
+            return;
+        }
+        if (!DragonTargeting.isActive(dragon)) {
+            state.discard(dragon.getUniqueID());
+        } else if (before > after && admission(dragon).usesStrafeChoice()) {
+            onHealthWritten(dragon, source, incumbent, before, after);
+        }
+    }
+
+    public EntityLivingBase dragonOpeningTarget(EntityDragon dragon) {
+        DragonStrafe strafe = activeStrafe(dragon);
+        return strafe == null || !strafe.threatworks$isOrdinaryStrafe() ? null : strafe.threatworks$strafeTarget();
+    }
+
+    public EntityPlayer chooseDragonStrafe(EntityDragon dragon, EntityPlayer vanilla) {
+        WorldEncounters state = dragonWorld(dragon);
+        if (state == null || !admission(dragon).usesStrafeChoice()) {
+            return vanilla;
+        }
+        WorldServer world = (WorldServer) dragon.world;
+        int tick = world.getMinecraftServer().getTickCounter();
+        Encounter encounter = state.encounterForAction(dragon.getUniqueID(), tick);
+        if (encounter == null) {
+            return vanilla;
+        }
+        BlockPos podium = world.getTopSolidOrLiquidBlock(WorldGenEndPodium.END_PODIUM_LOCATION);
+        UUID selected = encounter.chooseForNativeAttack(id ->
+                dragonTargeting.observe(world, dragon, world.getEntityFromUuid(id), podium));
+        if (dragonWorld(dragon) != state || !admission(dragon).usesStrafeChoice()
+                || state.encounters.get(dragon.getUniqueID()) != encounter) {
+            return vanilla;
+        }
+        EntityPlayer actual = selected == null ? null : dragonTargeting.resolve(world, dragon,
+                world.getEntityFromUuid(selected));
+        return actual == null ? vanilla : actual;
+    }
+
+    public void confirmDragonStrafe(EntityDragon dragon, EntityLivingBase target) {
+        WorldEncounters state = dragonWorld(dragon);
+        if (state == null || target == null || !admission(dragon).usesStrafeChoice()) {
+            return;
+        }
+        Encounter encounter = state.encounters.get(dragon.getUniqueID());
+        if (encounter != null) {
+            encounter.confirmNativeTarget(target.getUniqueID());
+        }
+    }
+
+    private WorldEncounters dragonWorld(EntityDragon dragon) {
+        if (!(dragon.world instanceof WorldServer)) {
+            return null;
+        }
+        WorldServer world = (WorldServer) dragon.world;
+        return world.getMinecraftServer().isCallingFromMinecraftThread()
+                && world.getEntityFromUuid(dragon.getUniqueID()) == dragon ? worlds.get(world) : null;
+    }
+
+    private static DragonStrafe activeStrafe(EntityDragon dragon) {
+        IPhase phase = dragon.getPhaseManager().getCurrentPhase();
+        return phase.getType() == PhaseList.STRAFE_PLAYER ? (DragonStrafe) phase : null;
     }
 
     private UUID creditRecipient(WorldServer world, EntityLiving victim, MobType type, DamageAttribution hit,
@@ -413,6 +490,10 @@ public final class EncounterCoordinator implements ThreatActions {
         ResourceLocation registryId = EntityList.getKey(victim);
         String typeId = registryId == null ? "unregistered" : registryId.toString();
         EntityLivingBase actualTarget = victim instanceof EntityLiving ? ((EntityLiving) victim).getAttackTarget() : null;
+        if (victim instanceof EntityDragon) {
+            DragonStrafe strafe = activeStrafe((EntityDragon) victim);
+            actualTarget = strafe == null ? null : strafe.threatworks$strafeTarget();
+        }
         UUID target = actualTarget == null ? null : actualTarget.getUniqueID();
         MobAdmission admission = MobAdmission.resolve(tuning, foliaath, victim, registryId);
         WorldEncounters state = worlds.get(victim.world);
@@ -425,20 +506,23 @@ public final class EncounterCoordinator implements ThreatActions {
         EntityLiving mob = (EntityLiving) victim;
         WorldServer world = (WorldServer) mob.world;
         Encounter encounter = state == null || !mob.isEntityAlive() ? null : state.encounters.get(mob.getUniqueID());
-        String phase = assignmentRejected ? "assignment_rejected" : "native_phase";
+        String phase = assignmentRejected ? "assignment_rejected" : admission.usesStrafeChoice()
+                ? "strafe_choice" : "native_phase";
         if (encounter == null) {
-            String status = admission.controls() && !assignmentRejected ? "supported_inactive" : phase;
+            String status = (admission.controls() || admission.usesStrafeChoice()) && !assignmentRejected
+                    ? "supported_inactive" : phase;
             return new Inspection(typeId, status, false, target, null, 0, null, Collections.emptyList(), 0);
         }
 
         boolean controls = admission.controls() && !assignmentRejected && !state.yielded.contains(mobId);
         int tick = world.getMinecraftServer().getTickCounter();
+        Map<UUID, TargetObservation> observations = state.observations.get(mobId);
         List<Participant> participants = new ArrayList<>();
         for (Map.Entry<UUID, Double> score : encounter.copyScores(limit).entrySet()) {
             UUID id = score.getKey();
-            participants.add(new Participant(id, score.getValue(), controls
-                    ? eligibility(world, mob, admission.type, encounter, id, tick, state.observations.get(mobId))
-                    : phase));
+            String participantStatus = controls || admission.usesStrafeChoice()
+                    ? eligibility(world, mob, admission.type, encounter, id, tick, observations) : phase;
+            participants.add(new Participant(id, score.getValue(), participantStatus));
         }
         int remaining = controls || (!assignmentRejected && policies.get(admission.type).keepsEncounterDuringNativePhase())
                 ? encounter.remainingTauntTicks(tick) : 0;
@@ -514,6 +598,12 @@ public final class EncounterCoordinator implements ThreatActions {
             }
             EntityLiving mob = (EntityLiving) entity;
             MobAdmission admission = admission(mob);
+            if (admission.usesStrafeChoice()) {
+                if (encounter.resetDue(serverTick) || encounter.shouldReevaluate(serverTick, mob.getEntityId())) {
+                    targetUpdates.add(() -> observeDragonAvailability(world, state, mob, encounter, serverTick));
+                }
+                return false;
+            }
             if (state.rejectedWrites.contains(id)) {
                 yieldToNative(state, id, encounter, serverTick);
                 return encounter.resetDue(serverTick);
@@ -537,6 +627,30 @@ public final class EncounterCoordinator implements ThreatActions {
         });
         // The vanilla setter notifies Forge listeners that can change encounter membership.
         targetUpdates.forEach(Runnable::run);
+    }
+
+    private void observeDragonAvailability(WorldServer world, WorldEncounters state, EntityLiving dragon,
+                                           Encounter encounter, int tick) {
+        UUID id = dragon.getUniqueID();
+        if (state.encounters.get(id) != encounter) {
+            return;
+        }
+        BlockPos podium = DragonTargeting.loadedPodium(world);
+        Map<UUID, TargetObservation> observations = new HashMap<>();
+        for (UUID candidate : encounter.copyScores().keySet()) {
+            boolean eligible = dragonTargeting.eligiblePlayer(world, dragon, world.getEntityFromUuid(candidate), podium)
+                    != null;
+            observations.put(candidate, eligible ? TargetObservation.IN_REACH : TargetObservation.INELIGIBLE);
+        }
+        if (state.encounters.get(id) != encounter) {
+            return;
+        }
+        encounter.observeParticipantAvailability(tick, candidate -> observations.get(candidate) == TargetObservation.IN_REACH);
+        if (encounter.resetDue(tick)) {
+            state.discard(id);
+        } else {
+            state.observations.put(id, observations);
+        }
     }
 
     private void observeNativeAttack(WorldServer world, WorldEncounters state, EntityLiving mob, MobType type,

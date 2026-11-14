@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Function;
+import java.util.function.Predicate;
 
 public final class Encounter {
     // Vanilla target tasks consider new goals every three mob updates in 1.12.2.
@@ -205,15 +206,42 @@ public final class Encounter {
             }
             taunter = null;
         }
-        double incumbentScore = incumbentEligible ? scores.get(target) : 0.0;
+        UUID selected = bestTarget(incumbentEligible ? target : null, incumbent, scores, observe);
+        setTarget(selected);
+        updateReset(serverTick, selected != null);
+        return selected;
+    }
+
+    /** Propose a target without changing state until the native attack commits. */
+    public UUID chooseForNativeAttack(Function<UUID, TargetObservation> observe) {
+        UUID incumbentId = target;
+        Map<UUID, Double> currentScores = copyScores();
+        TargetObservation incumbent = incumbentId == null ? TargetObservation.INELIGIBLE : observe.apply(incumbentId);
+        return bestTarget(incumbent.isEligible() ? incumbentId : null, incumbent, currentScores, observe);
+    }
+
+    public void confirmNativeTarget(UUID actualTarget) {
+        setTarget(actualTarget);
+        opening = false;
+    }
+
+    public void observeParticipantAvailability(int tick, Predicate<UUID> isEligible) {
+        selectionPending = false;
+        updateReset(tick, scores.keySet().stream().anyMatch(isEligible));
+    }
+
+    private UUID bestTarget(UUID incumbentId, TargetObservation incumbent, Map<UUID, Double> currentScores,
+                            Function<UUID, TargetObservation> observe) {
+        boolean incumbentEligible = incumbentId != null;
+        double incumbentScore = incumbentEligible ? currentScores.getOrDefault(incumbentId, 0.0) : 0.0;
         double ordinaryThreshold = threshold(incumbentScore, rules.ordinaryLead);
-        UUID selected = incumbentEligible ? target : null;
+        UUID selected = incumbentId;
         double bestScore = Double.NEGATIVE_INFINITY;
 
-        for (Map.Entry<UUID, Double> entry : scores.entrySet()) {
+        for (Map.Entry<UUID, Double> entry : currentScores.entrySet()) {
             UUID challenger = entry.getKey();
             double score = entry.getValue();
-            if (challenger.equals(target) || score <= bestScore
+            if (challenger.equals(incumbentId) || score <= bestScore
                     || (incumbentEligible && score <= ordinaryThreshold)) {
                 continue;
             }
@@ -225,13 +253,15 @@ public final class Encounter {
                 bestScore = score;
             }
         }
-        setTarget(selected);
-        if (selected != null) {
+        return selected;
+    }
+
+    private void updateReset(int tick, boolean eligible) {
+        if (eligible) {
             resetStartedAt = null;
         } else if (resetStartedAt == null) {
-            resetStartedAt = serverTick;
+            resetStartedAt = tick;
         }
-        return selected;
     }
 
     public Integer remainingResetTicks(int serverTick) {

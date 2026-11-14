@@ -20,6 +20,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.BiPredicate;
+import java.util.function.BooleanSupplier;
 import java.util.function.DoubleSupplier;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -75,6 +76,12 @@ final class WorldEncounters implements IWorldEventListener {
         yielded.remove(id);
     }
 
+    void discard(UUID id) {
+        encounters.remove(id);
+        forgetControl(id);
+        rejectedWrites.remove(id);
+    }
+
     UUID select(Encounter encounter, int serverTick, WorkSample sample,
                 Function<UUID, Encounter.TargetObservation> observe) {
         if (sample != null) {
@@ -90,6 +97,11 @@ final class WorldEncounters implements IWorldEventListener {
 
     void recordHit(UUID mob, Supplier<UUID> recipient, int mobTick, boolean mayOpen, float before, float after, Rules rules,
                    DoubleSupplier multiplier, Supplier<UUID> openingTarget) {
+        recordHit(mob, recipient, mobTick, mayOpen, before, after, rules, multiplier, openingTarget, () -> true);
+    }
+
+    void recordHit(UUID mob, Supplier<UUID> recipient, int mobTick, boolean mayOpen, float before, float after, Rules rules,
+                   DoubleSupplier multiplier, Supplier<UUID> openingTarget, BooleanSupplier canCommit) {
         double lost = Encounter.healthLost(before, after);
         if (!(lost > 0.0) || !Double.isFinite(lost)) {
             return;
@@ -105,6 +117,11 @@ final class WorldEncounters implements IWorldEventListener {
             return;
         }
         UUID incumbent = previous == null ? openingTarget.get() : null;
+        if (!canCommit.getAsBoolean()) {
+            return;
+        }
+        // An opening eligibility callback may itself open an encounter.
+        previous = encounters.get(mob);
         Encounter updated = Encounter.recordHit(previous, credit, incumbent, mobTick, gain, rules);
         if (updated != null) {
             encounters.put(mob, updated);
@@ -122,9 +139,7 @@ final class WorldEncounters implements IWorldEventListener {
         if (entity instanceof EntityPlayer) {
             playerAvailabilityChanged(entity.getUniqueID());
         } else {
-            encounters.remove(entity.getUniqueID());
-            forgetControl(entity.getUniqueID());
-            rejectedWrites.remove(entity.getUniqueID());
+            discard(entity.getUniqueID());
         }
     }
 

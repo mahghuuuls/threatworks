@@ -31,6 +31,20 @@ class EncounterTest {
     private final UUID secondPlayer = new UUID(0, 3);
 
     @Test
+    void nativeChoiceRequiresStrictLeadAndWaitsForConfirmation() {
+        Encounter encounter = Encounter.recordHit(null, player, incumbent, 100, 12.0, DEFAULT_RULES);
+        assertEquals(incumbent, encounter.chooseForNativeAttack(id -> IN_REACH));
+        Encounter.recordHit(encounter, player, incumbent, 101, 1.0, DEFAULT_RULES);
+        assertEquals(player, encounter.chooseForNativeAttack(id -> IN_REACH));
+        assertEquals(incumbent, encounter.getTarget());
+        assertNull(encounter.chooseForNativeAttack(id -> INELIGIBLE));
+        encounter.confirmNativeTarget(secondPlayer);
+        assertEquals(secondPlayer, encounter.getTarget());
+        assertFalse(encounter.copyScores().containsKey(secondPlayer));
+        assertEquals(player, encounter.chooseForNativeAttack(id -> IN_REACH));
+    }
+
+    @Test
     void positiveHealthLossSeedsAndHoldsTheOpeningTarget() {
         double loss = Encounter.healthLost(20.0F, 7.0F);
         Encounter encounter = Encounter.recordHit(null, player, incumbent, 100, loss, DEFAULT_RULES);

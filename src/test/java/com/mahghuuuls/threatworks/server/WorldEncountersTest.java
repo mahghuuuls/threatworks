@@ -21,6 +21,20 @@ import static org.junit.jupiter.api.Assertions.fail;
 
 class WorldEncountersTest {
     @Test
+    void discardedDuringOpeningObservationCannotBeRecreatedByTheOuterHit() {
+        WorldEncounters state = new WorldEncounters();
+        UUID dragon = new UUID(0, 132);
+        UUID attacker = new UUID(0, 133);
+        boolean[] active = {true};
+        state.recordHit(dragon, () -> attacker, 20, true, 20, 18, DEFAULT_RULES, () -> 1, () -> {
+            active[0] = false;
+            state.discard(dragon);
+            return null;
+        }, () -> active[0]);
+        assertFalse(state.encounters.containsKey(dragon));
+    }
+
+    @Test
     void actionsCannotReviveAnEncounterAtTheNativeResetDeadline() {
         UUID id = UUID.randomUUID();
         UUID attacker = UUID.randomUUID();

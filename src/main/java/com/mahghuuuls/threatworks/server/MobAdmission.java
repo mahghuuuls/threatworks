@@ -17,6 +17,7 @@ import net.minecraft.entity.EntityCreature;
 import net.minecraft.entity.EntityList;
 import net.minecraft.entity.EntityLiving;
 import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.entity.boss.EntityDragon;
 import net.minecraft.entity.monster.EntityBlaze;
 import net.minecraft.entity.monster.EntityCaveSpider;
 import net.minecraft.entity.monster.EntityCreeper;
@@ -41,13 +42,14 @@ import java.util.Map;
 
 final class MobAdmission {
     private enum State {
-        CONTROL, NATIVE_PHASE, BLACKLISTED, DISABLED, UNSUPPORTED_TYPE, UNSUPPORTED_STATE
+        CONTROL, NATIVE_PHASE, STRAFE_CHOICE, BLACKLISTED, DISABLED, UNSUPPORTED_TYPE, UNSUPPORTED_STATE
     }
 
     private static final MobAdmission BLACKLISTED = new MobAdmission(null, State.BLACKLISTED);
     private static final MobAdmission DISABLED = new MobAdmission(null, State.DISABLED);
     private static final MobAdmission UNSUPPORTED_TYPE = new MobAdmission(null, State.UNSUPPORTED_TYPE);
     private static final MobAdmission UNSUPPORTED_STATE = new MobAdmission(null, State.UNSUPPORTED_STATE);
+    private static final MobAdmission STRAFE_CHOICE = new MobAdmission(MobType.ENDER_DRAGON, State.STRAFE_CHOICE);
     private static final Map<ResourceLocation, MobType> TYPES = new HashMap<>();
     private static final Map<MobType, Class<? extends EntityCreature>> VANILLA_CLASSES = new EnumMap<>(MobType.class);
     private static final Map<MobType, MobAdmission> CONTROL = new EnumMap<>(MobType.class);
@@ -92,6 +94,10 @@ final class MobAdmission {
         return state == State.NATIVE_PHASE;
     }
 
+    boolean usesStrafeChoice() {
+        return state == State.STRAFE_CHOICE;
+    }
+
     String status() {
         return state.name().toLowerCase(java.util.Locale.ROOT);
     }
@@ -109,6 +115,15 @@ final class MobAdmission {
             return BLACKLISTED;
         }
         MobType type = TYPES.get(id);
+        if (type == MobType.ENDER_DRAGON) {
+            if (entity == null || entity.getClass() != EntityDragon.class) {
+                return UNSUPPORTED_TYPE;
+            }
+            if (tuning == null || !tuning.isEnabled(type)) {
+                return DISABLED;
+            }
+            return DragonTargeting.isActive((EntityDragon) entity) ? STRAFE_CHOICE : UNSUPPORTED_STATE;
+        }
         if (FishUndeadRisingCompatibility.usesFlyingCharge(type)) {
             if (!(entity instanceof EntityCreature)
                     || !FishUndeadRisingCompatibility.matchesFlyingCharge(type, (EntityCreature) entity)) {
