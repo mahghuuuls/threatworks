@@ -122,7 +122,7 @@ public final class ThreatworksFixture {
         WitherFixtureCommand wither = new WitherFixtureCommand();
         event.registerServerCommand(wither);
         MinecraftForge.EVENT_BUS.register(wither);
-        GuardianFixtureCommand guardian = new GuardianFixtureCommand();
+        GuardianFixtureCommand guardian = new GuardianFixtureCommand(this);
         event.registerServerCommand(guardian);
         MinecraftForge.EVENT_BUS.register(guardian);
     }

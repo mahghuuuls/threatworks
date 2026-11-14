@@ -17,8 +17,10 @@ import net.minecraft.init.MobEffects;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.DamageSource;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.ChunkPos;
 import net.minecraft.world.GameType;
 import net.minecraft.world.WorldServer;
+import net.minecraftforge.common.ForgeChunkManager;
 import net.minecraftforge.event.entity.living.LivingDamageEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
@@ -29,12 +31,17 @@ import java.util.stream.Collectors;
 
 final class GuardianFixtureCommand extends CommandBase {
     private static final Logger LOGGER = LogManager.getLogger("ThreatworksFixture");
+    private final ThreatworksFixture fixture;
     private WorldServer world;
     private EntityGuardian guardian;
     private EntityPlayerMP left;
     private EntityPlayerMP right;
     private BlockPos wall;
     private int lastBeam;
+
+    GuardianFixtureCommand(ThreatworksFixture fixture) {
+        this.fixture = fixture;
+    }
 
     @Override
     public String getName() {
@@ -106,8 +113,18 @@ final class GuardianFixtureCommand extends CommandBase {
         report("state");
     }
 
-    private void setup(WorldServer nextWorld, boolean elder) {
+    private void setup(WorldServer nextWorld, boolean elder) throws CommandException {
         world = nextWorld;
+        ForgeChunkManager.Ticket ticket = ForgeChunkManager.requestTicket(fixture, world, ForgeChunkManager.Type.NORMAL);
+        if (ticket == null) {
+            throw new CommandException("Unable to keep the aquatic lane loaded.");
+        }
+        for (int x = -2; x <= 2; x++) {
+            for (int z = -2; z <= 2; z++) {
+                world.getChunkProvider().provideChunk(x, z);
+                ForgeChunkManager.forceChunk(ticket, new ChunkPos(x, z));
+            }
+        }
         world.getGameRules().setOrCreateGameRule("doMobSpawning", "false");
         for (int x = -14; x <= 14; x++) {
             for (int z = -3; z <= 3; z++) {
@@ -126,6 +143,7 @@ final class GuardianFixtureCommand extends CommandBase {
         guardian = elder ? new EntityElderGuardian(world) : new EntityGuardian(world);
         guardian.setPosition(0.5, 7, 0.5);
         guardian.setNoGravity(true);
+        guardian.enablePersistence();
         world.spawnEntity(guardian);
         // The beam protocol reserves zero as the absent target ID.
         left = player("BeamLeft");
@@ -213,10 +231,12 @@ final class GuardianFixtureCommand extends CommandBase {
 
     private void report(String kind) {
         Inspection state = EncounterCoordinator.INSTANCE.inspect(guardian, 8);
-        LOGGER.info("beam {} beam={} target={} tracked={} status={} leftHp={} rightHp={} leftDist={} rightDist={} fatigue={} score={}",
+        LOGGER.info("beam {} beam={} target={} tracked={} status={} leftHp={} rightHp={} leftDist={} rightDist={} fatigue={} tick={} loaded={} survival={} score={}",
                 kind, beamName(), name(guardian.getAttackTarget()), state.tracked, state.status,
                 left.getHealth(), right.getHealth(), guardian.getDistance(left), guardian.getDistance(right),
-                left.isPotionActive(MobEffects.MINING_FATIGUE), state.participants.stream()
+                left.isPotionActive(MobEffects.MINING_FATIGUE), guardian.ticksExisted,
+                world.getEntityFromUuid(guardian.getUniqueID()) == guardian, left.interactionManager.survivalOrAdventure(),
+                state.participants.stream()
                         .map(it -> it.id + ":" + it.score).collect(Collectors.joining(",")));
     }
 }
