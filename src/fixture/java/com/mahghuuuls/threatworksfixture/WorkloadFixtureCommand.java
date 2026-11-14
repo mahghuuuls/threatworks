@@ -71,7 +71,10 @@ final class WorkloadFixtureCommand extends CommandBase {
                 EntityIronGolem incumbent = guard(world, 0, 0);
                 incumbent.setPositionAndUpdate(x(0) + 1.5, HEIGHT, z(0) + 0.5);
                 challenger.setPositionAndUpdate(x(0) + 11.5, HEIGHT, z(0) + 0.5);
-                grant(mob, challenger, 55);
+                EncounterCoordinator.Inspection scores = EncounterCoordinator.INSTANCE.inspect(mob, 8);
+                double incumbentScore = score(scores, incumbent);
+                double challengerScore = score(scores, challenger);
+                grant(mob, challenger, incumbentScore * 1.25 - challengerScore);
                 if (mob.getAttackTarget() != incumbent) {
                     throw new CommandException("Expected the original guard before movement.");
                 }
@@ -97,14 +100,15 @@ final class WorkloadFixtureCommand extends CommandBase {
                 EntityZombie mob = mob(world, 0);
                 EntityIronGolem challenger = guard(world, 0, 3);
                 EncounterCoordinator.Inspection view = EncounterCoordinator.INSTANCE.inspect(mob, 8);
-                if (mob.getAttackTarget() != guard(world, 0, 0) || !view.participants.stream()
-                        .anyMatch(p -> p.id.equals(challenger.getUniqueID())
-                                && p.score == 125)
+                EntityIronGolem incumbent = guard(world, 0, 0);
+                double challengerScore = score(view, challenger);
+                double incumbentScore = score(view, incumbent);
+                if (mob.getAttackTarget() != incumbent || challengerScore != incumbentScore * 1.25
                         || !WorkloadEligibility.observesEligible(world, mob, challenger, MobType.ZOMBIE)) {
                     throw new CommandException("Expected an eligible challenger still behind the chase threshold.");
                 }
-                LOGGER.info("work_move_ready mob={} challenger={} score=125 eligibility=eligible",
-                        mob.getUniqueID(), challenger.getUniqueID());
+                LOGGER.info("work_move_ready mob={} challenger={} score={} incumbentScore={} eligibility=eligible",
+                        mob.getUniqueID(), challenger.getUniqueID(), challengerScore, incumbentScore);
                 break;
             }
             case "switched": {
@@ -183,6 +187,12 @@ final class WorkloadFixtureCommand extends CommandBase {
             LOGGER.info("work_activation lane={} mob={} player={} lost={} guards={}", lane, mob.getUniqueID(),
                     player.getUniqueID(), before - after, GUARDS);
         }
+    }
+
+    private static double score(EncounterCoordinator.Inspection view, EntityIronGolem guard) throws CommandException {
+        return view.participants.stream().filter(participant -> participant.id.equals(guard.getUniqueID()))
+                .mapToDouble(participant -> participant.score).findFirst()
+                .orElseThrow(() -> new CommandException("The eligible guard has no retained score."));
     }
 
     private static void grant(EntityZombie mob, EntityIronGolem guard, double amount) throws CommandException {
