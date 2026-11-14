@@ -1056,9 +1056,11 @@ final class CoverageFixtureCommand extends CommandBase {
                 restorePlayer(player);
                 if ("witch-opening".equals(operation)) {
                     attack(mob, player, "witch");
+                    // Keep the incumbent's native revenge while the coordinator compares the scored players.
+                    mob.setRevengeTarget(guard);
                 }
                 player.setPosition(mob.posX - 6.0, mob.posY, mob.posZ);
-                guard.setPosition(mob.posX + 6.0, mob.posY, mob.posZ);
+                guard.setPosition(mob.posX + 4.5, mob.posY, mob.posZ);
                 if ("witch-native-redirect".equals(operation)) {
                     mob.setAttackTarget(player);
                 }
