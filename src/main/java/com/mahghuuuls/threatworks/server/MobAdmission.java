@@ -1,5 +1,6 @@
 package com.mahghuuuls.threatworks.server;
 
+import com.mahghuuuls.threatworks.compat.AncientWarfareCompatibility;
 import com.mahghuuuls.threatworks.compat.ChocolateQuestCompatibility;
 import com.mahghuuuls.threatworks.compat.DefiledLandsCompatibility;
 import com.mahghuuuls.threatworks.compat.DungeonMobsCompatibility;
@@ -106,6 +107,20 @@ final class MobAdmission {
             return BLACKLISTED;
         }
         MobType type = TYPES.get(id);
+        if (FishUndeadRisingCompatibility.usesFlyingCharge(type)) {
+            if (!(entity instanceof EntityCreature)
+                    || !FishUndeadRisingCompatibility.matchesFlyingCharge(type, (EntityCreature) entity)) {
+                return UNSUPPORTED_TYPE;
+            }
+            if (tuning == null || !tuning.isEnabled(type)) {
+                return DISABLED;
+            }
+            EntityCreature mob = (EntityCreature) entity;
+            if (!(mob.world instanceof WorldServer) || !FishFlyingMobPolicy.hasNativeContract(type, mob)) {
+                return UNSUPPORTED_STATE;
+            }
+            return FishFlyingMobPolicy.isNativePhase(mob) ? NATIVE.get(type) : CONTROL.get(type);
+        }
         boolean ghast = GhastMobPolicy.matchesType(type);
         if (entity instanceof EntityLiving && (ghast || SlimeMobPolicy.matchesType(type))) {
             EntityLiving mob = (EntityLiving) entity;
@@ -164,6 +179,6 @@ final class MobAdmission {
                 || GaiaCompatibility.matches(type, mob) || DungeonMobsCompatibility.matches(type, mob)
                 || IceAndFireCompatibility.matches(type, mob) || FishUndeadRisingCompatibility.matches(type, mob)
                 || GroundMeleeCompatibility.matches(type, mob) || UnseenDungeonCompatibility.matches(type, mob)
-                || ChocolateQuestCompatibility.matches(type, mob);
+                || ChocolateQuestCompatibility.matches(type, mob) || AncientWarfareCompatibility.matches(type, mob);
     }
 }

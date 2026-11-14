@@ -39,6 +39,7 @@ import net.minecraft.entity.projectile.EntityArrow;
 import net.minecraft.entity.projectile.EntityFireball;
 import net.minecraft.entity.projectile.EntityTippedArrow;
 import net.minecraft.entity.player.EntityPlayerMP;
+import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.init.Blocks;
 import net.minecraft.init.Items;
 import net.minecraft.init.MobEffects;
@@ -58,6 +59,7 @@ import net.minecraft.util.DamageSource;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.World;
 import net.minecraft.world.WorldServer;
@@ -228,6 +230,13 @@ final class CoverageFixtureCommand extends CommandBase {
                 throw new CommandException("Could not use the native configured raider constructor.");
             }
         }
+        if ("ancient-warfare".equals(scene) && id.startsWith("ancientwarfarenpc:faction.") && entity != null) {
+            try {
+                entity = entity.getClass().getConstructor(World.class, String.class).newInstance(world, "brigand");
+            } catch (ReflectiveOperationException failure) {
+                throw new CommandException("Could not construct a native brigand faction fighter.");
+            }
+        }
         if (entity instanceof EntityGhast) {
             seedGhast(world, (EntityGhast) entity, id, height);
             return;
@@ -240,8 +249,27 @@ final class CoverageFixtureCommand extends CommandBase {
             throw new CommandException("Unknown coverage fixture mob " + id);
         }
         EntityCreature mob = (EntityCreature) entity;
+        if ("fish-flying".equals(scene)) {
+            seedFishFlying(world, mob, id, height);
+            return;
+        }
         mob.setPosition(X, height, Z);
         mob.onInitialSpawn(world.getDifficultyForLocation(mob.getPosition()), null);
+        if (id.startsWith("magma_monsters:magma_monster")) {
+            try {
+                mob.getClass().getMethod("setMolten", boolean.class).invoke(mob, false);
+            } catch (ReflectiveOperationException failure) {
+                throw new CommandException("Could not stage the native cooled magma state.");
+            }
+        }
+        if (id.equals("stygian:end_skeleton") && ("stygian-bow".equals(scene) || "stygian-sword".equals(scene))) {
+            try {
+                mob.getClass().getField("weaponType").setInt(mob, "stygian-bow".equals(scene) ? 1 : 0);
+                mob.getClass().getMethod("SwitchWeapon").invoke(mob);
+            } catch (ReflectiveOperationException failure) {
+                throw new CommandException("Could not set the native End Skeleton weapon.");
+            }
+        }
         if ("mocreatures:horsemob".equals(id)) {
             setHorseFixtureForm(mob, 23);
         }
@@ -290,6 +318,26 @@ final class CoverageFixtureCommand extends CommandBase {
     private static boolean meleeGhast(String id) {
         return "specialmobs:babyghast".equals(id) || "specialmobs:fighterghast".equals(id)
                 || "specialmobs:unholyghast".equals(id);
+    }
+
+    private static void seedFishFlying(WorldServer world, EntityCreature mob, String id, int height) throws CommandException {
+        double altitude = height + 10.0;
+        mob.setPosition(X, altitude, Z);
+        mob.onInitialSpawn(world.getDifficultyForLocation(mob.getPosition()), null);
+        configureMob(mob);
+        mob.addTag("tw_l_fish_flying");
+        EntityPlayerMP guard = fixturePlayer(world, id, "FlightIncumbent");
+        EntityPlayerMP player = fixturePlayer(world, id, "FlightChallenger");
+        guard.setNoGravity(true);
+        player.setNoGravity(true);
+        guard.addTag("tw_l_tick_hurt_window");
+        player.addTag("tw_l_tick_hurt_window");
+        player.capabilities.disableDamage = true;
+        place(world, guard, "tw_i_guard", X + 6.0, altitude - 0.6, Z);
+        place(world, player, "tw_i_player", X - 6.0, altitude - 0.6, Z);
+        place(world, mob, "tw_i_mob", X, altitude, Z);
+        LOGGER.info("coverage actors mob={} player={} guard={}", mob.getUniqueID(), player.getUniqueID(), guard.getUniqueID());
+        report(mob, world);
     }
 
     private static void seedSlime(WorldServer world, EntitySlime slime, String id, int height) throws CommandException {
@@ -395,23 +443,37 @@ final class CoverageFixtureCommand extends CommandBase {
         String id = String.valueOf(EntityList.getKey(mob));
         boolean solo = "solo".equals(scene);
         boolean providerRanged = "provider-ranged".equals(scene);
+        boolean stygianPlayers = scene.startsWith("stygian-");
+        boolean ancientWarfare = "ancient-warfare".equals(scene);
         boolean cqrGoblinFaction = isCqrGoblinFaction(mob);
         boolean spectre = "charm:spectre".equals(id);
         boolean mocDarkMelee = id.startsWith("mocreatures:") && !"mocreatures:horsemob".equals(id);
         boolean nativePlayerMelee = id.equals("dungeonmobs:dmghost") || id.startsWith("toroquest:toroquest_zombie");
         boolean twoPlayers = cqrGoblinFaction || "cqrepoured:gremlin".equals(id) || spectre
                 || mob instanceof net.minecraft.entity.monster.EntityWitch || mocDarkMelee || nativePlayerMelee
-                || "deeperdepths:bogged".equals(id) || providerRanged
+                || "deeperdepths:bogged".equals(id) || providerRanged || stygianPlayers || ancientWarfare
                 || id.startsWith("natura:") && mob instanceof EntitySpider;
         if (!solo && twoPlayers) {
             EntityPlayerMP incumbent = fixturePlayer(world, id, "MeleeIncumbent");
             if (cqrGoblinFaction) {
                 setCqrHostileReputation(mob, incumbent);
             }
+            if (ancientWarfare) {
+                setAncientWarfareStanding(mob, incumbent, -70);
+            }
+            if (id.equals("mod_lavacow:ghoul")) {
+                incumbent.setHealth(45.0F);
+            }
             incumbent.addTag("tw_l_tick_hurt_window");
             double spacing = spectre || "grimoireofgaia:ant_ranger".equals(id) || "grimoireofgaia:cecaelia".equals(id)
                     ? 7 : providerRanged || mob instanceof net.minecraft.entity.monster.EntityWitch
                     || "deeperdepths:bogged".equals(id) ? 6 : 2;
+            if (stygianPlayers) {
+                spacing = "stygian-bow".equals(scene) ? 3.5 : 2.5;
+            }
+            if (ancientWarfare) {
+                spacing = id.contains("archer") ? 7.0 : 1.65;
+            }
             if (mob.getTags().contains("tw_l_toro_raid")) {
                 incumbent.capabilities.disableDamage = true;
                 spacing = 23;
@@ -445,6 +507,9 @@ final class CoverageFixtureCommand extends CommandBase {
         }
         if (cqrGoblinFaction) {
             setCqrHostileReputation(mob, player);
+        }
+        if (ancientWarfare) {
+            setAncientWarfareStanding(mob, player, -70);
         }
         if (id.startsWith("grimoireofgaia:")) {
             player.addTag("tw_l_gaia_effect");
@@ -537,6 +602,23 @@ final class CoverageFixtureCommand extends CommandBase {
         place(world, entity, tag, x, Y, z);
     }
 
+    private static void setAncientWarfareStanding(EntityCreature mob, EntityPlayer player, int standing) throws CommandException {
+        try {
+            ClassLoader loader = mob.getClass().getClassLoader();
+            Class<?> tracker = loader.loadClass("net.shadowmage.ancientwarfare.npc.faction.FactionTracker");
+            Object instance = tracker.getField("INSTANCE").get(null);
+            java.lang.reflect.Method login = tracker.getDeclaredMethod("onPlayerLogin", EntityPlayer.class);
+            login.setAccessible(true);
+            login.invoke(instance, player);
+            String faction = (String) mob.getClass().getMethod("getFaction").invoke(mob);
+            tracker.getMethod("setStandingFor", World.class, String.class, String.class, int.class)
+                    .invoke(instance, mob.world, player.getName(), faction, standing);
+        } catch (ReflectiveOperationException failure) {
+            LOGGER.warn("Native faction standing setup failed for {}.", EntityList.getKey(mob), failure);
+            throw new CommandException("Could not register the disposable player's native faction standing.");
+        }
+    }
+
     private static void place(WorldServer world, Entity entity, String tag, double x, double y, double z) throws CommandException {
         entity.addTag(TAG);
         entity.addTag(tag);
@@ -567,6 +649,81 @@ final class CoverageFixtureCommand extends CommandBase {
         switch (operation) {
             case "read":
                 break;
+            case "fish-flying-opening": {
+                if (!(guard instanceof EntityPlayerMP) || mob.getAttackTarget() != guard
+                        || !String.valueOf(EntityList.getKey(mob)).startsWith("mod_lavacow:")) {
+                    throw new CommandException("Expected the native flying mob and its player target.");
+                }
+                restorePlayer(player);
+                guard.setPosition(mob.posX + 4.7, mob.posY - 0.6, mob.posZ);
+                attack(mob, player, "fish-flying");
+                mob.setRevengeTarget(guard);
+                player.setPosition(mob.posX - 5.0, mob.posY - 0.6, mob.posZ);
+                break;
+            }
+            case "fish-flying-state":
+            case "fish-flying-charge-handoff": {
+                try {
+                    boolean charge = (Boolean) mob.getClass().getMethod("isCharging").invoke(mob);
+                    boolean cast = (Boolean) mob.getClass().getMethod("isSpellcasting").invoke(mob);
+                    LOGGER.info("coverage fishFlying mob={} tick={} target={} x={} y={} z={} charge={} cast={}",
+                            mob.getUniqueID(), world.getMinecraftServer().getTickCounter(), identity(mob.getAttackTarget()),
+                            mob.posX, mob.posY, mob.posZ, charge, cast);
+                    if ("fish-flying-charge-handoff".equals(operation) && charge && mob.getAttackTarget() == player) {
+                        fishNativeHandoff(actions, mob, player, guard, "charge");
+                    }
+                } catch (ReflectiveOperationException failure) {
+                    throw new CommandException("Could not read the native flight state.");
+                }
+                break;
+            }
+            case "fish-flying-move-player":
+                if (!mob.getTags().contains("tw_l_fish_flying") || mob.getAttackTarget() != player) {
+                    throw new CommandException("Expected a tracked flying mob targeting the challenger.");
+                }
+                player.setPosition(mob.posX - 6.0, mob.posY - 0.6, mob.posZ);
+                break;
+            case "fish-flying-timer": {
+                if (!mob.getTags().contains("tw_l_fish_flying") || guard == null || mob.getAttackTarget() != player) {
+                    throw new CommandException("Expected a tracked flying mob targeting the challenger.");
+                }
+                try {
+                    Class<?> owner = mob.getClass().getSuperclass();
+                    java.lang.reflect.Field timer = owner.getDeclaredField("spellTicks");
+                    timer.setAccessible(true);
+                    int originalTimer = timer.getInt(mob);
+                    if (originalTimer != 0 || (Boolean) owner.getMethod("isCharging").invoke(mob)
+                            || (Boolean) owner.getMethod("isSpellcasting").invoke(mob)) {
+                        LOGGER.info("coverage fishTimerWaiting mob={}", mob.getUniqueID());
+                        break;
+                    }
+                    timer.setInt(mob, 20);
+                    try {
+                        mob.setAttackTarget(guard);
+                        LOGGER.info("coverage fishTimerHandoff mob={} guard={} target={} timer={} taunt={}", mob.getUniqueID(),
+                                guard.getUniqueID(), identity(mob.getAttackTarget()), timer.getInt(mob), actions.taunt(mob, player));
+                    } finally {
+                        timer.setInt(mob, originalTimer);
+                    }
+                } catch (ReflectiveOperationException failure) {
+                    throw new CommandException("Could not stage the provider spell counter.");
+                }
+                break;
+            }
+            case "fish-ghoul-healthy": {
+                if (!"mod_lavacow:ghoul".equals(String.valueOf(EntityList.getKey(mob))) || mob.getAttackTarget() != player) {
+                    throw new CommandException("Expected a tracked Ghoul targeting the wounded challenger.");
+                }
+                if (!"tracked".equals(EncounterCoordinator.INSTANCE.inspect(mob, 0).status)) {
+                    LOGGER.info("coverage ghoulHealthyWaiting mob={}", mob.getUniqueID());
+                    break;
+                }
+                EntityPlayerMP healthy = fixturePlayer(world, "mod_lavacow:ghoul", "HealthyVisitor");
+                place(world, healthy, "tw_l_fish_healthy", mob.posX + 1.5, mob.posY, mob.posZ);
+                LOGGER.info("coverage ghoulHealthyTarget mob={} participant={} health={} taunt={}", mob.getUniqueID(),
+                        healthy.getUniqueID(), healthy.getHealth(), actions.taunt(mob, healthy));
+                break;
+            }
             case "dread-state":
                 dreadState(mob, "read");
                 break;
@@ -1196,24 +1353,138 @@ final class CoverageFixtureCommand extends CommandBase {
                 restorePlayer(player);
                 break;
             case "ground-player-opening":
+            case "stygian-player-opening":
+            case "ancient-warfare-opening":
             case "ranged-player-opening": {
                 if (!(guard instanceof EntityPlayerMP) || mob.getAttackTarget() != guard) {
                     throw new CommandException("Expected the native player incumbent.");
                 }
                 restorePlayer(player);
+                if ("mod_lavacow:ghoul".equals(String.valueOf(EntityList.getKey(mob)))) {
+                    player.setHealth(45.0F);
+                }
                 attack(mob, player, "hit");
                 mob.setRevengeTarget(guard);
                 String openingId = String.valueOf(EntityList.getKey(mob));
                 double playerSpacing = "grimoireofgaia:ant_ranger".equals(openingId)
                         || "grimoireofgaia:cecaelia".equals(openingId) ? 7.0 : "ranged-player-opening".equals(operation) ? 5.0 : 3.5;
+                if ("stygian-player-opening".equals(operation)) {
+                    playerSpacing = 3.25;
+                    if ("stygian:end_skeleton".equals(openingId)) {
+                        playerSpacing = 6.0;
+                    }
+                } else if ("ancient-warfare-opening".equals(operation)) {
+                    playerSpacing = openingId.contains("archer") ? 6.0 : 1.65;
+                }
                 player.setPosition(mob.posX - playerSpacing, mob.posY, mob.posZ);
                 guard.setPosition(mob.posX + playerSpacing - 0.3, mob.posY, mob.posZ);
+                if ("stygian:end_skeleton".equals(openingId)) {
+                    int gapX = MathHelper.floor(mob.posX - 3.0);
+                    int floorY = MathHelper.floor(mob.posY - 1.0);
+                    for (BlockPos cell : BlockPos.getAllInBox(new BlockPos(gapX - 1, floorY, 0),
+                            new BlockPos(gapX + 1, floorY, 28))) {
+                        world.setBlockToAir(cell);
+                    }
+                    LOGGER.info("coverage stygianBowGap mob={} challenger={} distance={} gapX={} floorAbsent={} eyeClear={}",
+                            mob.getUniqueID(), player.getUniqueID(), mob.getDistance(player), gapX,
+                            world.isAirBlock(new BlockPos(gapX, floorY, MathHelper.floor(mob.posZ))), mob.canEntityBeSeen(player));
+                }
                 if ("grimoireofgaia:ant_ranger".equals(openingId)) {
                     BlockPos feet = new BlockPos(player);
                     LOGGER.info("coverage gaiaAntLane mob={} guard={} player={} y={} guardY={} sight={} playerBlock={} support={}",
                             mob.getUniqueID(), guard.getUniqueID(), player.getUniqueID(), mob.posY, guard.posY,
                             mob.canEntityBeSeen(player), world.getBlockState(feet).getBlock().getRegistryName(),
                             world.getBlockState(feet.down()).getBlock().getRegistryName());
+                }
+                break;
+            }
+            case "ancient-warfare-standings": {
+                try {
+                    java.lang.reflect.Method hostile = mob.getClass().getMethod("isHostileTowards", Entity.class);
+                    LOGGER.info("coverage ancientWarfareStandings mob={} faction={} guardHostile={} playerHostile={} goals={}",
+                            mob.getUniqueID(), mob.getClass().getMethod("getFaction").invoke(mob), hostile.invoke(mob, guard),
+                            hostile.invoke(mob, player), mob.targetTasks.taskEntries.stream()
+                                    .map(entry -> entry.priority + ":" + entry.action.getClass().getName() + ":" + entry.action.getMutexBits())
+                                    .collect(java.util.stream.Collectors.joining(",")));
+                } catch (ReflectiveOperationException failure) {
+                    throw new CommandException("Could not read native faction standing.");
+                }
+                break;
+            }
+            case "ancient-warfare-neutral": {
+                EntityPlayerMP neutral = fixturePlayer(world, java.util.Objects.toString(EntityList.getKey(mob)), "NeutralVisitor");
+                setAncientWarfareStanding(mob, neutral, 100);
+                place(world, neutral, "tw_l_neutral_test", mob.posX + 1.2, mob.posY, mob.posZ);
+                try {
+                    boolean hostile = (Boolean) mob.getClass().getMethod("isHostileTowards", Entity.class).invoke(mob, neutral);
+                    LOGGER.info("coverage ancientWarfareNeutral mob={} player={} hostile={} taunt={}", mob.getUniqueID(),
+                            neutral.getUniqueID(), hostile, actions.taunt(mob, neutral));
+                } catch (ReflectiveOperationException failure) {
+                    throw new CommandException("Could not read native neutral player standing.");
+                }
+                break;
+            }
+            case "ancient-warfare-archer-home": {
+                if (!String.valueOf(EntityList.getKey(mob)).startsWith("ancientwarfarenpc:faction.archer") || guard == null) {
+                    throw new CommandException("Expected a native faction archer with two player targets.");
+                }
+                Vec3d guardPosition = guard.getPositionVector();
+                try {
+                    mob.setHomePosAndDistance(new BlockPos(mob.posX + 24, mob.posY, mob.posZ), 100);
+                    guard.setPosition(mob.posX - 8.0, mob.posY, mob.posZ);
+                    ThreatActions.Result far = actions.taunt(mob, guard);
+                    guard.setPosition(mob.posX + 6.0, mob.posY, mob.posZ);
+                    LOGGER.info("coverage ancientWarfareHome mob={} guard={} outside={} inside={}", mob.getUniqueID(),
+                            guard.getUniqueID(), far, actions.taunt(mob, guard));
+                } finally {
+                    guard.setPosition(guardPosition.x, guardPosition.y, guardPosition.z);
+                    mob.detachHome();
+                }
+                break;
+            }
+            case "stygian-phase-setup": {
+                String id = String.valueOf(EntityList.getKey(mob));
+                if (guard == null || mob.getAttackTarget() != player || !id.startsWith("stygian:")) {
+                    throw new CommandException("Expected a tracked Stygian fighter targeting the challenger.");
+                }
+                if (id.equals("stygian:skipper") || id.equals("stygian:supaika")) {
+                    mob.setHealth(mob.getMaxHealth() * 0.3F);
+                }
+                if (id.equals("stygian:lunar_zorp")) {
+                    try {
+                        mob.getClass().getMethod("setChild", boolean.class).invoke(mob, true);
+                    } catch (ReflectiveOperationException failure) {
+                        throw new CommandException("Could not set the native Lunar Zorp child phase.");
+                    }
+                }
+                break;
+            }
+            case "magma-native-phase": {
+                if (guard == null || mob.getAttackTarget() != player
+                        || !String.valueOf(EntityList.getKey(mob)).startsWith("magma_monsters:")) {
+                    throw new CommandException("Expected the cooled tracked magma mob.");
+                }
+                try {
+                    mob.getClass().getMethod("setMolten", boolean.class).invoke(mob, true);
+                    boolean molten = (Boolean) mob.getClass().getMethod("getMolten").invoke(mob);
+                    mob.setAttackTarget(guard);
+                    LOGGER.info("coverage magmaNativePhase mob={} guard={} target={} molten={} taunt={}", mob.getUniqueID(),
+                            guard.getUniqueID(), identity(mob.getAttackTarget()), molten, actions.taunt(mob, player));
+                } catch (ReflectiveOperationException failure) {
+                    throw new CommandException("Could not stage the native molten magma state.");
+                }
+                break;
+            }
+            case "stygian-native-phase": {
+                String id = String.valueOf(EntityList.getKey(mob));
+                if (guard == null || !id.startsWith("stygian:")) {
+                    throw new CommandException("Expected a Stygian fighter and live guard.");
+                }
+                String status = EncounterCoordinator.INSTANCE.inspect(mob, 0).status;
+                if ("native_phase".equals(status)) {
+                    mob.setAttackTarget(guard);
+                    LOGGER.info("coverage stygianHandoff id={} mob={} guard={} target={} taunt={}", id,
+                            mob.getUniqueID(), guard.getUniqueID(), identity(mob.getAttackTarget()), actions.taunt(mob, player));
                 }
                 break;
             }
@@ -2533,6 +2804,11 @@ final class CoverageFixtureCommand extends CommandBase {
                 mob.ticksExisted, mob.posY, mob.isAIDisabled(), mob.isRiding(), mob.isBeingRidden(), mob.tasks.taskEntries.stream()
                         .map(entry -> entry.priority + ":" + entry.action.getClass().getName() + ":" + entry.action.getMutexBits())
                         .collect(java.util.stream.Collectors.joining(",")));
+        if (mob.getTags().contains("tw_l_fish_flying")) {
+            LOGGER.info("coverage fishTargetGoals mob={} entries={}", mob.getUniqueID(), mob.targetTasks.taskEntries.stream()
+                    .map(entry -> entry.priority + ":" + entry.action.getClass().getName() + ":" + entry.action.getMutexBits())
+                    .collect(java.util.stream.Collectors.joining(",")));
+        }
         if (world.getMinecraftServer().getFolderName().startsWith("TW-Campaign-L")) {
             LOGGER.info("coverage activeGoals mob={} goals={}", mob.getUniqueID(), mob.tasks.taskEntries.stream()
                     .filter(entry -> entry.using).map(entry -> entry.action.getClass().getName())

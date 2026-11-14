@@ -1,5 +1,6 @@
 package com.mahghuuuls.threatworks.server;
 
+import com.mahghuuuls.threatworks.compat.AncientWarfareCompatibility;
 import com.mahghuuuls.threatworks.compat.ChocolateQuestCompatibility;
 import com.mahghuuuls.threatworks.config.ServerTuning.MobType;
 import com.mahghuuuls.threatworks.compat.DefiledLandsCompatibility;
@@ -26,6 +27,8 @@ import net.minecraft.entity.ai.EntityAITasks.EntityAITaskEntry;
 import net.minecraft.entity.ai.EntityAIAvoidEntity;
 import net.minecraft.entity.ai.EntityAICreeperSwell;
 import net.minecraft.entity.ai.EntityAIFleeSun;
+import net.minecraft.entity.ai.EntityAISwimming;
+import net.minecraft.entity.ai.EntityAIRestrictOpenDoor;
 import net.minecraft.entity.ai.EntityAILeapAtTarget;
 import net.minecraft.entity.ai.EntityAIWatchClosest;
 import net.minecraft.entity.ai.EntityAIWanderAvoidWater;
@@ -72,7 +75,10 @@ final class MobTargets {
         if (!hasSupportedState(mob, type)) {
             return false;
         }
-        boolean bow = usesBow(mob);
+        if (AncientWarfareCompatibility.isSupportedType(type)) {
+            return matchesAncientWarfare(mob, type);
+        }
+        boolean bow = usesBow(mob) || GroundMeleeCompatibility.usesStygianBow(type, mob);
         boolean gaiaRangedContract = GaiaCompatibility.hasRangedContract(type);
         boolean cqrGroundMelee = ChocolateQuestCompatibility.isGroundMelee(type);
         boolean rejectEliteGoals = GroundMeleeCompatibility.requiresNonEliteCombat(type)
@@ -80,6 +86,7 @@ final class MobTargets {
                 || type == MobType.GAIA_BONE_KNIGHT || type == MobType.GAIA_VAMPIRE
                 || gaiaRangedContract || type == MobType.GAIA_CECAELIA || type == MobType.GAIA_ORC
                 || type == MobType.DUNGEON_GHOST || type == MobType.DUNGEON_REVENANT
+                || type == MobType.FISH_GHOUL
                 || FishUndeadRisingCompatibility.usesWildAnimalMelee(type);
         Class<?> attack = EntityAIAttackMelee.class;
         Class<?> declaringMob = null;
@@ -103,7 +110,7 @@ final class MobTargets {
         } else if (mob instanceof EntityWitch) {
             attack = EntityAIAttackRanged.class;
             priority = 2;
-        } else if (type == MobType.ILLAGERS_ARCHER) {
+        } else if (type == MobType.ILLAGERS_ARCHER || type == MobType.STYGIAN_END_SKELETON) {
             attack = EntityAIAttackRangedBow.class;
         } else if (mob instanceof EntityEndermite) {
             priority = 2;
@@ -122,6 +129,9 @@ final class MobTargets {
         boolean foundSwell = false;
         boolean foundNaturaLeap = false;
         int fishGoals = 0;
+        int stygianGoals = 0;
+        boolean veilingGoal = false;
+        boolean magmaFireball = false;
         for (EntityAITaskEntry entry : mob.tasks.taskEntries) {
             Class<?> goal = entry.action.getClass();
             boolean vanillaSkeletonMelee = attack == EntityAIAttackMelee.class
@@ -140,6 +150,10 @@ final class MobTargets {
                 matchesAttack = ChocolateQuestCompatibility.isAttackGoal(goal);
             } else if (GroundMeleeCompatibility.usesMocDarkMelee(type)) {
                 matchesAttack = GroundMeleeCompatibility.isMocDarkMeleeGoal(type, goal);
+            } else if (GroundMeleeCompatibility.isMagmaMonster(type)) {
+                matchesAttack = GroundMeleeCompatibility.isMagmaAttack(type, goal);
+            } else if (type == MobType.FISH_GHOUL) {
+                matchesAttack = FishUndeadRisingCompatibility.isGhoulMelee(goal);
             } else if (gaiaRangedContract) {
                 matchesAttack = GaiaCompatibility.isRangedVariantMelee(type, mob, goal);
             }
@@ -151,7 +165,8 @@ final class MobTargets {
             } else if (matchesAttack) {
                 int mutex = entry.action.getMutexBits();
                 boolean exactMutex = specialBlaze || cqrGroundMelee || mob instanceof EntityWitch
-                        || gaiaRangedContract || type == MobType.ILLAGERS_ARCHER;
+                        || gaiaRangedContract || type == MobType.ILLAGERS_ARCHER || type == MobType.FISH_GHOUL
+                        || GroundMeleeCompatibility.isStygianVariant(type) || GroundMeleeCompatibility.isMagmaMonster(type);
                 if (matched || entry.priority != priority || (exactMutex ? mutex != 3 : (mutex & 3) != 3)) {
                     return false;
                 }
@@ -166,17 +181,34 @@ final class MobTargets {
                     return false;
                 }
                 foundNaturaLeap = true;
+            } else if (GroundMeleeCompatibility.isWickedVeilingGoal(type, entry)) {
+                if (veilingGoal) {
+                    return false;
+                }
+                veilingGoal = true;
+            } else if (GroundMeleeCompatibility.isMagmaFireball(type, entry)) {
+                if (magmaFireball) {
+                    return false;
+                }
+                magmaFireball = true;
             } else {
                 int fishGoal = FishUndeadRisingCompatibility.nativeGoal(type, entry);
+                int stygianGoal = GroundMeleeCompatibility.stygianNativeGoal(type, entry);
                 if (fishGoal != 0) {
                     if ((fishGoals & fishGoal) != 0) {
                         return false;
                     }
                     fishGoals |= fishGoal;
+                } else if (stygianGoal != 0) {
+                    if ((stygianGoals & stygianGoal) != 0) {
+                        return false;
+                    }
+                    stygianGoals |= stygianGoal;
                 } else if (SpecialAiCompatibility.hasUnknownCombatGoal(entry)
                         || mob instanceof EntityWitch && SpecialAiCompatibility.hasUnknownWitchRider(entry)
                         || GroundMeleeCompatibility.hasUnknownMocGoal(type, entry)
                         || GroundMeleeCompatibility.hasUnknownToroRaiderGoal(type, entry)
+                        || GroundMeleeCompatibility.hasUnknownVeilingGoal(type, entry)
                         || GaiaCompatibility.hasUnexpectedRangedGoal(type, mob, entry)
                         || DungeonMobsCompatibility.hasUnknownRevenantGoal(type, entry)
                         || rejectEliteGoals && SpecialAiCompatibility.isEliteGoal(entry)
@@ -201,7 +233,11 @@ final class MobTargets {
         }
         return (matched || GaiaCompatibility.isAntRangerHidden(type, mob))
                 && (!creeper || foundSwell) && (!GroundMeleeCompatibility.isNaturaSpider(type) || foundNaturaLeap)
-                && FishUndeadRisingCompatibility.hasNativeGoals(type, fishGoals);
+                && FishUndeadRisingCompatibility.hasNativeGoals(type, fishGoals)
+                && GroundMeleeCompatibility.hasStygianGoals(type, stygianGoals)
+                && (!GroundMeleeCompatibility.isWickedVeiling(type) || veilingGoal)
+                && (type != MobType.FISH_GHOUL || mob.targetTasks.taskEntries.stream().filter(FishUndeadRisingCompatibility::isGhoulPickup).count() == 1)
+                && (!GroundMeleeCompatibility.isMagmaMonster(type) || magmaFireball);
     }
 
     private static boolean nativeCompetingGoal(EntityCreature mob, EntityAITaskEntry entry) {
@@ -215,6 +251,29 @@ final class MobTargets {
                 || mob instanceof EntityCreeper && isCreeperAvoidance(entry);
     }
 
+    private static boolean matchesAncientWarfare(EntityCreature mob, MobType type) {
+        if (mob.targetTasks.taskEntries.size() != 2 || mob.targetTasks.taskEntries.stream()
+                .filter(AncientWarfareCompatibility::isSelector).map(entry -> entry.priority).distinct().count() != 2) {
+            return false;
+        }
+        boolean attack = false;
+        for (EntityAITaskEntry entry : mob.tasks.taskEntries) {
+            if (AncientWarfareCompatibility.isAttackGoal(type, entry)) {
+                if (attack) {
+                    return false;
+                }
+                attack = true;
+            } else if (SpecialAiCompatibility.hasUnknownCombatGoal(entry) || SpecialAiCompatibility.isEliteGoal(entry)
+                    || !AncientWarfareCompatibility.isNativeTask(entry) && !SpecialAiCompatibility.isCombatReaction(entry)
+                    && !(entry.priority == 0 && (entry.action.getClass() == EntityAISwimming.class
+                    || entry.action.getClass() == EntityAIRestrictOpenDoor.class))
+                    && (entry.priority <= 3 || !entry.action.isInterruptible())) {
+                return false;
+            }
+        }
+        return attack;
+    }
+
     private static boolean isCreeperAvoidance(EntityAITaskEntry entry) {
         return entry.priority == 3 && entry.action.getClass() == EntityAIAvoidEntity.class
                 && entry.action.getMutexBits() == 1;
@@ -224,7 +283,7 @@ final class MobTargets {
         boolean providerGoalCheck = SpecialMobsCompatibility.requiresLiveGoalContract(type)
                 || mob instanceof EntityWitch
                 || providerMeleePriority(type) >= 0 || UnseenDungeonCompatibility.isSupportedType(type)
-                || ChocolateQuestCompatibility.isGroundMelee(type);
+                || ChocolateQuestCompatibility.isGroundMelee(type) || AncientWarfareCompatibility.isSupportedType(type);
         return (providerGoalCheck ? matchesBehavior(mob, type) : hasSupportedState(mob, type))
                 && !inNativePhase(mob, type);
     }
@@ -236,6 +295,7 @@ final class MobTargets {
         return !mob.isAIDisabled() && !mob.tasks.isControlFlagDisabled(1) && !mob.tasks.isControlFlagDisabled(2)
                 && (unseen ? UnseenDungeonCompatibility.hasNavigator(mob) && UnseenDungeonCompatibility.hasHostileRole(type, mob)
                 : ChocolateQuestCompatibility.isGroundMelee(type) ? ChocolateQuestCompatibility.hasGroundContract(type, mob)
+                : AncientWarfareCompatibility.isSupportedType(type) ? AncientWarfareCompatibility.hasNavigator(mob)
                 : mob instanceof EntityShulker || mob.getNavigator().getClass() == navigator)
                 && (!(mob instanceof EntityZombieVillager) || !((EntityZombieVillager) mob).isConverting())
                 && (GaiaCompatibility.meleePriority(type) < 0 || GaiaCompatibility.isHostile(mob))
@@ -249,6 +309,7 @@ final class MobTargets {
                 || mob instanceof EntityCreeper || type == MobType.GAIA_DULLAHAN || type == MobType.DEFILED_SCUTTLER)
                 || !mob.isRiding() && !mob.isBeingRidden())
                 && (type != MobType.SPECIAL_SKELETON || usesBow(mob))
+                && (type != MobType.STYGIAN_END_SKELETON || GroundMeleeCompatibility.usesStygianBow(type, mob))
                 && (!(type == MobType.DEEPER_DEPTHS_BOGGED || type == MobType.ILLAGERS_ARCHER)
                 || mob.getHeldItemMainhand().getItem() == Items.BOW);
     }
@@ -276,6 +337,15 @@ final class MobTargets {
     }
 
     static boolean inNativePhase(EntityCreature mob, MobType type) {
+        boolean ancientWarfare = AncientWarfareCompatibility.isSupportedType(type);
+        if (type == MobType.FISH_GHOUL && mob.targetTasks.taskEntries.stream()
+                .anyMatch(entry -> entry.using && FishUndeadRisingCompatibility.isGhoulPickup(entry))) {
+            return true;
+        }
+        if (ancientWarfare && (mob.isRiding() || mob.isBeingRidden() || mob.isInWater() || mob.isInLava()
+                || AncientWarfareCompatibility.nativeControl(mob))) {
+            return true;
+        }
         if (mob instanceof EntityWitch && WitchCombat.nativePhase((EntityWitch) mob)) {
             return true;
         }
@@ -309,6 +379,11 @@ final class MobTargets {
                     || GroundMeleeCompatibility.isMocScorpionLeap(type, entry)
                     || GroundMeleeCompatibility.isNaturaSpiderLeap(type, entry)
                     || GroundMeleeCompatibility.isToroRaiderGoal(type, entry)
+                    || GroundMeleeCompatibility.stygianNativeGoal(type, entry) != 0
+                    || GroundMeleeCompatibility.isWickedVeilingGoal(type, entry)
+                    || GroundMeleeCompatibility.isWickedVeilingUtility(type, entry)
+                    || GroundMeleeCompatibility.isMagmaFireball(type, entry)
+                    || ancientWarfare && AncientWarfareCompatibility.isNativeTask(entry)
                     || DungeonMobsCompatibility.isRevenantGoal(type, entry)
                     || entry.priority == GroundMeleeCompatibility.meleePriority(type)
                     && GroundMeleeCompatibility.isMocWander(type, entry)
@@ -336,17 +411,23 @@ final class MobTargets {
             return true;
         }
         RangedAttack attack = GaiaCompatibility.currentRangedAttack(type, mob);
-        return isGaiaProjectile(attack) && target != null && world.getEntityFromUuid(target.getUniqueID()) == target
+        return isGaiaProjectile(attack)
+                && target != null && world.getEntityFromUuid(target.getUniqueID()) == target
                 && resolve(world, mob, target, type) != null
                 && observe(world, mob, target, null, type) == TargetObservation.INELIGIBLE;
     }
 
     static boolean releasesNativeWrite(WorldServer world, EntityCreature mob, EntityLivingBase target, MobType type) {
         boolean cqr = ChocolateQuestCompatibility.isGroundMelee(type);
+        boolean stygianClose = GroundMeleeCompatibility.usesStygianMeleeLane(type);
+        boolean ancientWarfare = AncientWarfareCompatibility.isSupportedType(type);
         RangedAttack attack = GaiaCompatibility.currentRangedAttack(type, mob);
-        return (cqr || isGaiaProjectile(attack)) && target != null
+        return (cqr || stygianClose || ancientWarfare || isGaiaProjectile(attack)) && target != null
                 && world.getEntityFromUuid(target.getUniqueID()) == target && resolve(world, mob, target, type) != null
-                && (cqr ? !ChocolateQuestCompatibility.inNativeReach(mob, target) : !withinGaiaProjectileLane(mob, target, type, attack));
+                && (cqr && !ChocolateQuestCompatibility.inNativeReach(mob, target)
+                || stygianClose && mob.getDistanceSq(target) > 25.0
+                || ancientWarfare && !AncientWarfareCompatibility.withinNativeReach(type, mob, target)
+                || isGaiaProjectile(attack) && !withinGaiaProjectileLane(mob, target, type, attack));
     }
 
     private static boolean isGaiaProjectile(RangedAttack attack) {
@@ -402,8 +483,11 @@ final class MobTargets {
 
     static boolean providerAccepts(MobType type, EntityCreature mob, EntityLivingBase target) {
         boolean playersOnly = mob instanceof EntityWitch || type == MobType.DUNGEON_GHOST
-                || GroundMeleeCompatibility.isToroZombieRaider(type);
+                || GroundMeleeCompatibility.isToroZombieRaider(type) || GroundMeleeCompatibility.isStygianVariant(type)
+                || GroundMeleeCompatibility.isWickedVeiling(type) || GroundMeleeCompatibility.isMagmaMonster(type);
         return (!playersOnly || target instanceof EntityPlayer)
+                && (type != MobType.FISH_GHOUL || FishUndeadRisingCompatibility.ghoulAccepts(mob, target))
+                && (!AncientWarfareCompatibility.isSupportedType(type) || AncientWarfareCompatibility.hostileToPlayer(mob, target))
                 && IceAndFireCompatibility.acceptsTarget(type, target)
                 && (!UnseenDungeonCompatibility.isSupportedType(type) || UnseenDungeonCompatibility.acceptsTarget(type, target))
                 && (!ChocolateQuestCompatibility.isGroundMelee(type) || ChocolateQuestCompatibility.acceptsTarget(mob, target));
@@ -417,10 +501,24 @@ final class MobTargets {
         Vec3d position = mob.getPositionVector();
         LoadedPathTerrain terrain = new LoadedPathTerrain(world);
         RangedAttack gaiaAttack = GaiaCompatibility.currentRangedAttack(type, mob);
-        boolean bow = usesBow(mob) || type == MobType.ILLAGERS_ARCHER || gaiaAttack == RangedAttack.ARROW;
+        boolean bow = usesBow(mob) || type == MobType.ILLAGERS_ARCHER || gaiaAttack == RangedAttack.ARROW
+                || GroundMeleeCompatibility.usesStygianBow(type, mob);
         boolean needsSight = !(mob instanceof EntityZombie && target instanceof EntityVillager)
                 && !DefiledLandsCompatibility.canAcquireWithoutSight(type, target);
         boolean sightLost = needsSight && !sees(terrain, mob, target, position);
+        if (AncientWarfareCompatibility.isSupportedType(type)) {
+            if (!AncientWarfareCompatibility.withinNativeReach(type, mob, target)) {
+                return TargetObservation.INELIGIBLE;
+            }
+            if (sightLost) {
+                return TargetObservation.obscured(!AncientWarfareCompatibility.isArcher(type));
+            }
+            if (!AncientWarfareCompatibility.canTarget(mob, target)) {
+                return TargetObservation.INELIGIBLE;
+            }
+            return !AncientWarfareCompatibility.isArcher(type) || canAttackFrom(terrain, mob, target, position, true, type)
+                    ? TargetObservation.IN_REACH : TargetObservation.INELIGIBLE;
+        }
         if (mob instanceof EntityWitch) {
             return WitchCombat.observe(terrain, (EntityWitch) mob, target, sightLost);
         }
@@ -430,6 +528,9 @@ final class MobTargets {
         }
         if (gaiaAttack == RangedAttack.FIREBALL || gaiaAttack == RangedAttack.MAGIC) {
             return observeGaiaProjectile(terrain, mob, target, sightLost, type, gaiaAttack);
+        }
+        if (GroundMeleeCompatibility.usesStygianMeleeLane(type) && mob.getDistanceSq(target) > 25.0) {
+            return TargetObservation.INELIGIBLE;
         }
         if (ChocolateQuestCompatibility.isGroundMelee(type)) {
             if (!ChocolateQuestCompatibility.inNativeReach(mob, target)) {
@@ -665,6 +766,7 @@ final class MobTargets {
         }
         float reach = mob.width * 2.0F;
         float reachSquared = mob instanceof EntitySpider || GroundMeleeCompatibility.usesClimbingNavigator(type)
+                || GroundMeleeCompatibility.isMagmaMonster(type)
                 ? 4.0F : reach * reach;
         return from.squareDistanceTo(target.posX, target.getEntityBoundingBox().minY, target.posZ)
                 <= reachSquared + target.width;

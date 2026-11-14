@@ -5,6 +5,8 @@ import net.minecraft.entity.EntityCreature;
 import net.minecraft.entity.ai.EntityAIFleeSun;
 import net.minecraft.entity.ai.EntityAILeapAtTarget;
 import net.minecraft.entity.ai.EntityAITasks.EntityAITaskEntry;
+import net.minecraft.entity.passive.EntityTameable;
+import net.minecraft.init.Items;
 import net.minecraftforge.fml.common.Loader;
 import net.minecraftforge.fml.common.ModContainer;
 import net.minecraftforge.fml.common.versioning.ComparableVersion;
@@ -14,6 +16,7 @@ import org.apache.logging.log4j.Logger;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
+import java.lang.reflect.Field;
 import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -23,12 +26,18 @@ import java.util.Set;
 public final class GroundMeleeCompatibility {
     private static final Map<MobType, Binding> BINDINGS = new EnumMap<>(MobType.class);
     private static final Logger LOGGER = LogManager.getLogger("threatworks");
+    private static final String STYGIAN = "fluke.stygian.entity.Entity";
+    private static final String VEILINGS = "com.sirsquidly.veilings.common.entity.";
     private static final String MOC_HOSTILE = "drzhark.mocreatures.entity.hostile.MoCEntity";
     private static final String MOC_WANDER = "drzhark.mocreatures.entity.ai.EntityAIWanderMoC2";
     private static final String TORO_ZOMBIE_LEAP = "net.torocraft.toroquest.entities.ai.EntityAIZombieLeap";
     private static final String TORO_RAID = "net.torocraft.toroquest.entities.ai.EntityAIRaid";
     private static MethodHandle horseIsFlyer;
     private static MethodHandle horseIsTamed;
+    private static MethodHandle skipperSwell;
+    private static MethodHandle supaikaSlam;
+    private static MethodHandle magmaMolten;
+    private static MethodHandle gruntMolten;
 
     public static void initialize() {
         Set<String> unsupported = new HashSet<>();
@@ -37,6 +46,18 @@ public final class GroundMeleeCompatibility {
         bind(unsupported, MobType.STYGIAN_GLUTTERMITE, "stygian", "2.1.0", "fluke.stygian.entity.EntityGluttermite", 2);
         bind(unsupported, MobType.STYGIAN_ENDERMITE, "stygian", "2.1.0", "fluke.stygian.entity.EntityStygianEndermite", 2);
         bind(unsupported, MobType.STYGIAN_WATCHLING, "stygian", "2.1.0", "fluke.stygian.entity.EntityWatchling", 2);
+        bind(unsupported, MobType.STYGIAN_SUPAIKA, "stygian", "2.1.0", STYGIAN + "Supaika", 2);
+        bind(unsupported, MobType.STYGIAN_LUNAR_ZORP, "stygian", "2.1.0", STYGIAN + "LunarZorp", 4);
+        bind(unsupported, MobType.STYGIAN_SKIPPER, "stygian", "2.1.0", STYGIAN + "Skipper", 4);
+        bind(unsupported, MobType.STYGIAN_END_SKELETON, "stygian", "2.1.0", STYGIAN + "EndSkeleton", 4);
+        skipperSwell = bindState(MobType.STYGIAN_SKIPPER, "getSwellState", int.class);
+        supaikaSlam = bindSupaikaSlam();
+        bind(unsupported, MobType.MAGMA_MONSTER, "magma_monsters", "0.3.0", "magma_monsters.entities.EntityMagmaMonster", 2);
+        bind(unsupported, MobType.MAGMA_MONSTER_GRUNT, "magma_monsters", "0.3.0", "magma_monsters.entities.EntityMagmaMonsterGrunt", 2);
+        magmaMolten = bindState(MobType.MAGMA_MONSTER, "getMolten", boolean.class);
+        gruntMolten = bindState(MobType.MAGMA_MONSTER_GRUNT, "getMolten", boolean.class);
+        bind(unsupported, MobType.VEILINGS_WICKED_CUSTODIAN, "veilings", "1.2.1", VEILINGS + "wicked.EntityWickedVeilingCustodian", 1);
+        bind(unsupported, MobType.VEILINGS_WICKED_DEFT, "veilings", "1.2.1", VEILINGS + "wicked.EntityWickedVeilingDeft", 1);
         bind(unsupported, MobType.EERIE_CURSED_ARMOR, "eerieentities", "1.0.7", "com.jarhax.eerieentities.entities.EntityCursedArmor", 2);
         bind(unsupported, MobType.EERIE_NETHER_KNIGHT, "eerieentities", "1.0.7", "com.jarhax.eerieentities.entities.EntityNetherKnight", 2);
         bind(unsupported, MobType.ILLAGERS_FURANTUR, "illagers_plus", "1.1", "com.litewolf101.objects.entities.EntityFurantur", 4);
@@ -120,6 +141,157 @@ public final class GroundMeleeCompatibility {
         }
     }
 
+    private static MethodHandle bindSupaikaSlam() {
+        MobType type = MobType.STYGIAN_SUPAIKA;
+        Binding binding = BINDINGS.get(type);
+        if (binding == null) {
+            return null;
+        }
+        try {
+            Class<?> owner = Class.forName(binding.className, false, Loader.instance().getModClassLoader());
+            // Stygian strips the public timer getter from dedicated servers.
+            Field timer = owner.getDeclaredField("slamtimer");
+            timer.setAccessible(true);
+            return MethodHandles.lookup().unreflectGetter(timer).asType(MethodType.methodType(int.class, EntityCreature.class));
+        } catch (ReflectiveOperationException | LinkageError | RuntimeException failure) {
+            BINDINGS.remove(type);
+            LOGGER.warn("Supaika targeting unavailable because the native slam timer could not be bound.", failure);
+            return null;
+        }
+    }
+
+    private static MethodHandle bindState(MobType type, String name, Class<?> result) {
+        Binding binding = BINDINGS.get(type);
+        if (binding == null) {
+            return null;
+        }
+        try {
+            Class<?> owner = Class.forName(binding.className, false, Loader.instance().getModClassLoader());
+            return MethodHandles.publicLookup().findVirtual(owner, name, MethodType.methodType(result))
+                    .asType(MethodType.methodType(result, EntityCreature.class));
+        } catch (ReflectiveOperationException | LinkageError | RuntimeException failure) {
+            BINDINGS.remove(type);
+            LOGGER.warn("{} targeting unavailable because {} could not be bound.", type.id, name, failure);
+            return null;
+        }
+    }
+
+    public static boolean usesStygianBow(MobType type, EntityCreature mob) {
+        return type == MobType.STYGIAN_END_SKELETON && mob.getHeldItemMainhand().getItem() == Items.BOW;
+    }
+
+    public static boolean isStygianVariant(MobType type) {
+        return type == MobType.STYGIAN_SUPAIKA || type == MobType.STYGIAN_LUNAR_ZORP
+                || type == MobType.STYGIAN_SKIPPER || type == MobType.STYGIAN_END_SKELETON;
+    }
+
+    public static int stygianNativeGoal(MobType type, EntityAITaskEntry entry) {
+        Class<?> goal = entry.action.getClass();
+        int mutex = entry.action.getMutexBits();
+        int priority = entry.priority;
+        if (type == MobType.STYGIAN_LUNAR_ZORP && priority == 2 && mutex == 5 && goal.getName().equals(STYGIAN + "LunarZorp$AILeapAttack")
+                || type == MobType.STYGIAN_SKIPPER && priority == 3 && mutex == 5 && goal == EntityAILeapAtTarget.class) {
+            return 1;
+        }
+        return type == MobType.STYGIAN_SKIPPER && priority == 2 && mutex == 1
+                && goal.getName().equals(STYGIAN + "Skipper$EntityAISkipperSwell") ? 2 : 0;
+    }
+
+    public static boolean hasStygianGoals(MobType type, int goals) {
+        return goals == (type == MobType.STYGIAN_SKIPPER ? 3 : type == MobType.STYGIAN_LUNAR_ZORP ? 1 : 0);
+    }
+
+    public static boolean usesStygianMeleeLane(MobType type) {
+        return type == MobType.STYGIAN_SUPAIKA;
+    }
+
+    private static boolean stygianNativePhase(MobType type, EntityCreature mob) {
+        if (type == MobType.STYGIAN_LUNAR_ZORP) {
+            return mob.isChild();
+        }
+        try {
+            if (type == MobType.STYGIAN_SUPAIKA) {
+                return mob.getHealth() < mob.getMaxHealth() * 0.4F
+                        || supaikaSlam == null || (int) supaikaSlam.invokeExact(mob) >= 130;
+            }
+            if (type == MobType.STYGIAN_SKIPPER) {
+                return mob.isOnLadder() || mob.getHealth() < mob.getMaxHealth() * 0.4F
+                        || skipperSwell == null || (int) skipperSwell.invokeExact(mob) > 0;
+            }
+            return false;
+        } catch (Throwable failure) {
+            return true;
+        }
+    }
+
+    public static boolean isWickedVeiling(MobType type) {
+        return type == MobType.VEILINGS_WICKED_CUSTODIAN || type == MobType.VEILINGS_WICKED_DEFT;
+    }
+
+    public static boolean isMagmaMonster(MobType type) {
+        return type == MobType.MAGMA_MONSTER || type == MobType.MAGMA_MONSTER_GRUNT;
+    }
+
+    public static boolean isMagmaAttack(MobType type, Class<?> goal) {
+        Binding binding = BINDINGS.get(type);
+        return binding != null && goal.getName().equals(binding.className + "$AIMonsterAttack");
+    }
+
+    public static boolean isMagmaFireball(MobType type, EntityAITaskEntry entry) {
+        Binding binding = BINDINGS.get(type);
+        return isMagmaMonster(type) && binding != null && entry.priority == 1 && entry.action.getMutexBits() == 3
+                && entry.action.getClass().getName().equals(binding.className + "$AIFireballAttack");
+    }
+
+    private static boolean isMolten(MobType type, EntityCreature mob) {
+        MethodHandle state = type == MobType.MAGMA_MONSTER ? magmaMolten : gruntMolten;
+        try {
+            return state == null || (boolean) state.invokeExact(mob);
+        } catch (Throwable failure) {
+            return true;
+        }
+    }
+
+    public static boolean isWickedVeilingGoal(MobType type, EntityAITaskEntry entry) {
+        return entry.priority == 1 && (type == MobType.VEILINGS_WICKED_CUSTODIAN && entry.action.getMutexBits() == 0
+                && entry.action.getClass().getName().equals(VEILINGS + "ai.EntityAIVeilingHealNearby")
+                || type == MobType.VEILINGS_WICKED_DEFT && entry.action.getMutexBits() == 5
+                && entry.action.getClass() == EntityAILeapAtTarget.class);
+    }
+
+    public static boolean isWickedVeilingUtility(MobType type, EntityAITaskEntry entry) {
+        if (!isWickedVeiling(type)) {
+            return false;
+        }
+        String name = entry.action.getClass().getName();
+        int mutex = entry.action.getMutexBits();
+        return entry.priority == 3 && (mutex == 0 && name.equals(VEILINGS + "ai.EntityAIVeilingDislikeSunlight")
+                || mutex == 3 && (name.equals(VEILINGS + "ai.EntityAIWickedVeilingHarass")
+                || name.equals(VEILINGS + "ai.EntityAIWickedVeilingGetItem")))
+                || entry.priority == 7 && mutex == 0 && (name.equals(VEILINGS + "ai.EntityAIVeilingUseItem")
+                || name.equals(VEILINGS + "ai.EntityAIVeilingSnowballFight"));
+    }
+
+    public static boolean hasUnknownVeilingGoal(MobType type, EntityAITaskEntry entry) {
+        if (!isWickedVeiling(type) || isWickedVeilingUtility(type, entry)) {
+            return false;
+        }
+        String name = entry.action.getClass().getName();
+        return name.equals(VEILINGS + "ai.EntityAIVeilingDislikeSunlight")
+                || name.equals(VEILINGS + "ai.EntityAIWickedVeilingHarass")
+                || name.equals(VEILINGS + "ai.EntityAIWickedVeilingGetItem")
+                || name.equals(VEILINGS + "ai.EntityAIVeilingUseItem")
+                || name.equals(VEILINGS + "ai.EntityAIVeilingSnowballFight");
+    }
+
+    private static boolean veilingNativePhase(EntityCreature mob) {
+        if (!(mob instanceof EntityTameable)) {
+            return true;
+        }
+        EntityTameable veiling = (EntityTameable) mob;
+        return veiling.isTamed() || veiling.getOwnerId() != null || veiling.isSitting() || veiling.isChild();
+    }
+
     public static int meleePriority(MobType type) {
         Binding binding = BINDINGS.get(type);
         return binding == null ? -1 : binding.priority;
@@ -135,7 +307,8 @@ public final class GroundMeleeCompatibility {
                 || type == MobType.GAIA_MITE || isLightAvoiding(type)
                 || type == MobType.CHARM_SPECTRE || type == MobType.MOC_HORSE_MOB || usesMocDarkMelee(type)
                 || isToroZombieRaider(type) || isNaturaSpider(type)
-                || type == MobType.NATURA_NITRO_CREEPER || type == MobType.DEEPER_DEPTHS_BOGGED;
+                || type == MobType.NATURA_NITRO_CREEPER || type == MobType.DEEPER_DEPTHS_BOGGED || isStygianVariant(type)
+                || isWickedVeiling(type) || isMagmaMonster(type);
     }
 
     public static boolean isNaturaSpider(MobType type) {
@@ -225,6 +398,9 @@ public final class GroundMeleeCompatibility {
                 || usesMocDarkMelee(type) && mob.getBrightness() >= 0.5F
                 || (usesClimbingNavigator(type) || isNaturaSpider(type)) && mob.isOnLadder()
                 || type == MobType.MOC_HORSE_MOB && horseUsesNativeControl(mob)
+                || isStygianVariant(type) && (mob.isWet() || stygianNativePhase(type, mob))
+                || isWickedVeiling(type) && veilingNativePhase(mob)
+                || isMagmaMonster(type) && isMolten(type, mob)
                 || type == MobType.STYGIAN_WATCHLING && mob.isChild()
                 || (type == MobType.STYGIAN_GLUTTERMITE || type == MobType.STYGIAN_ENDERMITE
                     || type == MobType.STYGIAN_WATCHLING) && mob.isWet());

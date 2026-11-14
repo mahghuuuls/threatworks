@@ -123,6 +123,14 @@ public final class ThreatworksFixture {
         EntityLivingBase victim = event.getEntityLiving();
         Entity source = event.getSource().getTrueSource();
         Entity immediate = event.getSource().getImmediateSource();
+        if (source instanceof EntityCreature && source.getTags().contains("tw_l_fish_flying")
+                && event.getSource().damageType.equals("mob") && event.getAmount() > 0.0F) {
+            EntityCreature flyer = (EntityCreature) source;
+            LOGGER.info("coverage fishFlyingHit mob={} target={} tick={} x={} y={} z={} active={}",
+                    flyer.getUniqueID(), victim.getUniqueID(), flyer.world.getTotalWorldTime(), flyer.posX, flyer.posY, flyer.posZ,
+                    flyer.tasks.taskEntries.stream().filter(entry -> entry.using).map(entry -> entry.action.getClass().getSimpleName())
+                            .collect(java.util.stream.Collectors.joining(",")));
+        }
         if (gaiaImpact != null && gaiaImpact.getEntityWorld() == victim.world && gaiaVictim == victim
                 && gaiaImpactTick == victim.world.getTotalWorldTime() && source == null && event.getAmount() > 0
                 && event.getSource() == DamageSource.MAGIC) {
@@ -162,6 +170,10 @@ public final class ThreatworksFixture {
                 LOGGER.info("coverage blazeImpact mob={} target={} shot={} tick={} projectile={}", source.getUniqueID(),
                         victim.getUniqueID(), immediate.getUniqueID(), victim.world.getTotalWorldTime(),
                         EntityList.getKey(immediate));
+            }
+            if (immediate instanceof EntityArrow && recordsNativeBow(source)) {
+                LOGGER.info("coverage nativeArrowImpact mob={} target={} shot={} tick={}", source.getUniqueID(),
+                        victim.getUniqueID(), immediate.getUniqueID(), victim.world.getTotalWorldTime());
             }
             String id = String.valueOf(EntityList.getKey(source));
             String meleeBlaze = CoverageFixtureCommand.meleeBlazeName(id);
@@ -383,6 +395,16 @@ public final class ThreatworksFixture {
                         witchEffects(potion));
             }
         }
+        if (spawned instanceof EntityArrow) {
+            Entity shooter = ((EntityArrow) spawned).shootingEntity;
+            if (shooter instanceof EntityLiving && shooter.getTags().contains("tw_i_mob") && recordsNativeBow(shooter)) {
+                EntityLivingBase target = ((EntityLiving) shooter).getAttackTarget();
+                spawned.addTag(CoverageFixtureCommand.TAG);
+                LOGGER.info("coverage nativeArrowLaunch mob={} target={} shot={} tick={} distance={}", shooter.getUniqueID(),
+                        ArrowFixtureCommand.identity(target), spawned.getUniqueID(), spawned.world.getTotalWorldTime(),
+                        target == null ? -1 : shooter.getDistance(target));
+            }
+        }
         if (spawned instanceof EntityFireball) {
             EntityLivingBase shooter = ((EntityFireball) spawned).shootingEntity;
             if (shooter instanceof EntityLiving && shooter.getTags().contains("tw_i_mob") && logsCoverageCombat(shooter)) {
@@ -397,6 +419,11 @@ public final class ThreatworksFixture {
                         target == null ? -1 : shooter.getDistance(target), EntityList.getKey(spawned));
             }
         }
+    }
+
+    private static boolean recordsNativeBow(Entity mob) {
+        String id = String.valueOf(EntityList.getKey(mob));
+        return id.equals("stygian:end_skeleton") || id.startsWith("ancientwarfarenpc:faction.archer");
     }
 
     private static void reportWildfireOffspring(EntityLiving child) {

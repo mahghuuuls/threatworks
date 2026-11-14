@@ -1,6 +1,7 @@
 package com.mahghuuuls.threatworks.server;
 
 import com.mahghuuuls.threatworks.compat.FoliaathCompatibility;
+import com.mahghuuuls.threatworks.compat.FishUndeadRisingCompatibility;
 import com.mahghuuuls.threatworks.config.ServerTuning.MobType;
 import com.mahghuuuls.threatworks.threat.Encounter.TargetObservation;
 import net.minecraft.entity.Entity;
@@ -35,6 +36,9 @@ interface MobPolicy {
         }
         if (SlimeMobPolicy.matchesType(type)) {
             return new SlimeMobPolicy(type);
+        }
+        if (FishUndeadRisingCompatibility.usesFlyingCharge(type)) {
+            return new FishFlyingMobPolicy(type);
         }
         return builtIn(type);
     }
