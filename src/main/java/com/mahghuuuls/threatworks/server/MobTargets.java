@@ -195,7 +195,7 @@ final class MobTargets {
     }
 
     static boolean inNativePhase(EntityCreature mob, MobType type) {
-        if (FishUndeadRisingCompatibility.nativePhase(type, mob)) {
+        if (FishUndeadRisingCompatibility.nativePhase(type, mob) || GaiaCompatibility.isAquaticPhase(type, mob)) {
             return true;
         }
         if (IceAndFireCompatibility.usesAnimatedMelee(type) && IceAndFireCompatibility.animatedMeleeUnavailable(type, mob)) {

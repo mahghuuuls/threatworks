@@ -630,6 +630,35 @@ final class CoverageFixtureCommand extends CommandBase {
                 LOGGER.info("coverage gaiaVertical mob={} player={} playerY={} mobY={} velocityY={}",
                         mob.getUniqueID(), player.getUniqueID(), player.posY, mob.posY, player.motionY);
                 break;
+            case "gaia-swim-handoff":
+                String gaiaId = String.valueOf(EntityList.getKey(mob));
+                if (!(gaiaId.equals("grimoireofgaia:naga") || gaiaId.equals("grimoireofgaia:sharko"))
+                        || guard == null || mob.getAttackTarget() != player || mob.isInWater()) {
+                    throw new CommandException("Expected a tracked dry Gaia swimmer targeting the player.");
+                }
+                for (BlockPos pos : BlockPos.getAllInBox(new BlockPos(17, 64, 16), new BlockPos(19, 65, 18))) {
+                    world.setBlockState(pos, Blocks.WATER.getDefaultState(), 2);
+                }
+                mob.setPosition(18.5, 64, 17.5);
+                mob.handleWaterMovement();
+                if (!mob.isInWater()) {
+                    throw new CommandException("Expected the Gaia swimmer to be in water.");
+                }
+                LOGGER.info("coverage gaiaSwimHandoff mob={} former={} requested={} water=true taunt={}",
+                        mob.getUniqueID(), player.getUniqueID(), guard.getUniqueID(), actions.taunt(mob, player));
+                mob.setAttackTarget(guard);
+                if (mob.getAttackTarget() != guard) {
+                    throw new CommandException("The Gaia swimmer did not accept the native target.");
+                }
+                break;
+            case "gaia-swim-exit":
+                for (BlockPos pos : BlockPos.getAllInBox(new BlockPos(17, 64, 16), new BlockPos(19, 65, 18))) {
+                    world.setBlockState(pos, Blocks.AIR.getDefaultState(), 2);
+                }
+                mob.setPosition(X, 64, Z);
+                mob.handleWaterMovement();
+                LOGGER.info("coverage gaiaSwimExit mob={} water={}", mob.getUniqueID(), mob.isInWater());
+                break;
             case "gaia-spriggan-visibility":
                 if (!"grimoireofgaia:spriggan".equals(String.valueOf(EntityList.getKey(mob)))) {
                     throw new CommandException("Expected Gaia's Spriggan.");

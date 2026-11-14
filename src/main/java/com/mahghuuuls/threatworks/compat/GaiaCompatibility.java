@@ -56,6 +56,11 @@ public final class GaiaCompatibility {
                 && entry.action.getMutexBits() == 1;
     }
 
+    public static boolean isAquaticPhase(MobType type, EntityCreature mob) {
+        return (type == MobType.GAIA_NAGA || type == MobType.GAIA_SHARKO)
+                && (mob.isWet() || mob.isInLava());
+    }
+
     public static boolean matches(MobType type, EntityCreature mob) {
         String suffix = entitySuffix(type);
         return suffix != null && Installed.NEUTRAL != null
@@ -112,6 +117,18 @@ public final class GaiaCompatibility {
                 return "Sphinx";
             case GAIA_SPRIGGAN:
                 return "Spriggan";
+            case GAIA_DEATHWORD:
+                return "Deathword";
+            case GAIA_DHAMPIR:
+                return "Dhampir";
+            case GAIA_MINOTAUR:
+                return "Minotaur";
+            case GAIA_NAGA:
+                return "Naga";
+            case GAIA_ONI:
+                return "Oni";
+            case GAIA_SHARKO:
+                return "Sharko";
             default:
                 return null;
         }
