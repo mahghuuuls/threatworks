@@ -717,14 +717,16 @@ final class CoverageFixtureCommand extends CommandBase {
                 ThreatActions.Result outside = actions.taunt(mob, guard);
                 guard.setPosition(X + 7, arenaHeight + 3, Z);
                 ThreatActions.Result high = actions.taunt(mob, guard);
-                guard.setPosition(X + 7, arenaHeight, Z);
-                BlockPos ceiling = new BlockPos(X + 3, arenaHeight + 2, Z);
-                // A narrow launch-room obstruction above both sight endpoints.
-                world.setBlockState(ceiling, Blocks.OBSIDIAN.getDefaultState(), 2);
+                mob.setPosition(X, arenaHeight, Z + 0.34);
+                guard.setPosition(X + 7, arenaHeight, Z + 0.34);
+                BlockPos obstruction = new BlockPos(X + 3, arenaHeight + 1, Z + 1);
+                // The block clips the side of the projectile corridor while leaving the eye ray clear.
+                world.setBlockState(obstruction, Blocks.OBSIDIAN.getDefaultState(), 2);
                 boolean eyeClear = world.rayTraceBlocks(mob.getPositionEyes(1), guard.getPositionEyes(1),
                         false, true, false) == null;
                 ThreatActions.Result blocked = actions.taunt(mob, guard);
-                world.setBlockToAir(ceiling);
+                world.setBlockToAir(obstruction);
+                mob.setPosition(X, arenaHeight, Z);
                 player.setPosition(X - 11, arenaHeight, Z);
                 guard.setPosition(X + 11, arenaHeight, Z);
                 mob.setAttackTarget(guard);
