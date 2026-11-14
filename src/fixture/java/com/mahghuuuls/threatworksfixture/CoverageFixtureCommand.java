@@ -287,7 +287,7 @@ final class CoverageFixtureCommand extends CommandBase {
                 || (entity instanceof EntityFireball && ((EntityFireball) entity).shootingEntity == parent))
                 .forEach(Entity::setDead);
         player.capabilities.disableDamage = true;
-        player.addTag("tw_l_cinder_player");
+        player.addTag("tw_l_tick_hurt_window");
         child.addTag("tw_i_mob");
         LOGGER.info("coverage cinderAdopt mob={} parent={} guard={} tick={}", child.getUniqueID(),
                 parent.getUniqueID(), guard.getUniqueID(), world.getTotalWorldTime());
@@ -320,7 +320,7 @@ final class CoverageFixtureCommand extends CommandBase {
             public void onUpdate() {
                 // FakePlayer skips the countdown a connected player gets in EntityPlayerMP.
                 if ((WILDFIRE.equals(id) || DREAD_GHOUL.equals(id) || meleeBlazeName(id) != null
-                        || getTags().contains("tw_l_cinder_player"))
+                        || getTags().contains("tw_l_tick_hurt_window"))
                         && hurtResistantTime > 0) {
                     --hurtResistantTime;
                 }
@@ -632,6 +632,31 @@ final class CoverageFixtureCommand extends CommandBase {
             case "gaia-vertical-impact":
                 LOGGER.info("coverage gaiaVertical mob={} player={} playerY={} mobY={} velocityY={}",
                         mob.getUniqueID(), player.getUniqueID(), player.posY, mob.posY, player.motionY);
+                break;
+            case "quark-melee-effects": {
+                String quarkId = String.valueOf(EntityList.getKey(mob));
+                if (!("quark:wraith".equals(quarkId) || "quark:dweller".equals(quarkId))) {
+                    throw new CommandException("Expected the pinned Quark Wraith or Dweller.");
+                }
+                PotionEffect slow = player.getActivePotionEffect(MobEffects.SLOWNESS);
+                LOGGER.info("coverage quarkMeleeEffects mob={} player={} invisible={} slowAmplifier={}",
+                        mob.getUniqueID(), player.getUniqueID(), mob.isPotionActive(MobEffects.INVISIBILITY),
+                        slow == null ? -1 : slow.getAmplifier());
+                break;
+            }
+            case "quark-forgotten-melee":
+                if (!"quark:forgotten".equals(String.valueOf(EntityList.getKey(mob))) || mob.getAttackTarget() != player) {
+                    throw new CommandException("Expected the tracked Quark Forgotten targeting the player.");
+                }
+                // Match the connected player's normal damage-immunity countdown in this server-only fixture.
+                player.addTag("tw_l_tick_hurt_window");
+                player.addPotionEffect(new PotionEffect(MobEffects.BLINDNESS, 100));
+                player.setPosition(mob.posX - 1.3, mob.posY, mob.posZ);
+                for (EntityArrow arrow : world.getEntities(EntityArrow.class, arrow -> arrow.shootingEntity == mob)) {
+                    arrow.setDead();
+                }
+                LOGGER.info("coverage quarkForgottenMelee mob={} player={} blindnessStimulus={}",
+                        mob.getUniqueID(), player.getUniqueID(), player.isPotionActive(MobEffects.BLINDNESS));
                 break;
             case "gaia-swim-handoff":
                 String gaiaId = String.valueOf(EntityList.getKey(mob));
@@ -1520,9 +1545,10 @@ final class CoverageFixtureCommand extends CommandBase {
                 guard.setPosition(mob.posX + 6, mob.posY, mob.posZ);
                 break;
             case "variant-skeleton-wolf":
+                String avoidingId = String.valueOf(EntityList.getKey(mob));
                 if (!mob.getServer().getFolderName().startsWith("TW-Campaign-L") || guard == null
-                        || !"specialmobs:fireskeleton".equals(String.valueOf(EntityList.getKey(mob)))) {
-                    throw new CommandException("Expected a Campaign L Fire Skeleton.");
+                        || !("specialmobs:fireskeleton".equals(avoidingId) || "quark:ashen".equals(avoidingId))) {
+                    throw new CommandException("Expected a Campaign L Fire Skeleton or Quark Ashen.");
                 }
                 net.minecraft.entity.passive.EntityWolf wolf = new net.minecraft.entity.passive.EntityWolf(world);
                 wolf.setNoAI(true);
@@ -1535,6 +1561,15 @@ final class CoverageFixtureCommand extends CommandBase {
                     wolfProbe.setDead();
                 }
                 LOGGER.info("coverage wolfRemoved present={}", wolfProbe != null);
+                break;
+            case "quark-ashen-return":
+                if (!"quark:ashen".equals(String.valueOf(EntityList.getKey(mob)))) {
+                    throw new CommandException("Expected a Campaign L Quark Ashen.");
+                }
+                // Restore a local bow lane after the unmodified wolf goal has completed its retreat.
+                player.setPosition(mob.posX - 3, mob.posY, mob.posZ);
+                player.setInvisible(false);
+                player.addTag("tw_l_tick_hurt_window");
                 break;
             case "threatening-tnt":
                 if (!mob.getServer().getFolderName().startsWith("TW-Campaign-L")) {

@@ -68,9 +68,12 @@ final class MobTargets {
         }
         boolean bow = usesBow(mob);
         boolean cqrGroundMelee = ChocolateQuestCompatibility.isGroundMelee(type);
+        boolean rejectEliteGoals = GroundMeleeCompatibility.requiresNonEliteCombat(type)
+                || type == MobType.GAIA_BONE_KNIGHT || type == MobType.GAIA_VAMPIRE;
         Class<?> attack = EntityAIAttackMelee.class;
         Class<?> declaringMob = null;
         String nestedAttack = null;
+        int groundMeleePriority = GroundMeleeCompatibility.meleePriority(type);
         int priority = cqrGroundMelee ? 18 : 4;
         if (mob instanceof EntityZombie) {
             attack = EntityAIZombieAttack.class;
@@ -88,11 +91,14 @@ final class MobTargets {
             nestedAttack = "AIAttack";
         } else if (mob instanceof EntityEndermite) {
             priority = 2;
-        } else {
-            int providerMelee = providerMeleePriority(type);
+        } else if (groundMeleePriority < 0) {
+            int providerMelee = customMeleePriority(type);
             if (providerMelee >= 0) {
                 priority = providerMelee;
             }
+        }
+        if (groundMeleePriority >= 0) {
+            priority = groundMeleePriority;
         }
         boolean matched = false;
         boolean creeper = mob instanceof EntityCreeper;
@@ -135,8 +141,10 @@ final class MobTargets {
                     }
                     fishGoals |= fishGoal;
                 } else if (SpecialAiCompatibility.hasUnknownCombatGoal(entry)
+                        || rejectEliteGoals && SpecialAiCompatibility.isEliteGoal(entry)
                         || !SpecialAiCompatibility.isCombatReaction(entry)
                         && !GaiaCompatibility.isAntWander(type, entry)
+                        && !GaiaCompatibility.isFleeSun(type, entry)
                         && !IceAndFireCompatibility.isHorseGoal(type, entry)
                         && !(cqrGroundMelee && ChocolateQuestCompatibility.isNativeGoal(entry))
                         && (entry.priority > priority ? !entry.action.isInterruptible()
@@ -192,9 +200,10 @@ final class MobTargets {
 
     private static int providerMeleePriority(MobType type) {
         int standardGround = GroundMeleeCompatibility.meleePriority(type);
-        if (standardGround >= 0) {
-            return standardGround;
-        }
+        return standardGround >= 0 ? standardGround : customMeleePriority(type);
+    }
+
+    private static int customMeleePriority(MobType type) {
         int dungeon = DungeonMobsCompatibility.meleePriority(type);
         if (dungeon >= 0) {
             return dungeon;
@@ -236,11 +245,12 @@ final class MobTargets {
                     || FishUndeadRisingCompatibility.nativeGoal(type, entry) != 0
                     || SpecialAiCompatibility.isBlockGriefing(entry)
                     || GaiaCompatibility.isAntWander(type, entry)
+                    || GaiaCompatibility.isFleeSun(type, entry)
                     || IceAndFireCompatibility.isHorseGoal(type, entry)
                     || ChocolateQuestCompatibility.isGroundMelee(type) && ChocolateQuestCompatibility.usesNativeGoal(entry)
                     || mob instanceof EntityCreeper
                     && (entry.action.getClass() == EntityAICreeperSwell.class || isCreeperAvoidance(entry))
-                    || SpecialMobsCompatibility.isVariantSkeleton(type)
+                    || (SpecialMobsCompatibility.isVariantSkeleton(type) || GroundMeleeCompatibility.isQuarkSkeleton(type))
                     && (entry.action.getClass() == EntityAIFleeSun.class || entry.action.getClass() == EntityAIAvoidEntity.class))) {
                 return true;
             }

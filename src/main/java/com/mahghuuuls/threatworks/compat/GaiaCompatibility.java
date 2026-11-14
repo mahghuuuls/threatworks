@@ -3,6 +3,7 @@ package com.mahghuuuls.threatworks.compat;
 import com.mahghuuuls.threatworks.config.ServerTuning.MobType;
 import net.minecraft.entity.EntityCreature;
 import net.minecraft.entity.ai.EntityAITasks.EntityAITaskEntry;
+import net.minecraft.entity.ai.EntityAIFleeSun;
 import net.minecraft.entity.ai.EntityAIWander;
 import net.minecraftforge.fml.common.Loader;
 import net.minecraftforge.fml.common.ModContainer;
@@ -46,6 +47,9 @@ public final class GaiaCompatibility {
             case GAIA_ANT:
             case GAIA_SPORELING:
                 return 2;
+            case GAIA_BONE_KNIGHT:
+            case GAIA_VAMPIRE:
+                return 3;
             default:
                 return entitySuffix(type) == null ? -1 : 1;
         }
@@ -53,6 +57,12 @@ public final class GaiaCompatibility {
 
     public static boolean isAntWander(MobType type, EntityAITaskEntry entry) {
         return type == MobType.GAIA_ANT && entry.priority == 2 && entry.action.getClass() == EntityAIWander.class
+                && entry.action.getMutexBits() == 1;
+    }
+
+    public static boolean isFleeSun(MobType type, EntityAITaskEntry entry) {
+        return (type == MobType.GAIA_BONE_KNIGHT || type == MobType.GAIA_VAMPIRE)
+                && entry.priority == 2 && entry.action.getClass() == EntityAIFleeSun.class
                 && entry.action.getMutexBits() == 1;
     }
 
@@ -129,6 +139,10 @@ public final class GaiaCompatibility {
                 return "Oni";
             case GAIA_SHARKO:
                 return "Sharko";
+            case GAIA_BONE_KNIGHT:
+                return "BoneKnight";
+            case GAIA_VAMPIRE:
+                return "Vampire";
             default:
                 return null;
         }

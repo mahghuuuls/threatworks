@@ -173,6 +173,15 @@ public final class ServerTuning {
         CQR_SPECTRE("cqrepoured:spectre"),
         CQR_WALKER("cqrepoured:walker"),
         CQR_ZOMBIE("cqrepoured:zombie"),
+        QUARK_ASHEN("quark:ashen"),
+        QUARK_DWELLER("quark:dweller"),
+        QUARK_FORGOTTEN("quark:forgotten"),
+        QUARK_PIRATE("quark:pirate"),
+        QUARK_WRAITH("quark:wraith"),
+        GAIA_BONE_KNIGHT("grimoireofgaia:bone_knight"),
+        GAIA_MITE("grimoireofgaia:mite"),
+        GAIA_VAMPIRE("grimoireofgaia:vampire"),
+        ILLAGERS_FURANTUR("illagers_plus:furantur"),
         FOLIAATH("mowziesmobs:foliaath");
 
         public final String id;

@@ -9,6 +9,7 @@ import com.mahghuuuls.threatworks.compat.DefiledLandsCompatibility;
 import com.mahghuuuls.threatworks.compat.DungeonMobsCompatibility;
 import com.mahghuuuls.threatworks.compat.FoliaathCompatibility;
 import com.mahghuuuls.threatworks.compat.GaiaCompatibility;
+import com.mahghuuuls.threatworks.compat.GroundMeleeCompatibility;
 import com.mahghuuuls.threatworks.compat.IceAndFireCompatibility;
 import com.mahghuuuls.threatworks.compat.SpecialAiCompatibility;
 import com.mahghuuuls.threatworks.compat.SpecialMobsCompatibility;
@@ -85,6 +86,7 @@ public final class ThreatworksMod {
         DefiledLandsCompatibility.reportVersion(LOGGER);
         DungeonMobsCompatibility.reportVersion(LOGGER);
         GaiaCompatibility.reportVersion(LOGGER);
+        GroundMeleeCompatibility.initialize();
         IceAndFireCompatibility.reportVersion(LOGGER);
         ChocolateQuestCompatibility.initialize();
     }

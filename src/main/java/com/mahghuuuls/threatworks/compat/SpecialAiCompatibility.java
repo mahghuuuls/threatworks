@@ -30,6 +30,10 @@ public final class SpecialAiCompatibility {
         return name.equals(GRIEF_BLOCKS) && !isBlockGriefing(entry);
     }
 
+    public static boolean isEliteGoal(EntityAITaskEntry entry) {
+        return entry.action.getClass().getName().startsWith("fathertoast.specialai.ai.elite.");
+    }
+
     public static boolean isCombatReaction(EntityAITaskEntry entry) {
         if (entry.priority != -1) {
             return false;
