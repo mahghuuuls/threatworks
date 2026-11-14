@@ -163,6 +163,8 @@ public final class ServerTuning {
         STYGIAN_WATCHLING("stygian:watchling"),
         EERIE_CURSED_ARMOR("eerieentities:cursed_armor"),
         EERIE_NETHER_KNIGHT("eerieentities:nether_knight"),
+        UNSEEN_ANCIENT_KNIGHT("da:ancient_knight"),
+        UNSEEN_KNIGHT_RAPIER("da:ancient_knight_rapier"),
         FOLIAATH("mowziesmobs:foliaath");
 
         public final String id;

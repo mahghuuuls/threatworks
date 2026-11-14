@@ -8,6 +8,7 @@ import com.mahghuuuls.threatworks.compat.GaiaCompatibility;
 import com.mahghuuuls.threatworks.compat.GroundMeleeCompatibility;
 import com.mahghuuuls.threatworks.compat.IceAndFireCompatibility;
 import com.mahghuuuls.threatworks.compat.SpecialMobsCompatibility;
+import com.mahghuuuls.threatworks.compat.UnseenDungeonCompatibility;
 import com.mahghuuuls.threatworks.config.ServerTuning;
 import com.mahghuuuls.threatworks.config.ServerTuning.MobType;
 import net.minecraft.entity.EntityCreature;
@@ -139,6 +140,6 @@ final class MobAdmission {
                 : SpecialMobsCompatibility.matches(type, mob) || DefiledLandsCompatibility.matches(type, mob)
                 || GaiaCompatibility.matches(type, mob) || DungeonMobsCompatibility.matches(type, mob)
                 || IceAndFireCompatibility.matches(type, mob) || FishUndeadRisingCompatibility.matches(type, mob)
-                || GroundMeleeCompatibility.matches(type, mob);
+                || GroundMeleeCompatibility.matches(type, mob) || UnseenDungeonCompatibility.matches(type, mob);
     }
 }

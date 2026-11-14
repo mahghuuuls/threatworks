@@ -64,6 +64,8 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.lang.reflect.Field;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.util.Comparator;
 import java.util.Map;
 import java.util.UUID;
@@ -807,6 +809,86 @@ final class CoverageFixtureCommand extends CommandBase {
                 guard.setPosition(mob.posX + 1.4, mob.posY, mob.posZ);
                 mob.setRevengeTarget(guard);
                 break;
+            case "unseen-fighting-handoff":
+                String knightId = String.valueOf(EntityList.getKey(mob));
+                if (!(knightId.equals("da:ancient_knight") || knightId.equals("da:ancient_knight_rapier"))
+                        || guard == null || mob.getAttackTarget() != player) {
+                    throw new CommandException("Expected a tracked Unseen knight targeting the player.");
+                }
+                boolean fighting;
+                try {
+                    fighting = (boolean) MethodHandles.publicLookup()
+                            .findVirtual(mob.getClass(), "isFightMode", MethodType.methodType(boolean.class))
+                            .asType(MethodType.methodType(boolean.class, EntityCreature.class)).invokeExact(mob);
+                } catch (RuntimeException | Error failure) {
+                    throw failure;
+                } catch (Throwable failure) {
+                    throw new CommandException("Could not read the knight's native fight mode.");
+                }
+                if (fighting) {
+                    LOGGER.info("coverage unseenFightHandoff mob={} former={} requested={} fighting=true taunt={}",
+                            mob.getUniqueID(), player.getUniqueID(), guard.getUniqueID(), actions.taunt(mob, player));
+                    mob.setAttackTarget(guard);
+                    if (mob.getAttackTarget() != guard) {
+                        throw new CommandException("The fighting knight did not accept the native target.");
+                    }
+                }
+                break;
+            case "unseen-opening":
+                if (guard == null || mob.getAttackTarget() != guard) {
+                    throw new CommandException("Expected the native guard before the Unseen opening.");
+                }
+                if ("supported_inactive".equals(EncounterCoordinator.INSTANCE.inspect(mob, 0).status)) {
+                    restorePlayer(player);
+                    float priorHealth = mob.getHealth();
+                    attack(mob, player, "hit");
+                    if (mob.getHealth() == priorHealth) {
+                        player.capabilities.disableDamage = true;
+                        player.setPosition(X, mob.posY, Z + 13);
+                        mob.setRevengeTarget(guard);
+                    }
+                }
+                break;
+            case "unseen-target-bounds": {
+                String id = String.valueOf(EntityList.getKey(mob));
+                double reach = "da:ancient_knight".equals(id) ? 9.0 : "da:ancient_knight_rapier".equals(id) ? 6.0 : 0.0;
+                if (reach == 0.0 || !"supported_inactive".equals(EncounterCoordinator.INSTANCE.inspect(mob, 0).status)) {
+                    break;
+                }
+                restorePlayer(player);
+                player.setPosition(mob.posX - reach - 0.25, mob.posY, mob.posZ);
+                Object beyond = actions.taunt(mob, player);
+                player.setPosition(mob.posX - 3, mob.posY, mob.posZ);
+                BlockPos knightWall = new BlockPos(mob.posX - 1.5, mob.posY, mob.posZ);
+                for (int height = 0; height < 4; height++) {
+                    world.setBlockState(knightWall.up(height), Blocks.STONE.getDefaultState(), 2);
+                }
+                Object blocked;
+                try {
+                    blocked = actions.taunt(mob, player);
+                } finally {
+                    for (int height = 0; height < 4; height++) {
+                        world.setBlockToAir(knightWall.up(height));
+                    }
+                }
+                BlockPos floor = knightWall.down();
+                world.setBlockToAir(floor);
+                boolean pitVisible = mob.canEntityBeSeen(player);
+                Object pit = actions.taunt(mob, player);
+                world.setBlockState(floor, Blocks.STONE.getDefaultState(), 2);
+                Entity allied = EntityList.createEntityByIDFromName(new ResourceLocation("da:ancient_knight_rapier"), world);
+                if (!(allied instanceof EntityCreature)) {
+                    throw new CommandException("The allied Rot Knight class was unavailable.");
+                }
+                place(world, allied, "tw_l_rot_ally", mob.posX + 1.5, mob.posY, mob.posZ);
+                Object friend = actions.taunt(mob, (EntityCreature) allied);
+                allied.setDead();
+                player.setPosition(mob.posX - reach, mob.posY, mob.posZ);
+                Object atKnightReach = actions.taunt(mob, player);
+                LOGGER.info("coverage unseenBounds mob={} player={} reach={} beyond={} blocked={} pitVisible={} pit={} allied={} edge={}",
+                        mob.getUniqueID(), player.getUniqueID(), reach, beyond, blocked, pitVisible, pit, friend, atKnightReach);
+                break;
+            }
             case "eerie-armor-wear":
                 if (!"eerieentities:cursed_armor".equals(String.valueOf(EntityList.getKey(mob)))
                         || guard == null || mob.getAttackTarget() != guard) {
@@ -1465,7 +1547,13 @@ final class CoverageFixtureCommand extends CommandBase {
     }
 
     static void attack(EntityCreature mob, EntityPlayerMP player, String operation) {
-        player.setPosition(mob.posX - 1.3, mob.posY, mob.posZ);
+        if ("da:ancient_knight_rapier".equals(String.valueOf(EntityList.getKey(mob)))) {
+            // Approach from behind the provider's directional parry when measuring a health-losing opening.
+            double yaw = Math.toRadians(mob.rotationYaw);
+            player.setPosition(mob.posX + Math.sin(yaw) * 1.3, mob.posY, mob.posZ - Math.cos(yaw) * 1.3);
+        } else {
+            player.setPosition(mob.posX - 1.3, mob.posY, mob.posZ);
+        }
         player.resetCooldown();
         for (int tick = 0; tick < 30; tick++) {
             player.onUpdateEntity();

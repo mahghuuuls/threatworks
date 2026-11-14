@@ -10,6 +10,7 @@ import com.mahghuuuls.threatworks.compat.GroundMeleeCompatibility;
 import com.mahghuuuls.threatworks.compat.IceAndFireCompatibility;
 import com.mahghuuuls.threatworks.compat.SpecialAiCompatibility;
 import com.mahghuuuls.threatworks.compat.SpecialMobsCompatibility;
+import com.mahghuuuls.threatworks.compat.UnseenDungeonCompatibility;
 import com.mahghuuuls.threatworks.threat.Encounter.TargetObservation;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityCreature;
@@ -108,6 +109,8 @@ final class MobTargets {
                 matchesAttack = DefiledLandsCompatibility.matchesScuttlerAttack(type, goal);
             } else if (specialBlaze) {
                 matchesAttack = SpecialMobsCompatibility.isVariantBlazeAttack(goal);
+            } else if (UnseenDungeonCompatibility.isSupportedType(type)) {
+                matchesAttack = UnseenDungeonCompatibility.isAttackGoal(type, goal);
             }
             if (matchesAttack) {
                 int mutex = entry.action.getMutexBits();
@@ -155,15 +158,17 @@ final class MobTargets {
 
     static boolean canControlImmediately(EntityCreature mob, MobType type) {
         boolean providerGoalCheck = SpecialMobsCompatibility.requiresLiveGoalContract(type)
-                || providerMeleePriority(type) >= 0;
+                || providerMeleePriority(type) >= 0 || UnseenDungeonCompatibility.isSupportedType(type);
         return (providerGoalCheck ? matchesBehavior(mob, type) : hasSupportedState(mob, type))
                 && !inNativePhase(mob, type);
     }
 
     private static boolean hasSupportedState(EntityCreature mob, MobType type) {
         Class<?> navigator = mob instanceof EntitySpider ? PathNavigateClimber.class : PathNavigateGround.class;
+        boolean unseen = UnseenDungeonCompatibility.isSupportedType(type);
         return !mob.isAIDisabled() && !mob.tasks.isControlFlagDisabled(1) && !mob.tasks.isControlFlagDisabled(2)
-                && (mob instanceof EntityShulker || mob.getNavigator().getClass() == navigator)
+                && (unseen ? UnseenDungeonCompatibility.hasNavigator(mob) && UnseenDungeonCompatibility.hasHostileRole(type, mob)
+                : mob instanceof EntityShulker || mob.getNavigator().getClass() == navigator)
                 && (!(mob instanceof EntityZombieVillager) || !((EntityZombieVillager) mob).isConverting())
                 && (GaiaCompatibility.meleePriority(type) < 0 || GaiaCompatibility.isHostile(mob))
                 && FishUndeadRisingCompatibility.canUseGroundMelee(type, mob)
@@ -201,7 +206,8 @@ final class MobTargets {
 
     static boolean inNativePhase(EntityCreature mob, MobType type) {
         if (FishUndeadRisingCompatibility.nativePhase(type, mob) || GaiaCompatibility.isAquaticPhase(type, mob)
-                || GroundMeleeCompatibility.nativePhase(type, mob)) {
+                || GroundMeleeCompatibility.nativePhase(type, mob)
+                || UnseenDungeonCompatibility.isSupportedType(type) && UnseenDungeonCompatibility.yieldsToNative(type, mob)) {
             return true;
         }
         if (IceAndFireCompatibility.usesAnimatedMelee(type) && IceAndFireCompatibility.animatedMeleeUnavailable(type, mob)) {
@@ -264,6 +270,7 @@ final class MobTargets {
             range = Math.min(range, attackRange);
         }
         return isAttackable(mob, target) && IceAndFireCompatibility.acceptsTarget(type, target)
+                && (!UnseenDungeonCompatibility.isSupportedType(type) || UnseenDungeonCompatibility.acceptsTarget(type, target))
                 && target.world == world && world.isBlockLoaded(position)
                 && world.getWorldBorder().contains(position)
                 && mob.isWithinHomeDistanceFromPosition(position)
@@ -283,6 +290,17 @@ final class MobTargets {
         boolean needsSight = !(mob instanceof EntityZombie && target instanceof EntityVillager)
                 && !DefiledLandsCompatibility.canAcquireWithoutSight(type, target);
         boolean sightLost = needsSight && !sees(terrain, mob, target, position);
+        if (UnseenDungeonCompatibility.isSupportedType(type)) {
+            if (!UnseenDungeonCompatibility.withinAttackStartRange(type, mob, target)
+                    || !terrain.clearLevelGround(mob.getEntityBoundingBox(), position, target.getPositionVector())) {
+                return TargetObservation.INELIGIBLE;
+            }
+            if (sightLost) {
+                return TargetObservation.obscured(false);
+            }
+            double distance = mob.getDistance(target);
+            return distance <= 2.0 ? TargetObservation.IN_REACH : TargetObservation.pursuit(distance);
+        }
         if (SpecialMobsCompatibility.isMeleeBlaze(type)) {
             double distanceSquared = mob.getDistanceSq(target);
             if (distanceSquared < 4.0) {

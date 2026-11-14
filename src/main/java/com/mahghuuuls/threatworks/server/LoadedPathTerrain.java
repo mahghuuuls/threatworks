@@ -131,6 +131,33 @@ final class LoadedPathTerrain implements IBlockAccess {
         return true;
     }
 
+    boolean clearLevelGround(AxisAlignedBB body, Vec3d from, Vec3d to) {
+        if (Math.abs(to.y - from.y) > 0.125) {
+            return false;
+        }
+        Vec3d travel = new Vec3d(to.x - from.x, 0.0, to.z - from.z);
+        int steps = Math.max(1, (int) Math.ceil(travel.length() * 2.0));
+        for (int index = 0; index <= steps; index++) {
+            Vec3d offset = travel.scale((double) index / steps);
+            BlockPos floor = new BlockPos(from.add(offset)).down();
+            if (!isNormalCube(floor, false) || containsLiquid(body.offset(offset))) {
+                return false;
+            }
+        }
+        return clearFlight(body, travel);
+    }
+
+    private boolean containsLiquid(AxisAlignedBB body) {
+        BlockPos min = new BlockPos(body.minX, body.minY, body.minZ);
+        BlockPos max = new BlockPos(body.maxX, body.maxY, body.maxZ);
+        for (BlockPos cell : BlockPos.getAllInBox(min, max)) {
+            if (getBlockState(cell).getMaterial().isLiquid()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private boolean readableArea(int minX, int minZ, int maxX, int maxZ) {
         for (int x = minX >> 4; x <= maxX >> 4; x++) {
             for (int z = minZ >> 4; z <= maxZ >> 4; z++) {

@@ -2,6 +2,7 @@ package com.mahghuuuls.threatworks.server;
 
 import com.mahghuuuls.threatworks.compat.FoliaathCompatibility;
 import com.mahghuuuls.threatworks.compat.IceAndFireCompatibility;
+import com.mahghuuuls.threatworks.compat.UnseenDungeonCompatibility;
 import com.mahghuuuls.threatworks.config.ServerTuning.MobType;
 import com.mahghuuuls.threatworks.threat.Encounter.TargetObservation;
 import net.minecraft.entity.Entity;
@@ -28,7 +29,8 @@ interface MobPolicy {
 
             @Override
             public boolean accepts(EntityLivingBase participant) {
-                return IceAndFireCompatibility.acceptsTarget(type, participant);
+                return IceAndFireCompatibility.acceptsTarget(type, participant)
+                        && (!UnseenDungeonCompatibility.isSupportedType(type) || UnseenDungeonCompatibility.acceptsTarget(type, participant));
             }
 
             @Override
