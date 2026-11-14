@@ -1,5 +1,7 @@
 package com.mahghuuuls.threatworksfixture;
 
+import com.mahghuuuls.threatworks.server.EncounterCoordinator;
+
 import com.mahghuuuls.threatworks.ThreatworksMod;
 import com.mahghuuuls.threatworks.api.SummonThreatCreditEvent;
 import net.minecraft.block.Block;
@@ -487,6 +489,12 @@ public final class ThreatworksFixture {
             boolean coordinated = coordinatedTargetWrite();
             LOGGER.info("coverage targetWrite mob={} requested={} coordinated={} tick={}", entity.getUniqueID(),
                     target == null ? null : target.getUniqueID(), coordinated, entity.getServer().getTickCounter());
+            if (!coordinated && target != null && entity.getTags().contains("tw_l_dread_command_probe")
+                    && target.getTags().contains("tw_i_guard") && isNativeDreadCommandWrite()) {
+                entity.removeTag("tw_l_dread_command_probe");
+                LOGGER.info("coverage dreadCommandWrite mob={} target={} tick={} accepted={}", entity.getUniqueID(),
+                        target.getUniqueID(), entity.world.getTotalWorldTime(), ((EntityLiving) entity).getAttackTarget() == target);
+            }
             if (coordinated && target instanceof EntityPlayerMP && entity.getTags().contains("tw_l_sight_probe")) {
                 LOGGER.info("coverage coordinatedSight mob={} player={} visible={} tick={}", entity.getUniqueID(),
                         target.getUniqueID(), entity.canEntityBeSeen(target), entity.getServer().getTickCounter());
@@ -524,6 +532,20 @@ public final class ThreatworksFixture {
         return java.util.Arrays.stream(Thread.currentThread().getStackTrace())
                 .anyMatch(frame -> frame.getClassName().equals("com.mahghuuuls.threatworks.server.EncounterCoordinator")
                         && frame.getMethodName().equals("writeTarget"));
+    }
+
+    private static boolean isNativeDreadCommandWrite() {
+        StackTraceElement[] trace = Thread.currentThread().getStackTrace();
+        for (int index = 0; index < trace.length - 1; index++) {
+            StackTraceElement setter = trace[index];
+            StackTraceElement caller = trace[index + 1];
+            if (setter.getClassName().equals("net.minecraft.entity.EntityLiving")
+                    && (setter.getMethodName().equals("setAttackTarget") || setter.getMethodName().equals("func_70624_b"))) {
+                return caller.getClassName().equals("com.github.alexthe666.iceandfire.entity.EntityDreadMob")
+                        && (caller.getMethodName().equals("onLivingUpdate") || caller.getMethodName().equals("func_70636_d"));
+            }
+        }
+        return false;
     }
 
     private static boolean logsCoverageCombat(EntityLivingBase entity) {
@@ -583,6 +605,21 @@ public final class ThreatworksFixture {
                     });
             event.world.getEntities(EntityCreature.class, mob -> mob.getTags().contains("tw_l_jumping_pursuit"))
                     .forEach(mob -> CoverageFixtureCommand.observeJumpingPursuit((WorldServer) event.world, mob));
+            event.world.getEntities(EntityCreature.class, mob -> mob.getTags().contains("tw_l_dread_mount_probe"))
+                    .forEach(mob -> {
+                        Entity mount = mob.getRidingEntity();
+                        if (mount != null) {
+                            mob.removeTag("tw_l_dread_mount_probe");
+                            LOGGER.info("coverage dreadMount mob={} horse={} tick={}", mob.getUniqueID(),
+                                    mount.getUniqueID(), event.world.getTotalWorldTime());
+                        } else if (!mob.getTags().contains("tw_l_dread_approach")
+                                && mob.tasks.taskEntries.stream().anyMatch(entry -> entry.using && entry.action.getClass()
+                                .getName().equals("com.github.alexthe666.iceandfire.entity.ai.DreadAIRideHorse"))) {
+                            mob.addTag("tw_l_dread_approach");
+                            LOGGER.info("coverage dreadApproach mob={} status={} mounted=false tick={}", mob.getUniqueID(),
+                                    EncounterCoordinator.INSTANCE.inspect(mob, 0).status, event.world.getTotalWorldTime());
+                        }
+                    });
             event.world.getEntities(EntityCreature.class, mob -> mob.getTags().contains("tw_l_jumping_probe")
                     && !mob.onGround && mob.motionY > 0.5 && mob.getAttackTarget() != null).forEach(mob -> {
                 EntityLivingBase target = mob.getAttackTarget();
@@ -611,8 +648,7 @@ public final class ThreatworksFixture {
         }
         event.world.getEntities(EntityLiving.class, mob -> mob.getTags().contains("tw_i_mob")
                 && mob.getTags().contains("tw_j_observe")).forEach(mob -> {
-            com.mahghuuuls.threatworks.server.EncounterCoordinator.Inspection view =
-                    com.mahghuuuls.threatworks.server.EncounterCoordinator.INSTANCE.inspect(mob, 16);
+            EncounterCoordinator.Inspection view = EncounterCoordinator.INSTANCE.inspect(mob, 16);
             String scores = view.participants.stream().map(p -> p.id + "=" + p.score)
                     .collect(java.util.stream.Collectors.joining(","));
             LOGGER.info("phase_state tick={} mob={} status={} target={} taunt={} reset={} scores={} animation={}",

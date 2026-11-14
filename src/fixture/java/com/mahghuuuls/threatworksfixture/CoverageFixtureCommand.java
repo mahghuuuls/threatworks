@@ -27,6 +27,7 @@ import net.minecraft.entity.monster.EntitySkeleton;
 import net.minecraft.entity.monster.EntitySpider;
 import net.minecraft.entity.monster.EntityZombie;
 import net.minecraft.entity.passive.EntityOcelot;
+import net.minecraft.entity.passive.EntityHorse;
 import net.minecraft.entity.projectile.EntityArrow;
 import net.minecraft.entity.projectile.EntityFireball;
 import net.minecraft.entity.projectile.EntityTippedArrow;
@@ -75,6 +76,8 @@ final class CoverageFixtureCommand extends CommandBase {
     static final String CINDER = "specialmobs:cinderblaze";
     static final String EMBER = "specialmobs:emberblaze";
     static final String JOLT = "specialmobs:joltblaze";
+    private static final String DREAD_THRALL = "iceandfire:dread_thrall";
+    private static final String DREAD_KNIGHT = "iceandfire:dread_knight";
     private static final int JOLT_FLOOR = 4;
     private static final double Z = 12.5;
     private final ThreatworksFixture fixture;
@@ -210,6 +213,9 @@ final class CoverageFixtureCommand extends CommandBase {
         }
         configureMob(mob);
         place(world, mob, "tw_i_mob", X, height, Z);
+        if (DREAD_THRALL.equals(id) || DREAD_KNIGHT.equals(id)) {
+            dreadState(mob, "seed");
+        }
         actors(world, mob, solo);
     }
 
@@ -368,6 +374,57 @@ final class CoverageFixtureCommand extends CommandBase {
         ThreatActions actions = ThreatworksMod.threatActions();
         switch (operation) {
             case "read":
+                break;
+            case "dread-state":
+                dreadState(mob, "read");
+                break;
+            case "dread-command":
+                if (guard == null || mob.getAttackTarget() != player) {
+                    throw new CommandException("Expected a Dread mob targeting the challenger.");
+                }
+                Entity commander = EntityList.createEntityByIDFromName(new ResourceLocation("iceandfire:dread_lich"), world);
+                if (!(commander instanceof EntityCreature)) {
+                    throw new CommandException("Dread Lich was unavailable.");
+                }
+                EntityCreature lich = (EntityCreature) commander;
+                lich.setNoAI(true);
+                place(world, lich, "tw_l_dread_commander", mob.posX, mob.posY, mob.posZ + 11);
+                lich.setAttackTarget(guard);
+                try {
+                    mob.getClass().getMethod("setCommanderId", UUID.class).invoke(mob, lich.getUniqueID());
+                } catch (ReflectiveOperationException failure) {
+                    throw new CommandException("The native Dread commander could not be assigned.");
+                }
+                mob.addTag("tw_l_dread_command_probe");
+                dreadState(mob, "command");
+                break;
+            case "dread-petrify":
+                if (guard == null || mob.getAttackTarget() != player || !guard.isEntityAlive()) {
+                    throw new CommandException("Expected a live Dread combat guard and selected challenger.");
+                }
+                try {
+                    Class<?> handler = Class.forName("net.ilexiconn.llibrary.server.entity.EntityPropertiesHandler");
+                    Class<?> stone = Class.forName("com.github.alexthe666.iceandfire.entity.StoneEntityProperties");
+                    Object properties = handler.getMethod("getProperties", Entity.class, Class.class)
+                            .invoke(handler.getField("INSTANCE").get(null), guard, stone);
+                    stone.getField("isStone").setBoolean(properties, true);
+                    LOGGER.info("coverage dreadStone mob={} guard={} alive={} allied={} stone={}", mob.getUniqueID(),
+                            guard.getUniqueID(), guard.isEntityAlive(), mob.isOnSameTeam(guard),
+                            stone.getField("isStone").getBoolean(properties));
+                } catch (ReflectiveOperationException | RuntimeException failure) {
+                    throw new CommandException("Could not mark the live combat guard as petrified.");
+                }
+                break;
+            case "dread-horse":
+                if (!DREAD_KNIGHT.equals(String.valueOf(EntityList.getKey(mob))) || mob.getAttackTarget() != player) {
+                    throw new CommandException("Expected a Dread Knight targeting the challenger.");
+                }
+                EntityHorse dreadHorse = new EntityHorse(world);
+                dreadHorse.setNoAI(true);
+                place(world, dreadHorse, "tw_l_dread_horse", mob.posX, mob.posY, mob.posZ + 7);
+                LOGGER.info("coverage dreadHorse mob={} horse={} tamed={} distance={}", mob.getUniqueID(),
+                        dreadHorse.getUniqueID(), dreadHorse.isTame(), mob.getDistance(dreadHorse));
+                mob.addTag("tw_l_dread_mount_probe");
                 break;
             case "silverfish-effects":
                 if (!mob.getServer().getFolderName().startsWith("TW-Campaign-L") || guard == null) {
@@ -1223,6 +1280,21 @@ final class CoverageFixtureCommand extends CommandBase {
             throw new CommandException("Expected a native Conflagration Blaze feeding level.");
         }
         return data.getByte("FeedLevel");
+    }
+
+    private static void dreadState(EntityCreature mob, String step) throws CommandException {
+        try {
+            Class<?> dreadClass = mob.getClass();
+            Object current = dreadClass.getMethod("getAnimation").invoke(mob);
+            Object emergence = dreadClass.getField("ANIMATION_SPAWN").get(null);
+            Object commander = dreadClass.getMethod("getCommanderId").invoke(mob);
+            Entity mount = mob.getRidingEntity();
+            LOGGER.info("coverage dreadState mob={} step={} emergence={} commander={} mount={} tick={}", mob.getUniqueID(),
+                    step, current == emergence, commander, mount == null ? null : mount.getUniqueID(),
+                    mob.world.getTotalWorldTime());
+        } catch (ReflectiveOperationException failure) {
+            throw new CommandException("Could not read native Dread state.");
+        }
     }
 
     static String meleeBlazeName(String id) {

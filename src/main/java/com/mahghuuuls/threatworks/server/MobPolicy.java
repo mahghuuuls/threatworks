@@ -1,6 +1,7 @@
 package com.mahghuuuls.threatworks.server;
 
 import com.mahghuuuls.threatworks.compat.FoliaathCompatibility;
+import com.mahghuuuls.threatworks.compat.IceAndFireCompatibility;
 import com.mahghuuuls.threatworks.config.ServerTuning.MobType;
 import com.mahghuuuls.threatworks.threat.Encounter.TargetObservation;
 import net.minecraft.entity.Entity;
@@ -27,7 +28,7 @@ interface MobPolicy {
 
             @Override
             public boolean accepts(EntityLivingBase participant) {
-                return true;
+                return IceAndFireCompatibility.acceptsTarget(type, participant);
             }
 
             @Override

@@ -5,6 +5,7 @@ import com.mahghuuuls.threatworks.compat.DefiledLandsCompatibility;
 import com.mahghuuuls.threatworks.compat.DungeonMobsCompatibility;
 import com.mahghuuuls.threatworks.compat.FoliaathCompatibility;
 import com.mahghuuuls.threatworks.compat.GaiaCompatibility;
+import com.mahghuuuls.threatworks.compat.IceAndFireCompatibility;
 import com.mahghuuuls.threatworks.compat.SpecialAiCompatibility;
 import com.mahghuuuls.threatworks.compat.SpecialMobsCompatibility;
 import com.mahghuuuls.threatworks.threat.Encounter.TargetObservation;
@@ -119,6 +120,7 @@ final class MobTargets {
             } else if (SpecialAiCompatibility.hasUnknownCombatGoal(entry)
                     || !SpecialAiCompatibility.isCombatReaction(entry)
                     && !GaiaCompatibility.isAntWander(type, entry)
+                    && !IceAndFireCompatibility.isHorseGoal(type, entry)
                     && (entry.priority > priority ? !entry.action.isInterruptible()
                     : (entry.action.getMutexBits() & 3) != 0 && !nativeCompetingGoal(mob, entry))) {
                 return false;
@@ -153,6 +155,7 @@ final class MobTargets {
                 && (mob instanceof EntityShulker || mob.getNavigator().getClass() == navigator)
                 && (!(mob instanceof EntityZombieVillager) || !((EntityZombieVillager) mob).isConverting())
                 && (GaiaCompatibility.meleePriority(type) < 0 || GaiaCompatibility.isHostile(mob))
+                && (IceAndFireCompatibility.meleePriority(type) < 0 || IceAndFireCompatibility.isUncommandedOnFoot(mob))
                 && (!SpecialMobsCompatibility.isVariantSkeleton(type) || !mob.isRiding()
                 && SpecialMobsCompatibility.hasSupportedSkeletonWeapon(type, mob, usesBow(mob)))
                 && (!SpecialMobsCompatibility.isVariantBlaze(type) || !mob.isRiding() && !mob.isBeingRidden()
@@ -169,7 +172,11 @@ final class MobTargets {
             return dungeon;
         }
         int defiled = DefiledLandsCompatibility.meleePriority(type);
-        return defiled >= 0 ? defiled : GaiaCompatibility.meleePriority(type);
+        if (defiled >= 0) {
+            return defiled;
+        }
+        int gaia = GaiaCompatibility.meleePriority(type);
+        return gaia >= 0 ? gaia : IceAndFireCompatibility.meleePriority(type);
     }
 
     static boolean inNativePhase(EntityCreature mob, MobType type) {
@@ -187,6 +194,7 @@ final class MobTargets {
             if (entry.using && (SpecialAiCompatibility.isCombatReaction(entry)
                     || SpecialAiCompatibility.isBlockGriefing(entry)
                     || GaiaCompatibility.isAntWander(type, entry)
+                    || IceAndFireCompatibility.isHorseGoal(type, entry)
                     || mob instanceof EntityCreeper
                     && (entry.action.getClass() == EntityAICreeperSwell.class || isCreeperAvoidance(entry))
                     || SpecialMobsCompatibility.isVariantSkeleton(type)
@@ -227,7 +235,8 @@ final class MobTargets {
                     : SpecialMobsCompatibility.blazeRange(mob);
             range = Math.min(range, attackRange);
         }
-        return isAttackable(mob, target) && target.world == world && world.isBlockLoaded(position)
+        return isAttackable(mob, target) && IceAndFireCompatibility.acceptsTarget(type, target)
+                && target.world == world && world.isBlockLoaded(position)
                 && world.getWorldBorder().contains(position)
                 && mob.isWithinHomeDistanceFromPosition(position)
                 && mob.getDistanceSq(target) <= range * range

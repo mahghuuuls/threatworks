@@ -121,6 +121,8 @@ public final class ServerTuning {
         DUNGEON_GHOUL("dungeonmobs:dmghoul"),
         DUNGEON_HOOK_HORROR("dungeonmobs:dmhookhorror"),
         DUNGEON_UMBER_HULK("dungeonmobs:dmumberhulk"),
+        DREAD_THRALL("iceandfire:dread_thrall"),
+        DREAD_KNIGHT("iceandfire:dread_knight"),
         GAIA_MUMMY("grimoireofgaia:mummy"),
         GAIA_SLUDGE_GIRL("grimoireofgaia:sludge_girl"),
         GAIA_SUCCUBUS("grimoireofgaia:succubus"),
