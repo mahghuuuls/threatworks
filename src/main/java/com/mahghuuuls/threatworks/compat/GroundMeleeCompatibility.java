@@ -10,6 +10,9 @@ import net.minecraftforge.fml.common.versioning.ComparableVersion;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -19,6 +22,8 @@ import java.util.Set;
 public final class GroundMeleeCompatibility {
     private static final Map<MobType, Binding> BINDINGS = new EnumMap<>(MobType.class);
     private static final Logger LOGGER = LogManager.getLogger("threatworks");
+    private static MethodHandle horseIsFlyer;
+    private static MethodHandle horseIsTamed;
 
     public static void initialize() {
         Set<String> unsupported = new HashSet<>();
@@ -35,6 +40,7 @@ public final class GroundMeleeCompatibility {
         bind(unsupported, MobType.PVJ_SHADE, "pvj", "1.6.4", "vibrantjourneys.entities.monster.EntityShade", 2);
         bind(unsupported, MobType.CHARM_SPECTRE, "charm", "1.4", "svenhjol.charm.world.entity.EntitySpectre", 2);
         bind(unsupported, MobType.MOC_HORSE_MOB, "mocreatures", "12.5.1", "drzhark.mocreatures.entity.hostile.MoCEntityHorseMob", 2);
+        bindHorseGroundState();
         String quark = "vazkii.quark.world.entity.Entity";
         bind(unsupported, MobType.QUARK_ASHEN, "quark", "r1.6-192", quark + "Ashen", 4);
         bind(unsupported, MobType.QUARK_DWELLER, "quark", "r1.6-192", quark + "Dweller", 2);
@@ -67,6 +73,32 @@ public final class GroundMeleeCompatibility {
         return binding != null && mob.getClass().getName().equals(binding.className);
     }
 
+    private static void bindHorseGroundState() {
+        Binding horse = BINDINGS.get(MobType.MOC_HORSE_MOB);
+        if (horse == null) {
+            return;
+        }
+        try {
+            Class<?> type = Class.forName(horse.className, false, Loader.instance().getModClassLoader());
+            MethodType signature = MethodType.methodType(boolean.class);
+            MethodType receiver = MethodType.methodType(boolean.class, EntityCreature.class);
+            horseIsFlyer = MethodHandles.publicLookup().findVirtual(type, "isFlyer", signature).asType(receiver);
+            horseIsTamed = MethodHandles.publicLookup().findVirtual(type, "getIsTamed", signature).asType(receiver);
+        } catch (ReflectiveOperationException | LinkageError | RuntimeException failure) {
+            BINDINGS.remove(MobType.MOC_HORSE_MOB);
+            LOGGER.warn("Mo' Creatures HorseMob targeting unavailable because its ground form could not be bound.", failure);
+        }
+    }
+
+    private static boolean horseUsesNativeControl(EntityCreature horse) {
+        try {
+            return horseIsFlyer == null || horseIsTamed == null || (boolean) horseIsFlyer.invokeExact(horse)
+                    || (boolean) horseIsTamed.invokeExact(horse);
+        } catch (Throwable failure) {
+            return true;
+        }
+    }
+
     public static int meleePriority(MobType type) {
         Binding binding = BINDINGS.get(type);
         return binding == null ? -1 : binding.priority;
@@ -95,6 +127,7 @@ public final class GroundMeleeCompatibility {
     public static boolean nativePhase(MobType type, EntityCreature mob) {
         return BINDINGS.containsKey(type) && (mob.isRiding() || mob.isBeingRidden() || mob.isInWater() || mob.isInLava()
                 || isLightAvoiding(type) && mob.isBurning()
+                || type == MobType.MOC_HORSE_MOB && horseUsesNativeControl(mob)
                 || type == MobType.STYGIAN_WATCHLING && mob.isChild()
                 || (type == MobType.STYGIAN_GLUTTERMITE || type == MobType.STYGIAN_ENDERMITE
                     || type == MobType.STYGIAN_WATCHLING) && mob.isWet());

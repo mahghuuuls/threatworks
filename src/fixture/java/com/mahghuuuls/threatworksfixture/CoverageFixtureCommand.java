@@ -224,6 +224,9 @@ final class CoverageFixtureCommand extends CommandBase {
         EntityCreature mob = (EntityCreature) entity;
         mob.setPosition(X, height, Z);
         mob.onInitialSpawn(world.getDifficultyForLocation(mob.getPosition()), null);
+        if ("mocreatures:horsemob".equals(id)) {
+            setHorseFixtureForm(mob, 23);
+        }
         mob.getRecursivePassengers().forEach(passenger -> passenger.addTag(TAG));
         if (mob.getRidingEntity() != null) {
             mob.getRidingEntity().addTag(TAG);
@@ -1034,6 +1037,15 @@ final class CoverageFixtureCommand extends CommandBase {
                 attack(mob, player, "hit");
                 player.setPosition(mob.posX - 3.5, mob.posY, mob.posZ);
                 guard.setPosition(mob.posX + 3.2, mob.posY, mob.posZ);
+                break;
+            case "moc-flying-handoff":
+                if (guard == null || mob.getAttackTarget() != player) {
+                    throw new CommandException("Expected a tracked ground HorseMob targeting the challenger.");
+                }
+                setHorseFixtureForm(mob, 32);
+                mob.setAttackTarget(guard);
+                LOGGER.info("coverage mocHorseHandoff mob={} guard={} target={} taunt={}", mob.getUniqueID(),
+                        guard.getUniqueID(), identity(mob.getAttackTarget()), actions.taunt(mob, player));
                 break;
             case "witch-opening":
             case "witch-native-redirect":
@@ -1976,6 +1988,21 @@ final class CoverageFixtureCommand extends CommandBase {
         player.capabilities.disableDamage = false;
         player.setInvisible(false);
         player.hurtResistantTime = 0;
+    }
+
+    private static void setHorseFixtureForm(EntityCreature horse, int form) throws CommandException {
+        try {
+            MethodHandles.Lookup lookup = MethodHandles.publicLookup();
+            lookup.findVirtual(horse.getClass(), "setType", MethodType.methodType(void.class, int.class))
+                    .invoke(horse, form);
+            boolean flyer = (boolean) lookup.findVirtual(horse.getClass(), "isFlyer", MethodType.methodType(boolean.class))
+                    .invoke(horse);
+            LOGGER.info("coverage mocHorseForm mob={} form={} flyer={}", horse.getUniqueID(), form, flyer);
+        } catch (RuntimeException | Error failure) {
+            throw failure;
+        } catch (Throwable failure) {
+            throw new CommandException("The exact HorseMob fixture did not expose its form state.");
+        }
     }
 
     static void attack(EntityLiving mob, EntityPlayerMP player, String operation) {
