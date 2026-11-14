@@ -173,6 +173,7 @@ final class MobTargets {
         return mob instanceof AbstractSkeleton && (goal == EntityAIFleeSun.class || goal == EntityAIAvoidEntity.class)
                 || mob instanceof EntityWitch && entry.priority == 2 && goal == EntityAIWanderAvoidWater.class
                 && entry.action.getMutexBits() == 1
+                || mob instanceof EntityWitch && SpecialAiCompatibility.isWitchRider(entry)
                 || mob instanceof EntitySpider && goal == EntityAILeapAtTarget.class
                 || mob instanceof EntityShulker && goal == EntityAIWatchClosest.class
                 || mob instanceof EntityCreeper && isCreeperAvoidance(entry);
@@ -260,6 +261,7 @@ final class MobTargets {
         }
         for (EntityAITaskEntry entry : mob.tasks.taskEntries) {
             if (entry.using && (SpecialAiCompatibility.isCombatReaction(entry)
+                    || mob instanceof EntityWitch && SpecialAiCompatibility.isWitchRider(entry)
                     || GroundMeleeCompatibility.isLightAvoidance(type, entry)
                     || FishUndeadRisingCompatibility.nativeGoal(type, entry) != 0
                     || FishUndeadRisingCompatibility.usesWildAnimalMelee(type) && SpecialAiCompatibility.isBreedingItemGoal(entry)

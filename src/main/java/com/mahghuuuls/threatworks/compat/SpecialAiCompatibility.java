@@ -12,6 +12,7 @@ public final class SpecialAiCompatibility {
     private static final String DODGE_ARROWS = REACTIONS + "EntityAIDodgeArrows";
     private static final String GRIEF_BLOCKS = "fathertoast.specialai.ai.grief.EntityAIGriefBlocks";
     private static final String EAT_BREEDING_ITEM = "fathertoast.specialai.ai.grief.EntityAIEatBreedingItem";
+    private static final String RIDER = "fathertoast.specialai.ai.EntityAIRider";
 
     private SpecialAiCompatibility() {
     }
@@ -52,6 +53,11 @@ public final class SpecialAiCompatibility {
         int mutex = entry.action.getMutexBits();
         return (mutex == 3 && name.equals(AVOID_EXPLOSIONS)
                 || mutex == 4 && name.equals(DODGE_ARROWS)) && Installed.VERSION_MATCHES;
+    }
+
+    public static boolean isWitchRider(EntityAITaskEntry entry) {
+        return entry.priority == 2 && entry.action.getMutexBits() == 3 && Installed.VERSION_MATCHES
+                && entry.action.getClass().getName().equals(RIDER) && !entry.action.isInterruptible();
     }
 
     public static boolean isBlockGriefing(EntityAITaskEntry entry) {

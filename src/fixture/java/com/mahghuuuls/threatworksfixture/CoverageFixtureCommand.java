@@ -1081,6 +1081,24 @@ final class CoverageFixtureCommand extends CommandBase {
                 }
                 return;
             }
+            case "witch-rider-handoff": {
+                if (!(mob instanceof net.minecraft.entity.monster.EntityWitch) || guard == null
+                        || mob.getAttackTarget() != player) {
+                    throw new CommandException("Expected a tracked Witch targeting the challenger.");
+                }
+                EntityZombie mount = new EntityZombie(world);
+                mount.setNoAI(true);
+                mount.getEntityData().setBoolean("SpecialMobsInit", true);
+                place(world, mount, "tw_l_witch_mount", mob.posX, mob.posY, mob.posZ + 1.5);
+                if (!mob.startRiding(mount, true)) {
+                    throw new CommandException("The Witch could not mount the fixture zombie.");
+                }
+                mob.setAttackTarget(guard);
+                LOGGER.info("coverage witchRiderHandoff mob={} guard={} target={} riding={} taunt={}",
+                        mob.getUniqueID(), guard.getUniqueID(), identity(mob.getAttackTarget()),
+                        mob.getRidingEntity() == mount, actions.taunt(mob, player));
+                break;
+            }
             case "pvj-burning-handoff": {
                 if (guard == null || mob.getAttackTarget() != player) {
                     throw new CommandException("Expected a tracked light-avoiding mob targeting the player.");
