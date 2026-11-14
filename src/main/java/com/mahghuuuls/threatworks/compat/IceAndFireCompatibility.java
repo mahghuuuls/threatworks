@@ -61,13 +61,15 @@ public final class IceAndFireCompatibility {
                 return "EntityDreadBeast";
             case DREAD_GHOUL:
                 return "EntityDreadGhoul";
+            case DREAD_SCUTTLER:
+                return "EntityDreadScuttler";
             default:
                 return null;
         }
     }
 
     public static boolean usesAnimatedMelee(MobType type) {
-        return type == MobType.DREAD_BEAST || type == MobType.DREAD_GHOUL;
+        return type == MobType.DREAD_BEAST || type == MobType.DREAD_GHOUL || type == MobType.DREAD_SCUTTLER;
     }
 
     public static boolean animatedMeleeReaches(Vec3d from, EntityLivingBase target) {
@@ -77,8 +79,10 @@ public final class IceAndFireCompatibility {
         return MathHelper.sqrt(x * x + y * y + z * z) < 4.0F;
     }
 
-    public static boolean animatedMeleeUnavailable(EntityCreature mob) {
-        return ANIMATION.get(mob.getClass()).unavailable(mob);
+    public static boolean animatedMeleeUnavailable(MobType type, EntityCreature mob) {
+        // The ground policy cannot predict native wall climbing.
+        return type == MobType.DREAD_SCUTTLER && (mob.collidedHorizontally || mob.isOnLadder())
+                || ANIMATION.get(mob.getClass()).unavailable(mob);
     }
 
     public static boolean isHorseGoal(MobType type, EntityAITaskEntry entry) {

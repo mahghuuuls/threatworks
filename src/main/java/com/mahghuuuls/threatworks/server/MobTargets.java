@@ -180,7 +180,7 @@ final class MobTargets {
     }
 
     static boolean inNativePhase(EntityCreature mob, MobType type) {
-        if (IceAndFireCompatibility.usesAnimatedMelee(type) && IceAndFireCompatibility.animatedMeleeUnavailable(mob)) {
+        if (IceAndFireCompatibility.usesAnimatedMelee(type) && IceAndFireCompatibility.animatedMeleeUnavailable(type, mob)) {
             return true;
         }
         if (mob instanceof EntitySpider && type != MobType.DEFILED_SCUTTLER && mob.getBrightness() >= 0.5F

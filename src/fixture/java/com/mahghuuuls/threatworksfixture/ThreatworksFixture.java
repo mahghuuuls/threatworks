@@ -614,6 +614,8 @@ public final class ThreatworksFixture {
                     });
             event.world.getEntities(EntityCreature.class, mob -> mob.getTags().contains("tw_l_jumping_pursuit"))
                     .forEach(mob -> CoverageFixtureCommand.observeJumpingPursuit((WorldServer) event.world, mob));
+            event.world.getEntities(EntityCreature.class, mob -> mob.getTags().contains(CoverageFixtureCommand.SCUTTLER_WALL_PROBE)).forEach(mob ->
+                    CoverageFixtureCommand.observeScuttlerClimb((WorldServer) event.world, mob));
             event.world.getEntities(EntityCreature.class, mob -> mob.getTags().contains("tw_l_dread_mount_probe"))
                     .forEach(mob -> {
                         Entity mount = mob.getRidingEntity();

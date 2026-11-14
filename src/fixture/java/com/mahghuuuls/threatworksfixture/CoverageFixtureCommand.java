@@ -80,6 +80,8 @@ final class CoverageFixtureCommand extends CommandBase {
     private static final String DREAD_KNIGHT = "iceandfire:dread_knight";
     static final String DREAD_BEAST = "iceandfire:dread_beast";
     static final String DREAD_GHOUL = "iceandfire:dread_ghoul";
+    static final String DREAD_SCUTTLER = "iceandfire:dread_scuttler";
+    static final String SCUTTLER_WALL_PROBE = "tw_l_dread_scuttler_wall";
     private static final int JOLT_FLOOR = 4;
     private static final double Z = 12.5;
     private final ThreatworksFixture fixture;
@@ -421,6 +423,24 @@ final class CoverageFixtureCommand extends CommandBase {
                 ThreatActions.Result inside = actions.taunt(mob, player);
                 LOGGER.info("coverage dreadBeastRange mob={} player={} edge=4.0 edgeSight={} edgeResult={} blockedSight={} blockedResult={} inside={} insideResult={}",
                         mob.getUniqueID(), player.getUniqueID(), edgeSight, edge, blockedSight, blockedBite, mob.getDistance(player), inside);
+                break;
+            case "dread-scuttler-wall":
+                if (!DREAD_SCUTTLER.equals(String.valueOf(EntityList.getKey(mob))) || mob.getAttackTarget() != player) {
+                    throw new CommandException("Expected a tracked Dread Scuttler targeting the player.");
+                }
+                mob.setPosition(X, Y, Z);
+                mob.getNavigator().clearPath();
+                for (BlockPos pos : BlockPos.getAllInBox(new BlockPos(14, Y, 9), new BlockPos(14, Y + 3, 16))) {
+                    world.setBlockState(pos, Blocks.STONE.getDefaultState(), 2);
+                }
+                player.setPosition(X + 2, Y, Z + 5);
+                // Give the mob one horizontal movement toward the wall; its own travel handles contact and climbing.
+                mob.motionX = 1.5;
+                mob.motionY = 0;
+                mob.motionZ = 0;
+                mob.addTag(SCUTTLER_WALL_PROBE);
+                LOGGER.info("coverage dreadScuttlerWall mob={} player={} y={} tick={}",
+                        mob.getUniqueID(), player.getUniqueID(), mob.posY, world.getTotalWorldTime());
                 break;
             case "dread-command":
                 if (guard == null || mob.getAttackTarget() != player) {
@@ -1347,7 +1367,29 @@ final class CoverageFixtureCommand extends CommandBase {
     }
 
     static boolean animatedDread(String id) {
-        return DREAD_BEAST.equals(id) || DREAD_GHOUL.equals(id);
+        return DREAD_BEAST.equals(id) || DREAD_GHOUL.equals(id) || DREAD_SCUTTLER.equals(id);
+    }
+
+    static void observeScuttlerClimb(WorldServer world, EntityCreature mob) {
+        EntityPlayerMP player = get(world, EntityPlayerMP.class, "tw_i_player");
+        EntityIronGolem guard = get(world, EntityIronGolem.class, "tw_i_guard");
+        if (player == null || guard == null) {
+            return;
+        }
+        if (mob.posY <= Y || !mob.isOnLadder() || !mob.collidedHorizontally || mob.motionY <= 0) {
+            // Keep pushing into the wall. All vertical travel is native.
+            mob.motionX = 0.3;
+            return;
+        }
+        mob.removeTag(SCUTTLER_WALL_PROBE);
+        String status = EncounterCoordinator.INSTANCE.inspect(mob, 0).status;
+        ThreatActions.Result taunt = ThreatworksMod.threatActions().taunt(mob, player);
+        EntityLivingBase previous = mob.getAttackTarget();
+        EntityLivingBase requested = previous == guard ? player : guard;
+        mob.setAttackTarget(requested);
+        LOGGER.info("coverage dreadScuttlerClimb mob={} player={} previous={} requested={} tick={} y={} vy={} ladder={} collision={} status={} taunt={} setterAccepted={}",
+                mob.getUniqueID(), player.getUniqueID(), identity(previous), requested.getUniqueID(), world.getTotalWorldTime(),
+                mob.posY, mob.motionY, mob.isOnLadder(), mob.collidedHorizontally, status, taunt, mob.getAttackTarget() == requested);
     }
 
     static void recordDreadAttack(EntityCreature mob, EntityLivingBase victim, String id) {
@@ -1358,7 +1400,7 @@ final class CoverageFixtureCommand extends CommandBase {
             boolean animated = entityClass.getMethod("getAnimation").invoke(mob) == attack;
             Object frame = entityClass.getMethod("getAnimationTick").invoke(mob);
             LOGGER.info("coverage {} mob={} victim={} target={} tick={} {}={} frame={} distance={} visible={}",
-                    ghoul ? "dreadGhoulSlash" : "dreadBeastBite",
+                    ghoul ? "dreadGhoulSlash" : DREAD_SCUTTLER.equals(id) ? "dreadScuttlerBite" : "dreadBeastBite",
                     mob.getUniqueID(), victim.getUniqueID(), ArrowFixtureCommand.identity(mob.getAttackTarget()),
                     mob.world.getTotalWorldTime(), ghoul ? "slash" : "bite", animated, frame,
                     mob.getDistance(victim), mob.canEntityBeSeen(victim));
