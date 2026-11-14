@@ -1433,8 +1433,8 @@ final class CoverageFixtureCommand extends CommandBase {
                 mob.setPosition(X + 0.5, Y, Z + 0.5);
                 player.setPosition(X + 6.5, Y, Z + 0.5);
                 guard.setPosition(X - 5.5, Y, Z + 0.5);
-                for (int height = 0; height < 3; height++) {
-                    world.setBlockState(factionWall.up(height), Blocks.STONE.getDefaultState(), 2);
+                for (BlockPos pos : BlockPos.getAllInBox(factionWall.north(2), factionWall.south(2).up(3))) {
+                    world.setBlockState(pos, Blocks.STONE.getDefaultState(), 2);
                 }
                 break;
             }
@@ -1444,7 +1444,7 @@ final class CoverageFixtureCommand extends CommandBase {
                 }
                 net.minecraft.entity.ai.attributes.IAttributeInstance follow =
                         mob.getEntityAttribute(SharedMonsterAttributes.FOLLOW_RANGE);
-                follow.setBaseValue(7);
+                follow.setBaseValue(8);
                 player.setInvisible(true);
                 LOGGER.info("coverage ancientWarfareSightStimulus mob={} incumbent={} alternative={} tick={}",
                         mob.getUniqueID(), player.getUniqueID(), guard.getUniqueID(), world.getMinecraftServer().getTickCounter());
