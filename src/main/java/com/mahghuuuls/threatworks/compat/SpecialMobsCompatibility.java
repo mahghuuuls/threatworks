@@ -2,10 +2,12 @@ package com.mahghuuuls.threatworks.compat;
 
 import com.mahghuuuls.threatworks.config.ServerTuning.MobType;
 import net.minecraft.entity.EntityCreature;
+import net.minecraft.entity.EntityLiving;
 import net.minecraft.entity.ai.EntityAIAttackMelee;
 import net.minecraft.entity.monster.AbstractSkeleton;
 import net.minecraft.entity.monster.EntityBlaze;
 import net.minecraft.entity.monster.EntityCreeper;
+import net.minecraft.entity.monster.EntityGhast;
 import net.minecraft.entity.monster.EntitySkeleton;
 import net.minecraft.entity.monster.EntitySilverfish;
 import net.minecraft.entity.monster.EntitySpider;
@@ -37,6 +39,9 @@ public final class SpecialMobsCompatibility {
                     Installed.MOD.getVersion(), VARIANT_MINIMUM);
         } else if (Installed.VARIANTS_SUPPORTED && BlazeRange.ACCESS == null) {
             logger.warn("Special Mobs blaze targeting unavailable because its native ranged attack distance could not be bound.");
+        }
+        if (Installed.VARIANTS_SUPPORTED && GhastRange.ACCESS == null) {
+            logger.warn("Special Mobs ghast targeting unavailable because its native ranged attack distance could not be bound.");
         }
     }
 
@@ -110,7 +115,26 @@ public final class SpecialMobsCompatibility {
     }
 
     public static float blazeRange(EntityCreature mob) {
-        BlazeRange access = BlazeRange.ACCESS;
+        return readRange(mob, BlazeRange.ACCESS, "blaze");
+    }
+
+    public static boolean matchesGhast(MobType type, EntityLiving mob) {
+        String name;
+        switch (type) {
+            case SPECIAL_GHAST: name = "Entity_SpecialGhast"; break;
+            case KING_GHAST: name = "EntityKingGhast"; break;
+            case QUEEN_GHAST: name = "EntityQueenGhast"; break;
+            default: return false;
+        }
+        return Installed.VARIANTS_SUPPORTED && mob instanceof EntityGhast
+                && mob.getClass().getName().equals(ENTITY_PACKAGE + "ghast." + name);
+    }
+
+    public static float ghastRange(EntityLiving mob) {
+        return readRange(mob, GhastRange.ACCESS, "ghast");
+    }
+
+    private static float readRange(EntityLiving mob, NativeRange access, String family) {
         if (access == null || access.readFailed) {
             return Float.NaN;
         }
@@ -119,7 +143,7 @@ public final class SpecialMobsCompatibility {
             return Float.isFinite(range) ? range : Float.NaN;
         } catch (ReflectiveOperationException | LinkageError | RuntimeException failure) {
             access.readFailed = true;
-            LOGGER.warn("Disabling Special Mobs blaze targeting because its native range read failed.", failure);
+            LOGGER.warn("Disabling Special Mobs {} targeting because its native range read failed.", family, failure);
             return Float.NaN;
         }
     }
@@ -300,28 +324,38 @@ public final class SpecialMobsCompatibility {
     }
 
     private static final class BlazeRange {
-        private static final BlazeRange ACCESS = Installed.VARIANTS_SUPPORTED ? bind() : null;
+        private static final NativeRange ACCESS = NativeRange.bind("blaze.Entity_SpecialBlaze", EntityBlaze.class);
+    }
+
+    private static final class GhastRange {
+        private static final NativeRange ACCESS = NativeRange.bind("ghast.Entity_SpecialGhast", EntityGhast.class);
+    }
+
+    private static final class NativeRange {
         private final Method specialData;
         private final Field range;
         private boolean readFailed;
 
-        private BlazeRange(Method specialData, Field range) {
+        private NativeRange(Method specialData, Field range) {
             this.specialData = specialData;
             this.range = range;
         }
 
-        private static BlazeRange bind() {
+        private static NativeRange bind(String name, Class<? extends EntityLiving> parent) {
+            if (!Installed.VARIANTS_SUPPORTED) {
+                return null;
+            }
             try {
-                Class<?> blaze = Class.forName(ENTITY_PACKAGE + "blaze.Entity_SpecialBlaze", false,
-                        Loader.instance().getModClassLoader()).asSubclass(EntityBlaze.class);
-                Method specialData = blaze.getMethod("getSpecialData");
+                Class<?> base = Class.forName(ENTITY_PACKAGE + name, false,
+                        Loader.instance().getModClassLoader()).asSubclass(parent);
+                Method specialData = base.getMethod("getSpecialData");
                 Class<?> data = specialData.getReturnType();
                 if (!data.getName().equals(ENTITY_PACKAGE + "SpecialMobData") || Modifier.isStatic(specialData.getModifiers())) {
                     return null;
                 }
                 Field range = data.getField("rangedAttackMaxRange");
                 return range.getType() == float.class && !Modifier.isStatic(range.getModifiers())
-                        ? new BlazeRange(specialData, range) : null;
+                        ? new NativeRange(specialData, range) : null;
             } catch (ReflectiveOperationException | LinkageError | RuntimeException failure) {
                 return null;
             }

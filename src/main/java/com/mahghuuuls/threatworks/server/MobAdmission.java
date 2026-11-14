@@ -14,6 +14,7 @@ import com.mahghuuuls.threatworks.config.ServerTuning;
 import com.mahghuuuls.threatworks.config.ServerTuning.MobType;
 import net.minecraft.entity.EntityCreature;
 import net.minecraft.entity.EntityList;
+import net.minecraft.entity.EntityLiving;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.monster.EntityBlaze;
 import net.minecraft.entity.monster.EntityCaveSpider;
@@ -103,6 +104,19 @@ final class MobAdmission {
             return BLACKLISTED;
         }
         MobType type = TYPES.get(id);
+        if (entity instanceof EntityLiving && GhastMobPolicy.matchesType(type)) {
+            EntityLiving mob = (EntityLiving) entity;
+            if (!GhastMobPolicy.matches(type, mob)) {
+                return UNSUPPORTED_TYPE;
+            }
+            if (tuning == null || !tuning.isEnabled(type)) {
+                return DISABLED;
+            }
+            if (!(mob.world instanceof WorldServer) || !GhastMobPolicy.hasNativeContract(type, mob)) {
+                return UNSUPPORTED_STATE;
+            }
+            return GhastMobPolicy.isNativePhase(mob) ? NATIVE.get(type) : CONTROL.get(type);
+        }
         if (type == null || !(entity instanceof EntityCreature) || !matches(type, (EntityCreature) entity, foliaath)) {
             return UNSUPPORTED_TYPE;
         }

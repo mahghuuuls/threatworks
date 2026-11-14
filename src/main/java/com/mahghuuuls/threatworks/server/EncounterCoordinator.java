@@ -9,7 +9,6 @@ import com.mahghuuuls.threatworks.points.ThreatPoints;
 import com.mahghuuuls.threatworks.threat.Encounter;
 import com.mahghuuuls.threatworks.threat.Encounter.TargetObservation;
 import net.minecraft.entity.Entity;
-import net.minecraft.entity.EntityCreature;
 import net.minecraft.entity.EntityList;
 import net.minecraft.entity.EntityLiving;
 import net.minecraft.entity.EntityLivingBase;
@@ -54,7 +53,7 @@ public final class EncounterCoordinator implements ThreatActions {
     private EncounterCoordinator() {
         for (MobType type : MobType.values()) {
             if (type != MobType.FOLIAATH) {
-                policies.put(type, MobPolicy.builtIn(type));
+                policies.put(type, GhastMobPolicy.matchesType(type) ? new GhastMobPolicy(type) : MobPolicy.builtIn(type));
             }
         }
     }
@@ -205,7 +204,7 @@ public final class EncounterCoordinator implements ThreatActions {
             return;
         }
 
-        EntityCreature mob = (EntityCreature) victim;
+        EntityLiving mob = (EntityLiving) victim;
         WorldServer world = (WorldServer) mob.world;
         WorldEncounters state = worlds.get(world);
         UUID mobId = mob.getUniqueID();
@@ -238,7 +237,7 @@ public final class EncounterCoordinator implements ThreatActions {
         }
     }
 
-    private UUID creditRecipient(WorldServer world, EntityCreature victim, MobType type, DamageAttribution hit,
+    private UUID creditRecipient(WorldServer world, EntityLiving victim, MobType type, DamageAttribution hit,
                                  DamageSource source) {
         EntityLivingBase owner = hit.summonOwner;
         if (owner != null && world.getEntityFromUuid(owner.getUniqueID()) == owner && validParticipant(victim, type, owner)) {
@@ -252,37 +251,39 @@ public final class EncounterCoordinator implements ThreatActions {
         return hit.attacker.getUniqueID();
     }
 
-    private boolean validParticipant(EntityCreature mob, MobType type, EntityLivingBase target) {
+    private boolean validParticipant(EntityLiving mob, MobType type, EntityLivingBase target) {
         return MobTargets.isAttackable(mob, target) && policies.get(type).accepts(mob, target);
     }
 
-    private EntityLivingBase resolve(WorldServer world, EntityCreature mob, MobType type, Entity candidate) {
+    private EntityLivingBase resolve(WorldServer world, EntityLiving mob, MobType type, Entity candidate) {
         return policies.get(type).resolve(world, mob, candidate);
     }
 
-    private TargetObservation observe(WorldServer world, EntityCreature mob, MobType type, Entity candidate,
+    private TargetObservation observe(WorldServer world, EntityLiving mob, MobType type, Entity candidate,
                                       WorkSample sample) {
         return policies.get(type).observe(world, mob, candidate, sample);
     }
 
     public boolean blocksTargetWrite(EntityLiving mob, EntityLivingBase requestedTarget) {
-        if (!(mob instanceof EntityCreature) || !(mob.world instanceof WorldServer)) {
+        if (!(mob.world instanceof WorldServer)) {
             return false;
         }
         TargetWrite write = activeWrite(mob);
         if (write != null) {
             return !write.consume(requestedTarget);
         }
+        if (mob.getAttackTarget() == requestedTarget) {
+            return false;
+        }
         WorldServer world = (WorldServer) mob.world;
         WorldEncounters state = worlds.get(world);
         MobType binding = state == null ? null : state.coverage.get(mob.getUniqueID());
         return binding != null && mob.isEntityAlive()
                 && !state.yielded.contains(mob.getUniqueID()) && !state.rejectedWrites.contains(mob.getUniqueID())
-                && policies.get(binding).controlsImmediately((EntityCreature) mob)
-                && !policies.get(binding).preservesNativeTarget(world, (EntityCreature) mob, mob.getAttackTarget())
-                && state.blocksTargetWrite(mob.getUniqueID(),
-                mob.getAttackTarget() != requestedTarget,
-                target -> resolve(world, (EntityCreature) mob, binding, world.getEntityFromUuid(target)) != null);
+                && policies.get(binding).controlsImmediately(mob)
+                && !policies.get(binding).releasesNativeWrite(world, mob, mob.getAttackTarget())
+                && state.blocksTargetWrite(mob.getUniqueID(), true,
+                target -> resolve(world, mob, binding, world.getEntityFromUuid(target)) != null);
     }
 
     @Override
@@ -295,7 +296,7 @@ public final class EncounterCoordinator implements ThreatActions {
         if (rejected != null) {
             return rejected;
         }
-        if (activeWrite((EntityCreature) victim) != null) {
+        if (activeWrite((EntityLiving) victim) != null) {
             return Result.TARGET_WRITE_IN_PROGRESS;
         }
         WorldServer world = (WorldServer) victim.world;
@@ -330,7 +331,7 @@ public final class EncounterCoordinator implements ThreatActions {
         if (rejected != null) {
             return rejected;
         }
-        EntityCreature mob = (EntityCreature) victim;
+        EntityLiving mob = (EntityLiving) victim;
         if (activeWrite(mob) != null) {
             return Result.TARGET_WRITE_IN_PROGRESS;
         }
@@ -393,7 +394,7 @@ public final class EncounterCoordinator implements ThreatActions {
             return Result.MOB_UNAVAILABLE;
         }
         if (participant == null || world.getEntityFromUuid(participant.getUniqueID()) != participant
-                || !validParticipant((EntityCreature) mob, admission.type, participant)) {
+                || !validParticipant((EntityLiving) mob, admission.type, participant)) {
             return Result.INVALID_PARTICIPANT;
         }
         return null;
@@ -412,7 +413,7 @@ public final class EncounterCoordinator implements ThreatActions {
             return new Inspection(typeId, admission.status(), false, target, null, 0, null,
                     Collections.emptyList(), 0);
         }
-        EntityCreature mob = (EntityCreature) victim;
+        EntityLiving mob = (EntityLiving) victim;
         WorldServer world = (WorldServer) mob.world;
         Encounter encounter = state == null || !mob.isEntityAlive() ? null : state.encounters.get(mob.getUniqueID());
         String phase = assignmentRejected ? "assignment_rejected" : "native_phase";
@@ -461,7 +462,7 @@ public final class EncounterCoordinator implements ThreatActions {
         return report;
     }
 
-    private String eligibility(WorldServer world, EntityCreature mob, MobType type, Encounter encounter,
+    private String eligibility(WorldServer world, EntityLiving mob, MobType type, Encounter encounter,
                                UUID participant, int tick, Map<UUID, TargetObservation> observations) {
         EntityLivingBase candidate = resolve(world, mob, type, world.getEntityFromUuid(participant));
         if (candidate == null) {
@@ -497,10 +498,10 @@ public final class EncounterCoordinator implements ThreatActions {
         WorkSample sample = state.activeSample();
         state.tick(serverTick, (id, encounter) -> {
             Entity entity = world.getEntityFromUuid(id);
-            if (!(entity instanceof EntityCreature) || !entity.isEntityAlive()) {
+            if (!(entity instanceof EntityLiving) || !entity.isEntityAlive()) {
                 return true;
             }
-            EntityCreature mob = (EntityCreature) entity;
+            EntityLiving mob = (EntityLiving) entity;
             MobAdmission admission = admission(mob);
             if (state.rejectedWrites.contains(id) || admission.yieldsToNative()) {
                 yieldToNative(state, id, encounter, serverTick);
@@ -519,7 +520,7 @@ public final class EncounterCoordinator implements ThreatActions {
         targetUpdates.forEach(Runnable::run);
     }
 
-    private void reconcileTarget(WorldServer world, WorldEncounters state, EntityCreature mob, MobType type,
+    private void reconcileTarget(WorldServer world, WorldEncounters state, EntityLiving mob, MobType type,
                                  Encounter encounter, int serverTick, List<Runnable> updates, WorkSample sample) {
         boolean returning = state.yielded.remove(mob.getUniqueID());
         UUID previous = encounter.getTarget();
@@ -550,7 +551,7 @@ public final class EncounterCoordinator implements ThreatActions {
         }
     }
 
-    private void applyTarget(WorldServer world, WorldEncounters state, EntityCreature mob, MobType type,
+    private void applyTarget(WorldServer world, WorldEncounters state, EntityLiving mob, MobType type,
                              Encounter encounter, UUID selected, EntityLivingBase target, EntityLivingBase previous) {
         UUID mobId = mob.getUniqueID();
         if (!currentEncounter(world, state, mob, encounter) || state.yielded.contains(mobId)
@@ -568,13 +569,13 @@ public final class EncounterCoordinator implements ThreatActions {
         }
     }
 
-    private boolean currentEncounter(WorldServer world, WorldEncounters state, EntityCreature mob, Encounter expected) {
+    private boolean currentEncounter(WorldServer world, WorldEncounters state, EntityLiving mob, Encounter expected) {
         UUID id = mob.getUniqueID();
         return worlds.get(world) == state && state.encounters.get(id) == expected && mob.isEntityAlive()
                 && world.getEntityFromUuid(id) == mob;
     }
 
-    private void rejectWrite(WorldServer world, WorldEncounters state, EntityCreature mob, Encounter encounter) {
+    private void rejectWrite(WorldServer world, WorldEncounters state, EntityLiving mob, Encounter encounter) {
         if (currentEncounter(world, state, mob, encounter)) {
             UUID id = mob.getUniqueID();
             state.rejectedWrites.add(id);
@@ -590,7 +591,7 @@ public final class EncounterCoordinator implements ThreatActions {
         encounter.yieldToNative(tick);
     }
 
-    private boolean writeTarget(EntityCreature mob, EntityLivingBase target) {
+    private boolean writeTarget(EntityLiving mob, EntityLivingBase target) {
         if (mob.getAttackTarget() == target) {
             return true;
         }

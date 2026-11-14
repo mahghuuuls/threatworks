@@ -5,49 +5,55 @@ import com.mahghuuuls.threatworks.config.ServerTuning.MobType;
 import com.mahghuuuls.threatworks.threat.Encounter.TargetObservation;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityCreature;
+import net.minecraft.entity.EntityLiving;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.world.WorldServer;
 
 /** Native combat observations used by the coordinator's shared encounter rules. */
 interface MobPolicy {
-    boolean controlsImmediately(EntityCreature mob);
+    boolean controlsImmediately(EntityLiving mob);
 
-    boolean accepts(EntityCreature mob, EntityLivingBase participant);
+    boolean accepts(EntityLiving mob, EntityLivingBase participant);
 
-    EntityLivingBase resolve(WorldServer world, EntityCreature mob, Entity candidate);
+    EntityLivingBase resolve(WorldServer world, EntityLiving mob, Entity candidate);
 
-    TargetObservation observe(WorldServer world, EntityCreature mob, Entity candidate, WorkSample sample);
+    TargetObservation observe(WorldServer world, EntityLiving mob, Entity candidate, WorkSample sample);
 
     /** Lets native combat keep an otherwise legal target when there is no eligible replacement. */
-    default boolean preservesNativeTarget(WorldServer world, EntityCreature mob, EntityLivingBase target) {
+    default boolean preservesNativeTarget(WorldServer world, EntityLiving mob, EntityLivingBase target) {
         return false;
+    }
+
+    /** Checks state needed by the setter without recomputing a path or projectile lane. */
+    default boolean releasesNativeWrite(WorldServer world, EntityLiving mob, EntityLivingBase target) {
+        return preservesNativeTarget(world, mob, target);
     }
 
     static MobPolicy builtIn(MobType type) {
         return new MobPolicy() {
             @Override
-            public boolean controlsImmediately(EntityCreature mob) {
-                return MobTargets.canControlImmediately(mob, type);
+            public boolean controlsImmediately(EntityLiving mob) {
+                return MobTargets.canControlImmediately((EntityCreature) mob, type);
             }
 
             @Override
-            public boolean accepts(EntityCreature mob, EntityLivingBase participant) {
-                return MobTargets.providerAccepts(type, mob, participant);
+            public boolean accepts(EntityLiving mob, EntityLivingBase participant) {
+                return MobTargets.providerAccepts(type, (EntityCreature) mob, participant);
             }
 
             @Override
-            public EntityLivingBase resolve(WorldServer world, EntityCreature mob, Entity candidate) {
-                return MobTargets.resolve(world, mob, candidate, type);
+            public EntityLivingBase resolve(WorldServer world, EntityLiving mob, Entity candidate) {
+                return MobTargets.resolve(world, (EntityCreature) mob, candidate, type);
             }
 
             @Override
-            public TargetObservation observe(WorldServer world, EntityCreature mob, Entity candidate, WorkSample sample) {
-                return MobTargets.observe(world, mob, candidate, sample, type);
+            public TargetObservation observe(WorldServer world, EntityLiving mob, Entity candidate, WorkSample sample) {
+                return MobTargets.observe(world, (EntityCreature) mob, candidate, sample, type);
             }
 
             @Override
-            public boolean preservesNativeTarget(WorldServer world, EntityCreature mob, EntityLivingBase target) {
-                return MobTargets.preservesNativeTarget(world, mob, target, type);
+            public boolean preservesNativeTarget(WorldServer world, EntityLiving mob, EntityLivingBase target) {
+                return MobTargets.preservesNativeTarget(world, (EntityCreature) mob, target, type);
             }
         };
     }
@@ -55,23 +61,23 @@ interface MobPolicy {
     static MobPolicy stationary(FoliaathCompatibility adapter) {
         return new MobPolicy() {
             @Override
-            public boolean controlsImmediately(EntityCreature mob) {
-                return adapter.phase(mob) == FoliaathCompatibility.Phase.CONTROL;
+            public boolean controlsImmediately(EntityLiving mob) {
+                return adapter.phase((EntityCreature) mob) == FoliaathCompatibility.Phase.CONTROL;
             }
 
             @Override
-            public boolean accepts(EntityCreature mob, EntityLivingBase participant) {
+            public boolean accepts(EntityLiving mob, EntityLivingBase participant) {
                 return adapter.accepts(participant);
             }
 
             @Override
-            public EntityLivingBase resolve(WorldServer world, EntityCreature mob, Entity candidate) {
-                return MobTargets.resolveStationary(world, mob, candidate, adapter);
+            public EntityLivingBase resolve(WorldServer world, EntityLiving mob, Entity candidate) {
+                return MobTargets.resolveStationary(world, (EntityCreature) mob, candidate, adapter);
             }
 
             @Override
-            public TargetObservation observe(WorldServer world, EntityCreature mob, Entity candidate, WorkSample sample) {
-                return MobTargets.observeStationary(world, mob, candidate, adapter);
+            public TargetObservation observe(WorldServer world, EntityLiving mob, Entity candidate, WorkSample sample) {
+                return MobTargets.observeStationary(world, (EntityCreature) mob, candidate, adapter);
             }
         };
     }

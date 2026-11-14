@@ -15,6 +15,7 @@ import net.minecraft.entity.EntityCreature;
 import net.minecraft.entity.item.EntityItem;
 import net.minecraft.entity.item.EntityTNTPrimed;
 import net.minecraft.entity.EntityList;
+import net.minecraft.entity.EntityLiving;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.ai.EntityAIAvoidEntity;
 import net.minecraft.entity.ai.EntityAILeapAtTarget;
@@ -25,6 +26,7 @@ import net.minecraft.entity.monster.EntityIronGolem;
 import net.minecraft.entity.monster.AbstractSkeleton;
 import net.minecraft.entity.monster.EntityBlaze;
 import net.minecraft.entity.monster.EntityCreeper;
+import net.minecraft.entity.monster.EntityGhast;
 import net.minecraft.entity.monster.EntitySkeleton;
 import net.minecraft.entity.monster.EntitySpider;
 import net.minecraft.entity.monster.EntityZombie;
@@ -207,6 +209,10 @@ final class CoverageFixtureCommand extends CommandBase {
             }
         }
         Entity entity = EntityList.createEntityByIDFromName(new ResourceLocation(id), world);
+        if (entity instanceof EntityGhast) {
+            seedGhast(world, (EntityGhast) entity, id, height);
+            return;
+        }
         if (!(entity instanceof EntityCreature)) {
             throw new CommandException("Unknown coverage fixture mob " + id);
         }
@@ -227,6 +233,31 @@ final class CoverageFixtureCommand extends CommandBase {
             dreadState(mob, "seed");
         }
         actors(world, mob, solo);
+    }
+
+    private static void seedGhast(WorldServer world, EntityGhast ghast, String id, int height) throws CommandException {
+        double altitude = height + 10;
+        ghast.setPosition(X, altitude, Z);
+        ghast.onInitialSpawn(world.getDifficultyForLocation(ghast.getPosition()), null);
+        ghast.enablePersistence();
+        ghast.getEntityAttribute(SharedMonsterAttributes.MAX_HEALTH).setBaseValue(80);
+        ghast.setHealth(80);
+        EntityPlayerMP incumbent = fixturePlayer(world, id, "GhastIncumbent");
+        EntityPlayerMP challenger = fixturePlayer(world, id, "GhastChallenger");
+        incumbent.addTag("tw_l_tick_hurt_window");
+        challenger.addTag("tw_l_tick_hurt_window");
+        incumbent.setNoGravity(true);
+        challenger.setNoGravity(true);
+        challenger.capabilities.disableDamage = true;
+        place(world, incumbent, "tw_i_guard", X + 9, altitude + 0.5, Z);
+        place(world, challenger, "tw_i_player", X - 9, altitude + 0.5, Z);
+        if ("minecraft:ghast".equals(id)) {
+            ghast.getEntityData().setBoolean("SpecialMobsInit", true);
+        }
+        place(world, ghast, "tw_i_mob", X, altitude, Z);
+        LOGGER.info("coverage actors mob={} player={} guard={}", ghast.getUniqueID(),
+                challenger.getUniqueID(), incumbent.getUniqueID());
+        report(ghast, world);
     }
 
     private static void natural(WorldServer world, boolean skeleton) throws CommandException {
@@ -431,13 +462,18 @@ final class CoverageFixtureCommand extends CommandBase {
     }
 
     private void act(WorldServer world, String operation) throws CommandException {
-        EntityCreature mob = get(world, EntityCreature.class, "tw_i_mob");
+        EntityLiving living = get(world, EntityLiving.class, "tw_i_mob");
         EntityPlayerMP player = get(world, EntityPlayerMP.class, "tw_i_player");
         EntityLivingBase guard = get(world, EntityLivingBase.class, "tw_i_guard");
-        if (mob == null || player == null) {
-            throw new CommandException("Coverage actors are missing (mob=" + (mob != null)
+        if (living == null || player == null) {
+            throw new CommandException("Coverage actors are missing (mob=" + (living != null)
                     + ", player=" + (player != null) + ", guard=" + (guard != null) + ").");
         }
+        if (living instanceof EntityGhast) {
+            actGhast(world, (EntityGhast) living, player, guard, operation);
+            return;
+        }
+        EntityCreature mob = (EntityCreature) living;
         ThreatActions actions = ThreatworksMod.threatActions();
         switch (operation) {
             case "read":
@@ -1845,7 +1881,7 @@ final class CoverageFixtureCommand extends CommandBase {
         player.hurtResistantTime = 0;
     }
 
-    static void attack(EntityCreature mob, EntityPlayerMP player, String operation) {
+    static void attack(EntityLiving mob, EntityPlayerMP player, String operation) {
         if ("da:ancient_knight_rapier".equals(String.valueOf(EntityList.getKey(mob)))) {
             // Approach from behind the provider's directional parry when measuring a health-losing opening.
             double yaw = Math.toRadians(mob.rotationYaw);
@@ -1865,7 +1901,79 @@ final class CoverageFixtureCommand extends CommandBase {
                 operation, player.getUniqueID(), mob.getUniqueID(), hp, mob.getHealth(), absorption, mob.getAbsorptionAmount());
     }
 
-    static void report(EntityCreature mob, WorldServer world) {
+    private static void actGhast(WorldServer world, EntityGhast mob, EntityPlayerMP player,
+                                  EntityLivingBase guard, String operation) throws CommandException {
+        if (guard == null) {
+            throw new CommandException("Expected the ghast's player incumbent.");
+        }
+        if ("ghast-second-lane".equals(operation) || "ghast-opening".equals(operation)) {
+            if (mob.getAttackTarget() != guard) {
+                throw new CommandException("Expected native player acquisition before changing the ghast's target.");
+            }
+            restorePlayer(player);
+            if ("ghast-opening".equals(operation)) {
+                attack(mob, player, "ghast");
+                double spacing = Math.max(9.0, mob.width + 2.0);
+                guard.setPosition(mob.posX + spacing, mob.posY + 0.5, mob.posZ);
+                player.setPosition(mob.posX - spacing, mob.posY + 0.5, mob.posZ);
+            } else {
+                player.setPosition(mob.posX - 9, mob.posY + 0.5, mob.posZ);
+                mob.setAttackTarget(player);
+                if (mob.getAttackTarget() != player) {
+                    throw new CommandException("The ghast's native setter rejected the second player.");
+                }
+            }
+        } else if ("ghast-geometry".equals(operation)) {
+            if (mob.getAttackTarget() != player) {
+                throw new CommandException("Expected the ghast's selected challenger.");
+            }
+            ThreatActions actions = ThreatworksMod.threatActions();
+            Vec3d former = guard.getPositionVector();
+            guard.setPosition(mob.posX + mob.width - 0.5, mob.posY, mob.posZ);
+            ThreatActions.Result tooClose = actions.taunt(mob, guard);
+            guard.setPosition(mob.posX + 9, mob.posY + 0.5, mob.posZ);
+            BlockPos wall = new BlockPos(mob.posX + 5, mob.posY, mob.posZ);
+            for (BlockPos pos : BlockPos.getAllInBox(wall.add(0, -4, -2), wall.add(0, 6, 2))) {
+                world.setBlockState(pos, Blocks.OBSIDIAN.getDefaultState(), 2);
+            }
+            ThreatActions.Result blocked = actions.taunt(mob, guard);
+            for (BlockPos pos : BlockPos.getAllInBox(wall.add(0, -4, -2), wall.add(0, 6, 2))) {
+                world.setBlockToAir(pos);
+            }
+            // Separate the eye ray and the downward fireball lane at the same wall plane.
+            mob.setPosition(Math.floor(mob.posX) + 0.5, Math.floor(mob.posY), Math.floor(mob.posZ) + 0.5);
+            guard.setPosition(mob.posX + 9, mob.posY - 2, mob.posZ);
+            BlockPos projectileBlock = new BlockPos(mob.posX + 7, mob.posY - 1, mob.posZ);
+            world.setBlockState(projectileBlock, Blocks.OBSIDIAN.getDefaultState(), 2);
+            Vec3d eye = mob.getPositionVector().add(0, mob.getEyeHeight(), 0);
+            Vec3d guardEye = guard.getPositionVector().add(0, guard.getEyeHeight(), 0);
+            boolean seesEye = world.rayTraceBlocks(eye, guardEye, false, true, false) == null;
+            ThreatActions.Result projectileBlocked = actions.taunt(mob, guard);
+            world.setBlockToAir(projectileBlock);
+            LOGGER.info("coverage ghastGeometry mob={} guard={} tooClose={} blocked={} eyeClear={} projectileBlocked={} clear={}",
+                    mob.getUniqueID(), guard.getUniqueID(), tooClose, blocked, seesEye, projectileBlocked,
+                    actions.taunt(mob, guard));
+            guard.setPosition(former.x, former.y, former.z);
+        } else if ("ghast-modified".equals(operation)) {
+            if (mob.getAttackTarget() != player) {
+                throw new CommandException("Expected the ghast's selected challenger.");
+            }
+            EntityAITaskEntry selector = mob.targetTasks.taskEntries.iterator().next();
+            selector.action.setMutexBits(1);
+            LOGGER.info("coverage ghastModified mob={} guard={} newMutex={} taunt={}",
+                    mob.getUniqueID(), guard.getUniqueID(), selector.action.getMutexBits(),
+                    ThreatworksMod.threatActions().taunt(mob, player));
+            mob.setAttackTarget(guard);
+            if (mob.getAttackTarget() != guard) {
+                throw new CommandException("The modified ghast did not accept its native target.");
+            }
+        } else if (!"read".equals(operation)) {
+            throw new CommandException("Unsupported ghast fixture operation.");
+        }
+        report(mob, world);
+    }
+
+    static void report(EntityLiving mob, WorldServer world) {
         Inspection view = EncounterCoordinator.INSTANCE.inspect(mob, 16);
         EntityLivingBase guard = get(world, EntityLivingBase.class, "tw_i_guard");
         EntityLivingBase player = get(world, EntityPlayerMP.class, "tw_i_player");
