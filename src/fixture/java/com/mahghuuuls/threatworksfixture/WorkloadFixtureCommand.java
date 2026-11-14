@@ -96,7 +96,8 @@ final class WorkloadFixtureCommand extends CommandBase {
                 EncounterCoordinator.Inspection view = EncounterCoordinator.INSTANCE.inspect(mob, 8);
                 if (mob.getAttackTarget() != guard(world, 0, 0) || !view.participants.stream()
                         .anyMatch(p -> p.id.equals(challenger.getUniqueID())
-                                && p.score == 125 && "eligible".equals(p.eligibility))) {
+                                && p.score == 125)
+                        || !WorkloadEligibility.observesEligible(world, mob, challenger, MobType.ZOMBIE)) {
                     throw new CommandException("Expected an eligible challenger still behind the chase threshold.");
                 }
                 LOGGER.info("work_move_ready mob={} challenger={} score=125 eligibility=eligible",
