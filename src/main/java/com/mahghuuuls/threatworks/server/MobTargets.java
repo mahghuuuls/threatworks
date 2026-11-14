@@ -511,7 +511,9 @@ final class MobTargets {
                 return TargetObservation.INELIGIBLE;
             }
             if (sightLost) {
-                return TargetObservation.obscured(!AncientWarfareCompatibility.isArcher(type));
+                return AncientWarfareCompatibility.withinVisibleDetectionRange(mob, target)
+                        ? TargetObservation.obscured(!AncientWarfareCompatibility.isArcher(type))
+                        : TargetObservation.INELIGIBLE;
             }
             if (!AncientWarfareCompatibility.canTarget(mob, target)) {
                 return TargetObservation.INELIGIBLE;

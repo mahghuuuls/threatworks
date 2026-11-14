@@ -27,6 +27,7 @@ public final class AncientWarfareCompatibility {
     private static final String AI = NPC + "ai.";
     private static final String MELEE = AI + "NpcAIAttackMeleeLongRange";
     private static final String ARCHERY = AI + "faction.NpcAIFactionRangedAttack";
+    private static final String CORE_CONFIG = "net.shadowmage.ancientwarfare.core.config.AWCoreStatics";
     private static final String MINIMUM = "1.12.2-2.9.20";
 
     private AncientWarfareCompatibility() {
@@ -40,7 +41,8 @@ public final class AncientWarfareCompatibility {
             logger.warn("Ancient Warfare targeting unavailable for version {}. Update to at least {}.",
                     Installed.MOD.getVersion(), MINIMUM);
         } else if (Installed.HOSTILE == null || Installed.CAN_TARGET == null || Installed.SLEEPING == null
-                || Installed.FOLLOWING == null || Installed.MELEE_REACH == null || Installed.ARROW_RANGE == null) {
+                || Installed.FOLLOWING == null || Installed.MELEE_REACH == null || Installed.ARROW_RANGE == null
+                || Installed.INVISIBILITY_PENALTY == null || Installed.SNEAKING_PENALTY == null) {
             logger.warn("Some Ancient Warfare targeting is unavailable because its native combat contract could not be bound.");
         }
     }
@@ -75,6 +77,7 @@ public final class AncientWarfareCompatibility {
     public static boolean matches(MobType type, EntityCreature mob) {
         return isSupportedType(type) && Installed.HOSTILE != null && Installed.CAN_TARGET != null
                 && Installed.SLEEPING != null && Installed.FOLLOWING != null
+                && Installed.INVISIBILITY_PENALTY != null && Installed.SNEAKING_PENALTY != null
                 && (isArcher(type) ? Installed.ARROW_RANGE != null : Installed.MELEE_REACH != null)
                 && mob.getClass().getName().equals(FACTION + role(type));
     }
@@ -122,6 +125,22 @@ public final class AncientWarfareCompatibility {
 
     public static boolean canTarget(EntityCreature mob, EntityLivingBase target) {
         return test(Installed.CAN_TARGET, mob, target);
+    }
+
+    public static boolean withinVisibleDetectionRange(EntityCreature mob, EntityLivingBase target) {
+        double range = mob.getEntityAttribute(SharedMonsterAttributes.FOLLOW_RANGE).getAttributeValue();
+        // Preserve the provider's independent detection penalties during our incumbent sight grace.
+        try {
+            if (target.isInvisible()) {
+                range *= (float) Installed.INVISIBILITY_PENALTY.invokeExact();
+            }
+            if (target.isSneaking()) {
+                range *= (float) Installed.SNEAKING_PENALTY.invokeExact();
+            }
+            return mob.getDistance(target) <= range;
+        } catch (Throwable failure) {
+            return false;
+        }
     }
 
     private static boolean test(MethodHandle method, EntityCreature mob, Entity target) {
@@ -172,6 +191,21 @@ public final class AncientWarfareCompatibility {
         private static final MethodHandle FOLLOWING = method("getFollowingEntity", EntityLivingBase.class);
         private static final MethodHandle MELEE_REACH = field(MELEE, "attackReach", float.class);
         private static final MethodHandle ARROW_RANGE = field(ARCHERY, "attackDistanceSq", int.class);
+
+        private static final MethodHandle INVISIBILITY_PENALTY = detectionPenalty("invisibilityFollowRangePenalty");
+        private static final MethodHandle SNEAKING_PENALTY = detectionPenalty("sneakingFollowRangePenalty");
+
+        private static MethodHandle detectionPenalty(String name) {
+            if (!SUPPORTED) {
+                return null;
+            }
+            try {
+                Class<?> owner = Class.forName(CORE_CONFIG, false, Loader.instance().getModClassLoader());
+                return MethodHandles.publicLookup().findStaticGetter(owner, name, float.class);
+            } catch (ReflectiveOperationException | LinkageError | RuntimeException failure) {
+                return null;
+            }
+        }
 
         private static MethodHandle method(String name, Class<?> result, Class<?>... arguments) {
             if (!SUPPORTED) {

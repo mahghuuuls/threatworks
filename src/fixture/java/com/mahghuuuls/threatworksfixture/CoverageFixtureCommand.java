@@ -1424,6 +1424,32 @@ final class CoverageFixtureCommand extends CommandBase {
                 }
                 break;
             }
+            case "ancient-warfare-sight-penalties": {
+                if (!String.valueOf(EntityList.getKey(mob)).startsWith("ancientwarfarenpc:faction.archer")
+                        || mob.getAttackTarget() != player || guard == null) {
+                    throw new CommandException("Expected a tracked faction archer and two hostile players.");
+                }
+                BlockPos wall = new BlockPos(X + 3, Y, Z);
+                mob.setPosition(X + 0.5, Y, Z + 0.5);
+                player.setPosition(X + 6.5, Y, Z + 0.5);
+                guard.setPosition(X - 5.5, Y, Z + 0.5);
+                for (int height = 0; height < 3; height++) {
+                    world.setBlockState(wall.up(height), Blocks.STONE.getDefaultState(), 2);
+                }
+                break;
+            }
+            case "ancient-warfare-sight-penalty-on": {
+                if (mob.getAttackTarget() != player || guard == null) {
+                    throw new CommandException("Expected the obscured incumbent before testing invisibility.");
+                }
+                net.minecraft.entity.ai.attributes.IAttributeInstance follow =
+                        mob.getEntityAttribute(SharedMonsterAttributes.FOLLOW_RANGE);
+                follow.setBaseValue(7);
+                player.setInvisible(true);
+                LOGGER.info("coverage ancientWarfareSightStimulus mob={} incumbent={} alternative={} tick={}",
+                        mob.getUniqueID(), player.getUniqueID(), guard.getUniqueID(), world.getMinecraftServer().getTickCounter());
+                break;
+            }
             case "ancient-warfare-archer-home": {
                 if (!String.valueOf(EntityList.getKey(mob)).startsWith("ancientwarfarenpc:faction.archer") || guard == null) {
                     throw new CommandException("Expected a native faction archer with two player targets.");
