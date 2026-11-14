@@ -4,6 +4,7 @@ import com.mahghuuuls.threatworks.threat.Encounter.TargetObservation;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.monster.EntityWitch;
 import net.minecraft.network.datasync.DataParameter;
+import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.EnumDifficulty;
 import net.minecraftforge.fml.relauncher.ReflectionHelper;
@@ -31,9 +32,12 @@ final class WitchCombat {
             return TargetObservation.obscured(false);
         }
         Vec3d from = witch.getPositionVector().add(0.0, witch.getEyeHeight() - 0.1, 0.0);
-        Vec3d to = target.getPositionVector().add(0.0, target.getEyeHeight() - 1.1, 0.0);
-        Vec3d apex = from.add(to).scale(0.5).add(0.0, 0.25, 0.0);
-        return terrain.clearLine(from, apex) && terrain.clearLine(apex, to)
+        Vec3d to = target.getPositionVector().add(0.0, target.getEyeHeight() - 0.8, 0.0);
+        Vec3d travel = to.subtract(from);
+        // Admit only roomy lanes for the native arc and spread. The exact throw is chosen by vanilla.
+        AxisAlignedBB corridor = new AxisAlignedBB(from.x - 0.35, from.y - 0.4, from.z - 0.35,
+                from.x + 0.35, from.y + 1.5, from.z + 0.35);
+        return terrain.clearFlight(corridor, travel)
                 ? TargetObservation.IN_REACH : TargetObservation.INELIGIBLE;
     }
 

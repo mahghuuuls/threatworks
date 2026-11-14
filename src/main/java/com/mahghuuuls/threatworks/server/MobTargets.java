@@ -129,6 +129,8 @@ final class MobTargets {
                 matchesAttack = UnseenDungeonCompatibility.isAttackGoal(type, goal);
             } else if (cqrGroundMelee) {
                 matchesAttack = ChocolateQuestCompatibility.isAttackGoal(goal);
+            } else if (GroundMeleeCompatibility.usesMocDarkMelee(type)) {
+                matchesAttack = GroundMeleeCompatibility.isMocDarkMeleeGoal(type, goal);
             }
             if (matchesAttack) {
                 int mutex = entry.action.getMutexBits();
@@ -150,11 +152,14 @@ final class MobTargets {
                     }
                     fishGoals |= fishGoal;
                 } else if (SpecialAiCompatibility.hasUnknownCombatGoal(entry)
+                        || mob instanceof EntityWitch && SpecialAiCompatibility.hasUnknownWitchRider(entry)
                         || rejectEliteGoals && SpecialAiCompatibility.isEliteGoal(entry)
                         || FishUndeadRisingCompatibility.usesWildAnimalMelee(type)
                         && SpecialAiCompatibility.hasUnknownBreedingItemGoal(entry)
                         || !SpecialAiCompatibility.isCombatReaction(entry)
                         && !GroundMeleeCompatibility.isLightAvoidance(type, entry)
+                        && !GroundMeleeCompatibility.isMocScorpionLeap(type, entry)
+                        && !GroundMeleeCompatibility.isMocWander(type, entry)
                         && !GaiaCompatibility.isAntWander(type, entry)
                         && !GaiaCompatibility.isFleeSun(type, entry)
                         && !IceAndFireCompatibility.isHorseGoal(type, entry)
@@ -194,7 +199,8 @@ final class MobTargets {
     }
 
     private static boolean hasSupportedState(EntityCreature mob, MobType type) {
-        Class<?> navigator = mob instanceof EntitySpider ? PathNavigateClimber.class : PathNavigateGround.class;
+        Class<?> navigator = mob instanceof EntitySpider || GroundMeleeCompatibility.usesClimbingNavigator(type)
+                ? PathNavigateClimber.class : PathNavigateGround.class;
         boolean unseen = UnseenDungeonCompatibility.isSupportedType(type);
         return !mob.isAIDisabled() && !mob.tasks.isControlFlagDisabled(1) && !mob.tasks.isControlFlagDisabled(2)
                 && (unseen ? UnseenDungeonCompatibility.hasNavigator(mob) && UnseenDungeonCompatibility.hasHostileRole(type, mob)
@@ -263,6 +269,9 @@ final class MobTargets {
             if (entry.using && (SpecialAiCompatibility.isCombatReaction(entry)
                     || mob instanceof EntityWitch && SpecialAiCompatibility.isWitchRider(entry)
                     || GroundMeleeCompatibility.isLightAvoidance(type, entry)
+                    || GroundMeleeCompatibility.isMocScorpionLeap(type, entry)
+                    || entry.priority == GroundMeleeCompatibility.meleePriority(type)
+                    && GroundMeleeCompatibility.isMocWander(type, entry)
                     || FishUndeadRisingCompatibility.nativeGoal(type, entry) != 0
                     || FishUndeadRisingCompatibility.usesWildAnimalMelee(type) && SpecialAiCompatibility.isBreedingItemGoal(entry)
                     || SpecialAiCompatibility.isBlockGriefing(entry)
@@ -563,7 +572,8 @@ final class MobTargets {
             return IceAndFireCompatibility.animatedMeleeReaches(from, target);
         }
         float reach = mob.width * 2.0F;
-        float reachSquared = mob instanceof EntitySpider ? 4.0F : reach * reach;
+        float reachSquared = mob instanceof EntitySpider || GroundMeleeCompatibility.usesClimbingNavigator(type)
+                ? 4.0F : reach * reach;
         return from.squareDistanceTo(target.posX, target.getEntityBoundingBox().minY, target.posZ)
                 <= reachSquared + target.width;
     }

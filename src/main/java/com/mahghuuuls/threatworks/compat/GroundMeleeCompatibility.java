@@ -3,6 +3,7 @@ package com.mahghuuuls.threatworks.compat;
 import com.mahghuuuls.threatworks.config.ServerTuning.MobType;
 import net.minecraft.entity.EntityCreature;
 import net.minecraft.entity.ai.EntityAIFleeSun;
+import net.minecraft.entity.ai.EntityAILeapAtTarget;
 import net.minecraft.entity.ai.EntityAITasks.EntityAITaskEntry;
 import net.minecraftforge.fml.common.Loader;
 import net.minecraftforge.fml.common.ModContainer;
@@ -22,6 +23,7 @@ import java.util.Set;
 public final class GroundMeleeCompatibility {
     private static final Map<MobType, Binding> BINDINGS = new EnumMap<>(MobType.class);
     private static final Logger LOGGER = LogManager.getLogger("threatworks");
+    private static final String MOC_HOSTILE = "drzhark.mocreatures.entity.hostile.MoCEntity";
     private static MethodHandle horseIsFlyer;
     private static MethodHandle horseIsTamed;
 
@@ -40,6 +42,14 @@ public final class GroundMeleeCompatibility {
         bind(unsupported, MobType.PVJ_SHADE, "pvj", "1.6.4", "vibrantjourneys.entities.monster.EntityShade", 2);
         bind(unsupported, MobType.CHARM_SPECTRE, "charm", "1.4", "svenhjol.charm.world.entity.EntitySpectre", 2);
         bind(unsupported, MobType.MOC_HORSE_MOB, "mocreatures", "12.5.1", "drzhark.mocreatures.entity.hostile.MoCEntityHorseMob", 2);
+        bind(unsupported, MobType.MOC_CAVE_SCORPION, "mocreatures", "12.5.1", MOC_HOSTILE + "CaveScorpion", 4);
+        bind(unsupported, MobType.MOC_DIRT_SCORPION, "mocreatures", "12.5.1", MOC_HOSTILE + "DirtScorpion", 4);
+        bind(unsupported, MobType.MOC_FIRE_SCORPION, "mocreatures", "12.5.1", MOC_HOSTILE + "FireScorpion", 4);
+        bind(unsupported, MobType.MOC_FROST_SCORPION, "mocreatures", "12.5.1", MOC_HOSTILE + "FrostScorpion", 4);
+        bind(unsupported, MobType.MOC_UNDEAD_SCORPION, "mocreatures", "12.5.1", MOC_HOSTILE + "UndeadScorpion", 4);
+        bind(unsupported, MobType.MOC_RAT, "mocreatures", "12.5.1", MOC_HOSTILE + "Rat", 2);
+        bind(unsupported, MobType.MOC_HELL_RAT, "mocreatures", "12.5.1", MOC_HOSTILE + "HellRat", 2);
+        bind(unsupported, MobType.MOC_SILVER_SKELETON, "mocreatures", "12.5.1", MOC_HOSTILE + "SilverSkeleton", 2);
         bindHorseGroundState();
         String quark = "vazkii.quark.world.entity.Entity";
         bind(unsupported, MobType.QUARK_ASHEN, "quark", "r1.6-192", quark + "Ashen", 4);
@@ -111,7 +121,7 @@ public final class GroundMeleeCompatibility {
     public static boolean requiresNonEliteCombat(MobType type) {
         return isQuarkSkeleton(type) || type == MobType.QUARK_DWELLER || type == MobType.QUARK_WRAITH
                 || type == MobType.ILLAGERS_FURANTUR || type == MobType.GAIA_MITE || isLightAvoiding(type)
-                || type == MobType.CHARM_SPECTRE || type == MobType.MOC_HORSE_MOB;
+                || type == MobType.CHARM_SPECTRE || type == MobType.MOC_HORSE_MOB || usesMocDarkMelee(type);
     }
 
     private static boolean isLightAvoiding(MobType type) {
@@ -124,9 +134,43 @@ public final class GroundMeleeCompatibility {
                 || entry.priority == 3 && entry.action.getClass() == EntityAIFleeSun.class);
     }
 
+    private static boolean isMocScorpion(MobType type) {
+        return type == MobType.MOC_CAVE_SCORPION || type == MobType.MOC_DIRT_SCORPION || type == MobType.MOC_FIRE_SCORPION
+                || type == MobType.MOC_FROST_SCORPION || type == MobType.MOC_UNDEAD_SCORPION;
+    }
+
+    public static boolean usesClimbingNavigator(MobType type) {
+        return isMocScorpion(type) || type == MobType.MOC_RAT || type == MobType.MOC_HELL_RAT;
+    }
+
+    public static boolean usesMocDarkMelee(MobType type) {
+        return usesClimbingNavigator(type) || type == MobType.MOC_SILVER_SKELETON;
+    }
+
+    public static boolean isMocDarkMeleeGoal(MobType type, Class<?> goal) {
+        if (!usesMocDarkMelee(type)) {
+            return false;
+        }
+        String name = isMocScorpion(type) ? "Scorpion$AIScorpionAttack"
+                : usesClimbingNavigator(type) ? "Rat$AIRatAttack" : "SilverSkeleton$AISkeletonAttack";
+        return goal.getName().equals(MOC_HOSTILE + name);
+    }
+
+    public static boolean isMocScorpionLeap(MobType type, EntityAITaskEntry entry) {
+        return isMocScorpion(type) && entry.priority == 3 && entry.action.getMutexBits() == 5
+                && entry.action.getClass() == EntityAILeapAtTarget.class;
+    }
+
+    public static boolean isMocWander(MobType type, EntityAITaskEntry entry) {
+        return usesMocDarkMelee(type) && entry.priority == 4 && entry.action.getMutexBits() == 1
+                && entry.action.getClass().getName().equals("drzhark.mocreatures.entity.ai.EntityAIWanderMoC2");
+    }
+
     public static boolean nativePhase(MobType type, EntityCreature mob) {
         return BINDINGS.containsKey(type) && (mob.isRiding() || mob.isBeingRidden() || mob.isInWater() || mob.isInLava()
                 || isLightAvoiding(type) && mob.isBurning()
+                || usesMocDarkMelee(type) && mob.getBrightness() >= 0.5F
+                || usesClimbingNavigator(type) && mob.isOnLadder()
                 || type == MobType.MOC_HORSE_MOB && horseUsesNativeControl(mob)
                 || type == MobType.STYGIAN_WATCHLING && mob.isChild()
                 || (type == MobType.STYGIAN_GLUTTERMITE || type == MobType.STYGIAN_ENDERMITE

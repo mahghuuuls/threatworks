@@ -377,8 +377,9 @@ final class CoverageFixtureCommand extends CommandBase {
         String id = String.valueOf(EntityList.getKey(mob));
         boolean cqrGoblinFaction = isCqrGoblinFaction(mob);
         boolean spectre = "charm:spectre".equals(id);
+        boolean mocDarkMelee = id.startsWith("mocreatures:") && !"mocreatures:horsemob".equals(id);
         boolean twoPlayers = cqrGoblinFaction || "cqrepoured:gremlin".equals(id) || spectre
-                || mob instanceof net.minecraft.entity.monster.EntityWitch;
+                || mob instanceof net.minecraft.entity.monster.EntityWitch || mocDarkMelee;
         if (!solo && twoPlayers) {
             EntityPlayerMP incumbent = fixturePlayer(world, id, "MeleeIncumbent");
             if (cqrGoblinFaction) {
@@ -1038,6 +1039,13 @@ final class CoverageFixtureCommand extends CommandBase {
                 player.setPosition(mob.posX - 3.5, mob.posY, mob.posZ);
                 guard.setPosition(mob.posX + 3.2, mob.posY, mob.posZ);
                 break;
+            case "moc-incumbent-opening":
+                if (!(guard instanceof EntityPlayerMP) || mob.getAttackTarget() != guard) {
+                    throw new CommandException("Expected a native incumbent for a Mo' Creatures melee fight.");
+                }
+                attack(mob, (EntityPlayerMP) guard, "moc-incumbent");
+                guard.setPosition(mob.posX + 2, mob.posY, mob.posZ);
+                break;
             case "moc-flying-handoff":
                 if (guard == null || mob.getAttackTarget() != player) {
                     throw new CommandException("Expected a tracked ground HorseMob targeting the challenger.");
@@ -1047,6 +1055,24 @@ final class CoverageFixtureCommand extends CommandBase {
                 LOGGER.info("coverage mocHorseHandoff mob={} guard={} target={} taunt={}", mob.getUniqueID(),
                         guard.getUniqueID(), identity(mob.getAttackTarget()), actions.taunt(mob, player));
                 break;
+            case "moc-climbing-handoff": {
+                if (guard == null || mob.getAttackTarget() != player) {
+                    throw new CommandException("Expected a tracked climber targeting the challenger.");
+                }
+                try {
+                    MethodHandles.publicLookup().findVirtual(mob.getClass(), "setBesideClimbableBlock",
+                            MethodType.methodType(void.class, boolean.class)).invoke(mob, true);
+                } catch (RuntimeException | Error failure) {
+                    throw failure;
+                } catch (Throwable failure) {
+                    throw new CommandException("The provider climber's native flag could not be set.");
+                }
+                mob.setAttackTarget(guard);
+                LOGGER.info("coverage mocClimbingHandoff mob={} guard={} target={} climbing={} taunt={}",
+                        mob.getUniqueID(), guard.getUniqueID(), identity(mob.getAttackTarget()),
+                        mob.isOnLadder(), actions.taunt(mob, player));
+                break;
+            }
             case "witch-opening":
             case "witch-native-redirect":
                 if (!(mob instanceof net.minecraft.entity.monster.EntityWitch) || !(guard instanceof EntityPlayerMP)
@@ -1083,10 +1109,33 @@ final class CoverageFixtureCommand extends CommandBase {
                 }
                 return;
             }
-            case "witch-rider-handoff": {
+            case "witch-rider-handoff":
+            case "witch-rider-altered": {
                 if (!(mob instanceof net.minecraft.entity.monster.EntityWitch) || guard == null
                         || mob.getAttackTarget() != player) {
                     throw new CommandException("Expected a tracked Witch targeting the challenger.");
+                }
+                boolean altered = "witch-rider-altered".equals(operation);
+                String riderClass = "fathertoast.specialai.ai.EntityAIRider";
+                EntityAIBase rider = mob.tasks.taskEntries.stream()
+                        .filter(entry -> entry.action.getClass().getName().equals(riderClass))
+                        .map(entry -> entry.action).findFirst().orElse(null);
+                if (rider == null) {
+                    try {
+                        Class<?> type = Class.forName(riderClass, false, mob.getClass().getClassLoader());
+                        rider = (EntityAIBase) type.getConstructor(EntityLiving.class, boolean.class).newInstance(mob, false);
+                    } catch (ReflectiveOperationException | LinkageError failure) {
+                        throw new CommandException("Could not stage the pinned Witch rider goal.");
+                    }
+                    mob.tasks.addTask(2, rider);
+                }
+                if (altered) {
+                    rider.setMutexBits(4);
+                    mob.setAttackTarget(guard);
+                    LOGGER.info("coverage witchRiderAltered mob={} guard={} target={} mutex={} taunt={}",
+                            mob.getUniqueID(), guard.getUniqueID(), identity(mob.getAttackTarget()), rider.getMutexBits(),
+                            actions.taunt(mob, player));
+                    break;
                 }
                 EntityZombie mount = new EntityZombie(world);
                 mount.setNoAI(true);
@@ -1099,6 +1148,26 @@ final class CoverageFixtureCommand extends CommandBase {
                 LOGGER.info("coverage witchRiderHandoff mob={} guard={} target={} riding={} taunt={}",
                         mob.getUniqueID(), guard.getUniqueID(), identity(mob.getAttackTarget()),
                         mob.getRidingEntity() == mount, actions.taunt(mob, player));
+                break;
+            }
+            case "witch-lane-bounds": {
+                if (!(mob instanceof net.minecraft.entity.monster.EntityWitch) || guard == null
+                        || mob.getAttackTarget() != player) {
+                    throw new CommandException("Expected a tracked Witch with two legal players.");
+                }
+                Vec3d prior = guard.getPositionVector();
+                mob.setPosition(X, Y, Z);
+                guard.setPosition(X + 6, Y, Z);
+                BlockPos roof = new BlockPos(X + 3, Y + 2, Z);
+                world.setBlockState(roof, Blocks.STONE.getDefaultState());
+                Vec3d start = mob.getPositionVector().add(0, mob.getEyeHeight(), 0);
+                Vec3d end = guard.getPositionVector().add(0, guard.getEyeHeight(), 0);
+                boolean eyeClear = world.rayTraceBlocks(start, end, false, true, false) == null;
+                ThreatActions.Result blocked = actions.taunt(mob, guard);
+                world.setBlockToAir(roof);
+                LOGGER.info("coverage witchLaneBounds mob={} guard={} eyeClear={} blocked={} clear={}",
+                        mob.getUniqueID(), guard.getUniqueID(), eyeClear, blocked, actions.taunt(mob, guard));
+                guard.setPosition(prior.x, prior.y, prior.z);
                 break;
             }
             case "pvj-burning-handoff": {

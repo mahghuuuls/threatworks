@@ -60,6 +60,10 @@ public final class SpecialAiCompatibility {
                 && entry.action.getClass().getName().equals(RIDER) && !entry.action.isInterruptible();
     }
 
+    public static boolean hasUnknownWitchRider(EntityAITaskEntry entry) {
+        return entry.action.getClass().getName().equals(RIDER) && !isWitchRider(entry);
+    }
+
     public static boolean isBlockGriefing(EntityAITaskEntry entry) {
         return entry.action.getMutexBits() == 3 && entry.action.getClass().getName().equals(GRIEF_BLOCKS)
                 && Installed.VERSION_MATCHES;
