@@ -1429,12 +1429,12 @@ final class CoverageFixtureCommand extends CommandBase {
                         || mob.getAttackTarget() != player || guard == null) {
                     throw new CommandException("Expected a tracked faction archer and two hostile players.");
                 }
-                BlockPos wall = new BlockPos(X + 3, Y, Z);
+                BlockPos factionWall = new BlockPos(X + 3, Y, Z);
                 mob.setPosition(X + 0.5, Y, Z + 0.5);
                 player.setPosition(X + 6.5, Y, Z + 0.5);
                 guard.setPosition(X - 5.5, Y, Z + 0.5);
                 for (int height = 0; height < 3; height++) {
-                    world.setBlockState(wall.up(height), Blocks.STONE.getDefaultState(), 2);
+                    world.setBlockState(factionWall.up(height), Blocks.STONE.getDefaultState(), 2);
                 }
                 break;
             }
