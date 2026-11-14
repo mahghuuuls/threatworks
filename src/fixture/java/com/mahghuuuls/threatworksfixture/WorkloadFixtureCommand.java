@@ -2,7 +2,9 @@ package com.mahghuuuls.threatworksfixture;
 
 import com.mahghuuuls.threatworks.ThreatworksMod;
 import com.mahghuuuls.threatworks.api.ThreatActions;
+import com.mahghuuuls.threatworks.config.ServerTuning.MobType;
 import com.mahghuuuls.threatworks.server.EncounterCoordinator;
+import com.mahghuuuls.threatworks.server.WorkloadEligibility;
 import net.minecraft.command.CommandBase;
 import net.minecraft.command.CommandException;
 import net.minecraft.command.ICommandSender;
@@ -195,9 +197,10 @@ final class WorkloadFixtureCommand extends CommandBase {
                 throw new CommandException("Wrong encounter state at lane " + lane);
             }
             for (int slot = 0; slot < GUARDS; slot++) {
-                UUID guard = guard(world, lane, slot).getUniqueID();
+                EntityIronGolem guard = guard(world, lane, slot);
                 if (tracked) {
-                    if (!view.participants.stream().anyMatch(p -> p.id.equals(guard) && "eligible".equals(p.eligibility))) {
+                    if (!view.participants.stream().anyMatch(participant -> participant.id.equals(guard.getUniqueID()))
+                            || !WorkloadEligibility.observesEligible(world, mob, guard, MobType.ZOMBIE)) {
                         throw new CommandException("Missing eligible guard in lane " + lane + " slot " + slot);
                     }
                     eligible++;
