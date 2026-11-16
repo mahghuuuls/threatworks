@@ -23,6 +23,8 @@ import net.minecraft.util.EntityDamageSourceIndirect;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
+import java.util.UUID;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -238,6 +240,30 @@ class DamageAttributionTest {
         assertEquals(1, ranged.multiplier(() -> fail("No launch snapshot")));
         skeleton.setOwnerId(null);
         assertNull(DamageAttribution.resolve(DamageSource.causeArrowDamage(arrow, skeleton), worldSession, adapter));
+    }
+
+    @Test
+    void missingSavedCasterDoesNotQualifyNewSummonPathsOrRemoveReleasedRawCredit() {
+        UUID emptyCaster = new UUID(0, 0);
+        EntityBlazeMinion blaze = new EntityBlazeMinion(null);
+        EntityZombieMinion zombie = new EntityZombieMinion(null);
+        EntitySkeletonMinion skeleton = new EntitySkeletonMinion(null);
+        DamageAttribution.SummonSource adapter = newWizardrySource();
+        blaze.setOwnerId(emptyCaster);
+        zombie.setOwnerId(emptyCaster);
+        skeleton.setOwnerId(emptyCaster);
+        EntitySmallFireball fireball = new EntitySmallFireball(null);
+        fireball.shootingEntity = blaze;
+
+        assertNull(DamageAttribution.resolve(DamageSource.causeFireballDamage(fireball, blaze), worldSession, adapter));
+        DamageAttribution ordinaryMelee = DamageAttribution.resolve(DamageSource.causeMobDamage(blaze), worldSession,
+                adapter);
+        assertSame(blaze, ordinaryMelee.attacker);
+        assertNull(ordinaryMelee.summonOwner);
+        assertSame(zombie, DamageAttribution.resolve(DamageSource.causeMobDamage(zombie), worldSession, adapter).attacker);
+        TestArrow arrow = new TestArrow(skeleton);
+        assertSame(skeleton, DamageAttribution.resolve(DamageSource.causeArrowDamage(arrow, skeleton), worldSession,
+                adapter).attacker);
     }
 
     private static DamageAttribution.SummonSource newWizardrySource() {

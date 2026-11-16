@@ -27,6 +27,8 @@ import java.util.UUID;
 import java.util.function.Function;
 
 final class WizardrySummonSource implements DamageAttribution.SummonSource {
+    // Wizardry reads absent caster UUID tags as the all-zero UUID on NBT load.
+    private static final UUID UNSET_CASTER = new UUID(0, 0);
     private final Class<?> directWrapper = MinionDamage.class.asSubclass(EntityDamageSource.class);
     private final Class<?> indirectWrapper = IndirectMinionDamage.class.asSubclass(EntityDamageSourceIndirect.class);
     private final Class<?> summonedCreature = ISummonedCreature.class.asSubclass(IEntityOwnable.class);
@@ -74,7 +76,7 @@ final class WizardrySummonSource implements DamageAttribution.SummonSource {
             return true;
         }
         Entity actor = source.getTrueSource();
-        if (ownerId(actor) != null) {
+        if (verifiedOwnerId(actor) != null) {
             return true;
         }
         // Preserve the baseline admission of the original zombie and skeleton paths.
@@ -100,8 +102,11 @@ final class WizardrySummonSource implements DamageAttribution.SummonSource {
                     : null;
         }
 
-        UUID ownerId = ownerId(reported);
-        if (ownerId == null || !(source instanceof EntityDamageSource)) {
+        UUID ownerId = verifiedOwnerId(reported);
+        if (ownerId == null) {
+            return legacyUnownedHit(source, reported, direct, worldSession);
+        }
+        if (!(source instanceof EntityDamageSource)) {
             return null;
         }
         EntityLivingBase actor = (EntityLivingBase) reported;
@@ -111,6 +116,25 @@ final class WizardrySummonSource implements DamageAttribution.SummonSource {
             return indirect(actor, caster, direct, worldSession);
         }
         return direct == actor ? DamageAttribution.summonDirect(actor, caster) : null;
+    }
+
+    private DamageAttribution legacyUnownedHit(DamageSource source, Entity actor, Entity immediate,
+                                              Object worldSession) {
+        if (!UNSET_CASTER.equals(ownerId(actor))) {
+            return null;
+        }
+        // Keep the two released raw-source cases for saved minions with an empty caster tag.
+        EntityLivingBase minion = (EntityLivingBase) actor;
+        if (actor.getClass() == zombie && immediate == actor && source.getClass() == EntityDamageSource.class
+                && "mob".equals(source.getDamageType()) && !source.isProjectile()) {
+            return DamageAttribution.summonDirect(minion, null);
+        }
+        if (actor.getClass() == skeleton && immediate instanceof EntityArrow
+                && source.getClass() == EntityDamageSourceIndirect.class
+                && "arrow".equals(source.getDamageType()) && source.isProjectile()) {
+            return indirect(minion, null, immediate, worldSession);
+        }
+        return null;
     }
 
     private DamageAttribution indirect(EntityLivingBase actor, EntityLivingBase caster, Entity projectile,
@@ -164,6 +188,11 @@ final class WizardrySummonSource implements DamageAttribution.SummonSource {
 
     private boolean verifiedOwner(Entity actor, Entity owner) {
         return actor != null && owner instanceof EntityLivingBase && actor != owner && actor.world == owner.world
-                && owner.getUniqueID().equals(ownerId(actor));
+                && owner.getUniqueID().equals(verifiedOwnerId(actor));
+    }
+
+    private UUID verifiedOwnerId(Entity actor) {
+        UUID id = ownerId(actor);
+        return UNSET_CASTER.equals(id) ? null : id;
     }
 }

@@ -19,6 +19,7 @@ import net.minecraft.entity.monster.EntityIronGolem;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.entity.projectile.EntityArrow;
 import net.minecraft.entity.projectile.EntityFireball;
+import net.minecraft.entity.projectile.EntitySmallFireball;
 import net.minecraft.entity.projectile.EntityLargeFireball;
 import net.minecraft.entity.projectile.EntityPotion;
 import net.minecraft.entity.monster.EntityWitch;
@@ -459,6 +460,12 @@ public final class ThreatworksFixture {
         }
         if (spawned instanceof EntityFireball) {
             EntityLivingBase shooter = ((EntityFireball) spawned).shootingEntity;
+            if (spawned instanceof EntitySmallFireball && shooter != null && shooter.removeTag("tw_hold_fireball")) {
+                spawned.addTag("tw_w1_held_fireball");
+                spawned.updateBlocked = true;
+                LOGGER.info("summon_fireball_held projectile={} shooter={} tick={}", spawned.getUniqueID(),
+                        shooter.getUniqueID(), spawned.world.getTotalWorldTime());
+            }
             if (shooter instanceof EntityLiving && shooter.getTags().contains("tw_i_mob") && logsCoverageCombat(shooter)) {
                 spawned.addTag(CoverageFixtureCommand.TAG);
                 if (String.valueOf(EntityList.getKey(shooter)).startsWith("grimoireofgaia:")) {
