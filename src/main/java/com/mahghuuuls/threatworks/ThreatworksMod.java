@@ -19,6 +19,7 @@ import com.mahghuuuls.threatworks.compat.SpecialMobsCompatibility;
 import com.mahghuuuls.threatworks.compat.JafsCompatibility;
 import com.mahghuuuls.threatworks.compat.QualityToolsCompatibility;
 import com.mahghuuuls.threatworks.compat.SetworksCompatibility;
+import com.mahghuuuls.threatworks.compat.StatusworksCompatibility;
 import com.mahghuuuls.threatworks.compat.WizardryCompatibility;
 import com.mahghuuuls.threatworks.config.ServerTuning;
 import com.mahghuuuls.threatworks.points.ThreatPoints;
@@ -45,7 +46,7 @@ import java.io.File;
         version = Tags.VERSION,
         acceptedMinecraftVersions = "[1.12.2]",
         acceptableRemoteVersions = "*",
-        dependencies = "required-after:mixinbooter@[12.1,);after:jafs;after:setworks"
+        dependencies = "required-after:mixinbooter@[12.1,);after:jafs;after:setworks;after:statusworks"
 )
 public final class ThreatworksMod {
     private static final Logger LOGGER = LogManager.getLogger(Tags.MOD_ID);
@@ -75,6 +76,7 @@ public final class ThreatworksMod {
     public void init(FMLInitializationEvent event) {
         POINTS.installFoodSource(JafsCompatibility.load(LOGGER));
         POINTS.installSetBonusSource(SetworksCompatibility.load(LOGGER));
+        POINTS.installStatusSource(StatusworksCompatibility.load(LOGGER));
         MinecraftForge.EVENT_BUS.register(EncounterCoordinator.INSTANCE);
     }
 

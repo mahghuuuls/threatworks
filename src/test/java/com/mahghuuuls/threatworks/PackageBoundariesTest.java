@@ -44,7 +44,8 @@ class PackageBoundariesTest {
                                     || name.startsWith("com.bobmowzie.mowziesmobs.")
                                     || name.startsWith("net.ilexiconn.llibrary.")
                                     || name.startsWith("com.mahghuuuls.jafs.")
-                                    || name.startsWith("com.mahghuuuls.setworks."),
+                                    || name.startsWith("com.mahghuuuls.setworks.")
+                                    || name.startsWith("com.mahghuuuls.statusworks."),
                             relative + ": " + line);
                 }
             }

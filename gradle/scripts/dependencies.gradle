@@ -81,6 +81,13 @@ dependencies {
         runtimeOnly rfg.deobf('CraftTweaker2:CraftTweaker2-MC1120-Main:1.12-4.1.20.718')
     }
 
+    def statusworks = rfg.deobf('curse.maven:statusworks-1769992:9534358')
+    compileOnly statusworks
+    testImplementation statusworks
+    if (providers.gradleProperty('withStatusworks').isPresent()) {
+        runtimeOnly statusworks
+    }
+
     // Include StripLatestForgeRequirements by default for the dev env, saves everyone a hassle
     runtimeOnly 'com.cleanroommc:strip-latest-forge-requirements:1.0'
     // Include OSXNarratorBlocker by default for the dev env, for M1+ Macs

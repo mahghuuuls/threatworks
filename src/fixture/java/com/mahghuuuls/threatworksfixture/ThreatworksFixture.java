@@ -94,6 +94,7 @@ public final class ThreatworksFixture {
     private EntityLightningBolt joltBolt;
     private String joltPhase;
     private static final String JOLT_LIGHTNING = "tw_l_jolt_lightning";
+    private StatusFixtureCommand statuses;
 
     @Mod.EventHandler
     public void init(FMLInitializationEvent event) {
@@ -105,6 +106,10 @@ public final class ThreatworksFixture {
         MinecraftForge.EVENT_BUS.register(this);
         ForgeChunkManager.setForcedChunkLoadingCallback(this,
                 (tickets, world) -> tickets.forEach(ForgeChunkManager::releaseTicket));
+        if (Boolean.getBoolean("threatworks.statusFixture")) {
+            statuses = new StatusFixtureCommand();
+            statuses.registerDefinitions();
+        }
     }
 
     @Mod.EventHandler
@@ -116,6 +121,10 @@ public final class ThreatworksFixture {
         event.registerServerCommand(new WorkloadFixtureCommand());
         event.registerServerCommand(new CoverageFixtureCommand(this));
         event.registerServerCommand(new DimensionCoverageCommand(this));
+        if (statuses != null) {
+            event.registerServerCommand(statuses);
+            MinecraftForge.EVENT_BUS.register(statuses);
+        }
         DragonFixtureCommand dragon = new DragonFixtureCommand(this);
         event.registerServerCommand(dragon);
         MinecraftForge.EVENT_BUS.register(dragon);

@@ -29,6 +29,7 @@ public final class ThreatPoints {
     private QualitySource qualities = (stack, slots, points) -> {};
     private ToDoubleFunction<EntityLivingBase> food = wearer -> 0;
     private SetBonusSource setBonuses;
+    private StatusSource statuses;
     private boolean frozen;
 
     public ThreatPoints(Consumer<String> warn) {
@@ -73,11 +74,18 @@ public final class ThreatPoints {
         }
     }
 
+    public void installStatusSource(StatusSource statuses) {
+        this.statuses = statuses;
+    }
+
     public double multiplier(EntityLivingBase wearer, ServerTuning tuning) {
         Sum total = new Sum();
         total.add(food.applyAsDouble(wearer));
         if (setBonuses != null) {
             setBonuses.collect(wearer, total::add);
+        }
+        if (statuses != null) {
+            statuses.collect(wearer, total::add);
         }
         return multiplier(wearer::getItemStackFromSlot, accessories.equipped(wearer), total, tuning);
     }
@@ -184,6 +192,11 @@ public final class ThreatPoints {
         void discard(EntityLivingBase player);
 
         void clear();
+    }
+
+    @FunctionalInterface
+    public interface StatusSource {
+        void collect(EntityLivingBase wearer, DoubleConsumer points);
     }
 
     /** One physical entry. Multiple names may describe the same slot for quality matching. */
