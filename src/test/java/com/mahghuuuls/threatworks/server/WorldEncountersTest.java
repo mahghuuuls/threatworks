@@ -46,6 +46,17 @@ class WorldEncountersTest {
         assertFalse(world.encounters.containsKey(id));
     }
 
+    @Test
+    void readTreatsAResetAsDueWithoutRemovingOrChangingTheEncounter() {
+        Encounter retained = Encounter.recordHit(null, player, null, 1, 4, DEFAULT_RULES);
+        world.encounters.put(mob, retained);
+        retained.yieldToNative(10);
+        assertSame(retained, world.encounterForRead(mob, 209));
+        assertNull(world.encounterForRead(mob, 210));
+        assertSame(retained, world.encounters.get(mob));
+        assertEquals(4, retained.score(player));
+    }
+
     private final UUID mob = new UUID(0, 1);
     private final UUID player = new UUID(0, 2);
     private final UUID incumbent = new UUID(0, 3);

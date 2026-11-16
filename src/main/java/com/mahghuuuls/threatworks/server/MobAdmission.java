@@ -25,11 +25,14 @@ import net.minecraft.entity.monster.EntityCreeper;
 import net.minecraft.entity.monster.EntityEndermite;
 import net.minecraft.entity.monster.EntityHusk;
 import net.minecraft.entity.monster.EntityGuardian;
+import net.minecraft.entity.monster.EntityGhast;
 import net.minecraft.entity.monster.EntityElderGuardian;
 import net.minecraft.entity.monster.EntityEvoker;
 import net.minecraft.entity.monster.EntityVex;
 import net.minecraft.entity.monster.EntityShulker;
 import net.minecraft.entity.monster.EntitySilverfish;
+import net.minecraft.entity.monster.EntitySlime;
+import net.minecraft.entity.monster.EntityMagmaCube;
 import net.minecraft.entity.monster.EntitySkeleton;
 import net.minecraft.entity.monster.EntitySpider;
 import net.minecraft.entity.monster.EntityStray;
@@ -117,6 +120,21 @@ final class MobAdmission {
             return UNSUPPORTED_TYPE;
         }
         return resolve(tuning, foliaath, entity, EntityList.getKey(entity));
+    }
+
+    /** Registry and configuration only. Polling does not run a provider or inspect AI goals. */
+    static MobType configuredType(ServerTuning tuning, EntityLivingBase entity) {
+        ResourceLocation id = EntityList.getKey(entity);
+        MobType type = TYPES.get(id);
+        return type != null && tuning != null && tuning.isEnabled(type) && !tuning.isBlacklisted(type.id) ? type : null;
+    }
+
+    static Class<?> vanillaClass(MobType type) {
+        if (type == MobType.ENDER_DRAGON) return EntityDragon.class;
+        if (type == MobType.GHAST) return EntityGhast.class;
+        if (type == MobType.SLIME) return EntitySlime.class;
+        if (type == MobType.MAGMA_CUBE) return EntityMagmaCube.class;
+        return VANILLA_CLASSES.get(type);
     }
 
     static MobAdmission resolve(ServerTuning tuning, FoliaathCompatibility foliaath, EntityLivingBase entity,

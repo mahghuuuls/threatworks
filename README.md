@@ -66,6 +66,15 @@ Use `"fixed"` for one value regardless of stack count. Negative values reduce th
 
 Use the Threatworks release JAR as a compile-time dependency for the APIs below. For Statusworks Java definitions, use the [Statusworks setup](#statusworks-setup).
 
+### Reading threat
+
+Call `ThreatworksMod.threatQueries().query(mob, participant)` from the logical server thread with two live entities in the same loaded world. The returned `ThreatQueries.View` is a read-only snapshot for that pair. An optional integration can check Forge's mod list and load its Threatworks API adapter when Threatworks is present. The integration controls its own client delivery.
+
+- `INACTIVE` means a recognized vanilla type has no active encounter. Live AI availability is separate. A configured modded entity whose combat policy has yet to be observed can report `SUPPORT_UNKNOWN`. Unloaded, invalid and off-thread requests have specific unavailable states.
+- For a valid live participant in a tracked encounter, `threat()` can return a known zero. Honor an empty value separately. Eligibility is the last usable observation, up to five server ticks old. Unknown means the query cannot confirm it from the currently observed combat path.
+- Read `aggro()` with `focus()`. A Wither read refers to its center head. A Dragon result refers to a confirmed active ordinary strafe. A Guardian beam can publish its focus while the watched target and native attack target agree. Pending target writes, stale references and an unverified native path can leave focus unknown.
+- Read `tauntActive()` and `tauntTicks()` for the encounter timer. `tauntForcingFocus()` separately indicates its effect on the confirmed combat path. A native attack can retain focus while the taunt timer continues.
+
 - [Threat actions](src/main/java/com/mahghuuuls/threatworks/api/ThreatActions.java) are available from `ThreatworksMod.threatActions()`. Call on the server thread to grant threat in an active encounter or taunt a supported mob on behalf of an eligible participant. Check for `ThreatActions.Result.APPLIED` before treating the action as successful. Integrations define their own costs and cooldowns. The internal mob policies do not currently expose an entity-adapter registration API.
 - [Item threat point providers](src/main/java/com/mahghuuuls/threatworks/api/ItemThreatPointProvider.java) supply signed points for equipped items. Register a provider with `ThreatworksMod.registerItemThreatPoints(item, provider)` during Forge initialization or post-initialization.
 - [Summon threat credit](src/main/java/com/mahghuuuls/threatworks/api/SummonThreatCreditEvent.java) lets a server event listener call `creditOwner()` to redirect a supported summon hit in an active encounter to an eligible owner.

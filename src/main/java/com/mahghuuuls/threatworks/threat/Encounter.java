@@ -129,6 +129,10 @@ public final class Encounter {
         return target;
     }
 
+    public double score(UUID participant) {
+        return scores.getOrDefault(participant, 0.0);
+    }
+
     public void yieldToNative(int tick) {
         target = null;
         taunter = null;
@@ -176,6 +180,13 @@ public final class Encounter {
     public void participantChanged(UUID participant) {
         if (scores.containsKey(participant)) {
             markParticipantChanged(participant);
+        }
+    }
+
+    public void clearTaunt() {
+        if (taunter != null) {
+            taunter = null;
+            selectionPending = true;
         }
     }
 

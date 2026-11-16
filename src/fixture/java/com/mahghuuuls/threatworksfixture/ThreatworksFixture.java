@@ -119,6 +119,7 @@ public final class ThreatworksFixture {
     @Mod.EventHandler
     public void serverStarting(FMLServerStartingEvent event) {
         event.registerServerCommand(new ThreatActionsCommand());
+        event.registerServerCommand(new ThreatQueryCommand());
         event.registerServerCommand(new ArrowFixtureCommand());
         event.registerServerCommand(new SummonFixtureCommand(this));
         event.registerServerCommand(new EquipmentFixtureCommand());
@@ -148,6 +149,19 @@ public final class ThreatworksFixture {
 
     @Mod.EventHandler
     public void serverStarted(FMLServerStartedEvent event) {
+        if (Boolean.getBoolean("threatworks.querySmoke")) {
+            net.minecraft.server.MinecraftServer server = FMLCommonHandler.instance().getMinecraftServerInstance();
+            if (!server.isDedicatedServer()) {
+                throw new IllegalStateException("Threat query smoke requires a disposable dedicated server");
+            }
+            try {
+                ParticipantQueryFixture.forgeSmoke(server.getWorld(0));
+                LOGGER.info("h1_query_smoke_passed");
+            } finally {
+                server.initiateShutdown();
+            }
+            return;
+        }
         boolean special = Boolean.getBoolean("threatworks.wizardrySpecialSmoke");
         if (!special && !Boolean.getBoolean("threatworks.wizardrySourceSmoke")) {
             return;

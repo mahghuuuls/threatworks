@@ -2,6 +2,7 @@ package com.mahghuuuls.threatworks;
 
 import com.mahghuuuls.threatworks.api.ItemThreatPointProvider;
 import com.mahghuuuls.threatworks.api.ThreatActions;
+import com.mahghuuuls.threatworks.api.ThreatQueries;
 import com.mahghuuuls.threatworks.command.ThreatworksCommand;
 import com.mahghuuuls.threatworks.compat.BaublesCompatibility;
 import com.mahghuuuls.threatworks.compat.ChocolateQuestCompatibility;
@@ -55,6 +56,11 @@ public final class ThreatworksMod {
 
     /** Returns the server action interface. Calls outside a loaded server world are unavailable. */
     public static ThreatActions threatActions() {
+        return EncounterCoordinator.INSTANCE;
+    }
+
+    /** Returns the read-only logical-server query interface. */
+    public static ThreatQueries threatQueries() {
         return EncounterCoordinator.INSTANCE;
     }
 

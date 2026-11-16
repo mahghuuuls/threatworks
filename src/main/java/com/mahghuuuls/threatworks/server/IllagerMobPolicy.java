@@ -89,14 +89,15 @@ final class IllagerMobPolicy implements MobPolicy {
     }
 
     static boolean isNativePhase(EntityLiving mob) {
-        if (mob.isRiding() || mob.isBeingRidden() || mob.isInWater() || mob.isInLava()) {
+        if (hasVanillaNativeState(mob)) {
             return true;
         }
-        if (mob instanceof EntityVex) {
-            return ((EntityVex) mob).isCharging();
-        }
-        if (((EntityEvoker) mob).isSpellcasting()) {
-            return true;
+        return mob instanceof EntityEvoker && hasActiveRetreat(mob);
+    }
+
+    static boolean hasActiveRetreat(EntityLiving mob) {
+        if (!(mob instanceof EntityEvoker)) {
+            return false;
         }
         for (EntityAITaskEntry entry : mob.tasks.taskEntries) {
             if (entry.using && entry.action.getClass() == EntityAIAvoidEntity.class && entry.priority == 2) {
@@ -104,6 +105,16 @@ final class IllagerMobPolicy implements MobPolicy {
             }
         }
         return false;
+    }
+
+    static boolean hasVanillaNativeState(EntityLiving mob) {
+        if (mob.isRiding() || mob.isBeingRidden() || mob.isInWater() || mob.isInLava()) {
+            return true;
+        }
+        if (mob instanceof EntityVex) {
+            return ((EntityVex) mob).isCharging();
+        }
+        return ((EntityEvoker) mob).isSpellcasting();
     }
 
     @Override

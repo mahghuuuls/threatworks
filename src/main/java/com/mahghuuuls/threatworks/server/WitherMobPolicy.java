@@ -25,24 +25,37 @@ final class WitherMobPolicy implements MobPolicy {
     private static final double CENTER_HEAD_HEIGHT = 3.0;
 
     static boolean hasNativeContract(EntityWither wither) {
+        WitherCenterGoal observed = (WitherCenterGoal) wither;
+        observed.threatworks$centerGoal(null);
         if (!rangedAiEnabled(wither)) {
             return false;
         }
-        int rangedGoals = 0;
+        EntityAITaskEntry center = null;
         for (EntityAITaskEntry task : wither.tasks.taskEntries) {
             if (task.action instanceof EntityAIAttackRanged) {
-                if (task.action.getClass() != EntityAIAttackRanged.class || task.priority != 2
+                if (center != null || task.action.getClass() != EntityAIAttackRanged.class || task.priority != 2
                         || task.action.getMutexBits() != 3 || !RangedGoal.matches(task, wither)) {
                     return false;
                 }
-                rangedGoals++;
+                center = task;
             } else if (task.priority <= 2 && (task.action.getMutexBits() & 3) != 0
                     && !(task.priority == 1 && task.action.getClass() == EntityAISwimming.class)
                     && !isSpawnGoal(task)) {
                 return false;
             }
         }
-        return rangedGoals == 1;
+        observed.threatworks$centerGoal(center);
+        return center != null;
+    }
+
+    static boolean confirmsCenter(EntityWither wither, EntityLivingBase target) {
+        EntityAITaskEntry goal = ((WitherCenterGoal) wither).threatworks$centerGoal();
+        if (goal == null || !wither.tasks.taskEntries.contains(goal)) {
+            return false;
+        }
+        int watched = wither.getWatchedTargetId(0);
+        return target == null ? watched == 0 && !goal.using
+                : watched == target.getEntityId() && goal.using && RangedGoal.aimsAt(goal, target);
     }
 
     private static boolean rangedAiEnabled(EntityWither wither) {
@@ -58,6 +71,7 @@ final class WitherMobPolicy implements MobPolicy {
     private static final class RangedGoal {
         private static final Field HOST = field("rangedAttackEntityHost", "field_82641_b");
         private static final Field DISTANCE_SQUARED = field("maxAttackDistance", "field_82642_h");
+        private static final Field ATTACK_TARGET = field("attackTarget", "field_75323_c");
 
         private static Field field(String mcp, String srg) {
             try {
@@ -71,6 +85,14 @@ final class WitherMobPolicy implements MobPolicy {
             try {
                 return HOST != null && DISTANCE_SQUARED != null && HOST.get(task.action) == wither
                         && DISTANCE_SQUARED.getFloat(task.action) == RANGED_REACH_SQUARED;
+            } catch (IllegalAccessException unavailable) {
+                return false;
+            }
+        }
+
+        static boolean aimsAt(EntityAITaskEntry task, EntityLivingBase target) {
+            try {
+                return ATTACK_TARGET != null && ATTACK_TARGET.get(task.action) == target;
             } catch (IllegalAccessException unavailable) {
                 return false;
             }

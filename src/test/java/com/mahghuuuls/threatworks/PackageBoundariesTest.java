@@ -38,6 +38,10 @@ class PackageBoundariesTest {
                     assertTrue(name.startsWith("java.") || name.startsWith("com.mahghuuuls.threatworks.threat."),
                             relative + ": " + line);
                 }
+                if ("api".equals(area)) {
+                    assertFalse(name.startsWith("com.mahghuuuls.threatworks.")
+                            && !name.startsWith("com.mahghuuuls.threatworks.api."), relative + ": " + line);
+                }
                 if (!"compat".equals(area)) {
                     assertFalse(name.startsWith("baubles.") || name.startsWith("electroblob.")
                                     || name.startsWith("com.tmtravlr.qualitytools.")
@@ -48,6 +52,19 @@ class PackageBoundariesTest {
                                     || name.startsWith("com.mahghuuuls.statusworks."),
                             relative + ": " + line);
                 }
+            }
+        }
+    }
+
+    @Test
+    void participantQueryConsumerImportsOnlyThePublicThreatworksSurface() throws IOException {
+        Path main = Paths.get(System.getProperty("threatworks.sourceDirectory"));
+        Path consumer = main.getParent().getParent().resolve("fixture/java/com/mahghuuuls/threatworksfixture/ParticipantQueryConsumer.java");
+        for (String line : Files.readAllLines(consumer, StandardCharsets.UTF_8)) {
+            String name = line.trim().replaceFirst("^import (static )?", "");
+            if (name.startsWith("com.mahghuuuls.threatworks.")) {
+                assertTrue(name.startsWith("com.mahghuuuls.threatworks.api.")
+                                || name.equals("com.mahghuuuls.threatworks.ThreatworksMod;"), line);
             }
         }
     }

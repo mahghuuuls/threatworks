@@ -346,9 +346,6 @@ final class MobTargets {
                 || AncientWarfareCompatibility.nativeControl(mob))) {
             return true;
         }
-        if (mob instanceof EntityWitch && WitchCombat.nativePhase((EntityWitch) mob)) {
-            return true;
-        }
         if (type == MobType.DUNGEON_REVENANT && mob.isBurning()) {
             return true;
         }
@@ -362,15 +359,8 @@ final class MobTargets {
         if (IceAndFireCompatibility.usesAnimatedMelee(type) && IceAndFireCompatibility.animatedMeleeUnavailable(type, mob)) {
             return true;
         }
-        if (mob instanceof EntitySpider && type != MobType.DEFILED_SCUTTLER && mob.getBrightness() >= 0.5F
-                || mob instanceof EntityShulker && !canAttackWhileAttached((EntityShulker) mob)) {
+        if (hasVanillaNativeState(mob, type)) {
             return true;
-        }
-        if (mob instanceof EntityCreeper) {
-            EntityCreeper creeper = (EntityCreeper) mob;
-            if (creeperFuseLit(creeper) || creeper.isWet() || creeper.isBurning()) {
-                return true;
-            }
         }
         for (EntityAITaskEntry entry : mob.tasks.taskEntries) {
             if (entry.using && (SpecialAiCompatibility.isCombatReaction(entry)
@@ -395,8 +385,7 @@ final class MobTargets {
                     || GaiaCompatibility.isOrcDoorGoal(type, entry)
                     || IceAndFireCompatibility.isHorseGoal(type, entry)
                     || ChocolateQuestCompatibility.isGroundMelee(type) && ChocolateQuestCompatibility.usesNativeGoal(type, entry)
-                    || mob instanceof EntityCreeper
-                    && (entry.action.getClass() == EntityAICreeperSwell.class || isCreeperAvoidance(entry))
+                    || mob instanceof EntityCreeper && isCreeperNativeGoal(entry)
                     || (SpecialMobsCompatibility.isVariantSkeleton(type) || GroundMeleeCompatibility.isQuarkSkeleton(type)
                     || type == MobType.DEEPER_DEPTHS_BOGGED)
                     && (entry.action.getClass() == EntityAIFleeSun.class || entry.action.getClass() == EntityAIAvoidEntity.class))) {
@@ -406,10 +395,30 @@ final class MobTargets {
         return false;
     }
 
+    static boolean hasVanillaNativeState(EntityCreature mob, MobType type) {
+        return mob instanceof EntityWitch && WitchCombat.nativePhase((EntityWitch) mob)
+                || mob instanceof EntitySpider && type != MobType.DEFILED_SCUTTLER && mob.getBrightness() >= 0.5F
+                || mob instanceof EntityShulker && !canAttackWhileAttached((EntityShulker) mob)
+                || mob instanceof EntityCreeper && (creeperFuseLit((EntityCreeper) mob) || mob.isWet() || mob.isBurning());
+    }
+
     static boolean committedCreeperFuse(EntityCreeper creeper) {
         return creeperFuseLit(creeper)
                 || creeper.tasks.taskEntries.stream().anyMatch(entry -> entry.using
                 && entry.action.getClass() == EntityAICreeperSwell.class);
+    }
+
+    static boolean hasActiveCreeperGoal(EntityCreature creeper) {
+        for (EntityAITaskEntry entry : creeper.tasks.taskEntries) {
+            if (entry.using && isCreeperNativeGoal(entry)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isCreeperNativeGoal(EntityAITaskEntry entry) {
+        return entry.action.getClass() == EntityAICreeperSwell.class || isCreeperAvoidance(entry);
     }
 
     private static boolean creeperFuseLit(EntityCreeper creeper) {

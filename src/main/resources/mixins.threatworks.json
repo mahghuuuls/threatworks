@@ -8,6 +8,7 @@
     "EntityArrowMixin",
     "EntityLivingBaseMixin",
     "SnowGolemOriginMixin",
+    "WitherCenterGoalMixin",
     "EntityLivingMixin",
     "EntityDragonMixin",
     "PhaseHoldingPatternMixin",

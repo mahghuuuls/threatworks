@@ -6,12 +6,14 @@ import com.mahghuuuls.threatworks.threat.Encounter;
 import com.mahghuuuls.threatworks.threat.Encounter.Rules;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.util.SoundCategory;
 import net.minecraft.util.SoundEvent;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.IWorldEventListener;
 import net.minecraft.world.World;
+import net.minecraft.world.WorldServer;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -29,7 +31,8 @@ import java.util.function.Supplier;
 final class WorldEncounters implements IWorldEventListener {
     final Map<UUID, Encounter> encounters = new HashMap<>();
     final Map<UUID, MobType> coverage = new HashMap<>();
-    final Map<UUID, Map<UUID, Encounter.TargetObservation>> observations = new HashMap<>();
+    final Map<UUID, ObservationFrame> observations = new HashMap<>();
+    final Map<UUID, Integer> tauntEntities = new HashMap<>();
     final Set<UUID> yielded = new HashSet<>();
     final Set<UUID> rejectedWrites = new HashSet<>();
     // A snapshot can compare world sessions without retaining a world or its encounter table.
@@ -70,10 +73,69 @@ final class WorldEncounters implements IWorldEventListener {
         return encounter;
     }
 
+    Encounter encounterForRead(UUID id, int tick) {
+        Encounter encounter = encounters.get(id);
+        return encounter == null || encounter.resetDue(tick) ? null : encounter;
+    }
+
+    static final class ObservationFrame {
+        final int tick;
+        private final Map<UUID, ObservedParticipant> byParticipant = new HashMap<>();
+
+        ObservationFrame(int tick) {
+            this.tick = tick;
+        }
+
+        Encounter.TargetObservation observe(WorldServer world, UUID participant,
+                                            Function<Entity, Encounter.TargetObservation> inspect) {
+            ObservedParticipant current = byParticipant.get(participant);
+            if (current != null) return current.value;
+            Entity candidate = world.getEntityFromUuid(participant);
+            int entityId = candidate == null ? 0 : candidate.getEntityId();
+            Encounter.TargetObservation value = inspect.apply(candidate);
+            byParticipant.put(participant, new ObservedParticipant(entityId, value));
+            return value;
+        }
+
+        Encounter.TargetObservation get(UUID participant) {
+            ObservedParticipant observation = byParticipant.get(participant);
+            return observation == null ? null : observation.value;
+        }
+
+        Encounter.TargetObservation get(EntityLivingBase participant) {
+            ObservedParticipant observation = byParticipant.get(participant.getUniqueID());
+            return observation == null || observation.entityId != participant.getEntityId() ? null : observation.value;
+        }
+    }
+
+    private static final class ObservedParticipant {
+        final int entityId;
+        final Encounter.TargetObservation value;
+
+        ObservedParticipant(int entityId, Encounter.TargetObservation value) {
+            this.entityId = entityId;
+            this.value = value;
+        }
+    }
+
     private void forgetControl(UUID id) {
         coverage.remove(id);
         observations.remove(id);
+        tauntEntities.remove(id);
         yielded.remove(id);
+    }
+
+    boolean matchesTaunter(UUID mob, Entity entity) {
+        Integer committedId = tauntEntities.get(mob);
+        return entity != null && committedId != null && entity.getEntityId() == committedId;
+    }
+
+    void clearMissingTaunt(WorldServer world, UUID mob, Encounter encounter) {
+        UUID participant = encounter.getTaunter();
+        if (participant != null && !matchesTaunter(mob, world.getEntityFromUuid(participant))) {
+            encounter.clearTaunt();
+            tauntEntities.remove(mob);
+        }
     }
 
     void discard(UUID id) {
