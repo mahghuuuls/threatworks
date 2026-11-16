@@ -32,7 +32,8 @@ final class WorldEncounters implements IWorldEventListener {
     final Map<UUID, Encounter> encounters = new HashMap<>();
     final Map<UUID, MobType> coverage = new HashMap<>();
     final Map<UUID, ObservationFrame> observations = new HashMap<>();
-    final Map<UUID, Integer> tauntEntities = new HashMap<>();
+    private final Map<UUID, Object> identities = new HashMap<>();
+    private final Map<UUID, Object> tauntIdentities = new HashMap<>();
     final Set<UUID> yielded = new HashSet<>();
     final Set<UUID> rejectedWrites = new HashSet<>();
     // A snapshot can compare world sessions without retaining a world or its encounter table.
@@ -78,7 +79,7 @@ final class WorldEncounters implements IWorldEventListener {
         return encounter == null || encounter.resetDue(tick) ? null : encounter;
     }
 
-    static final class ObservationFrame {
+    final class ObservationFrame {
         final int tick;
         private final Map<UUID, ObservedParticipant> byParticipant = new HashMap<>();
 
@@ -91,9 +92,9 @@ final class WorldEncounters implements IWorldEventListener {
             ObservedParticipant current = byParticipant.get(participant);
             if (current != null) return current.value;
             Entity candidate = world.getEntityFromUuid(participant);
-            int entityId = candidate == null ? 0 : candidate.getEntityId();
+            Object identity = candidate instanceof EntityLivingBase ? recordIdentity(participant) : null;
             Encounter.TargetObservation value = inspect.apply(candidate);
-            byParticipant.put(participant, new ObservedParticipant(entityId, value));
+            byParticipant.put(participant, new ObservedParticipant(identity, value));
             return value;
         }
 
@@ -104,16 +105,17 @@ final class WorldEncounters implements IWorldEventListener {
 
         Encounter.TargetObservation get(EntityLivingBase participant) {
             ObservedParticipant observation = byParticipant.get(participant.getUniqueID());
-            return observation == null || observation.entityId != participant.getEntityId() ? null : observation.value;
+            return observation == null || observation.identity == null
+                    || observation.identity != identities.get(participant.getUniqueID()) ? null : observation.value;
         }
     }
 
     private static final class ObservedParticipant {
-        final int entityId;
+        final Object identity;
         final Encounter.TargetObservation value;
 
-        ObservedParticipant(int entityId, Encounter.TargetObservation value) {
-            this.entityId = entityId;
+        ObservedParticipant(Object identity, Encounter.TargetObservation value) {
+            this.identity = identity;
             this.value = value;
         }
     }
@@ -121,20 +123,35 @@ final class WorldEncounters implements IWorldEventListener {
     private void forgetControl(UUID id) {
         coverage.remove(id);
         observations.remove(id);
-        tauntEntities.remove(id);
+        clearTauntIdentity(id);
         yielded.remove(id);
     }
 
     boolean matchesTaunter(UUID mob, Entity entity) {
-        Integer committedId = tauntEntities.get(mob);
-        return entity != null && committedId != null && entity.getEntityId() == committedId;
+        Object identity = entity == null ? null : identities.get(entity.getUniqueID());
+        return identity != null && tauntIdentities.get(mob) == identity;
+    }
+
+    private Object recordIdentity(UUID participant) {
+        // Respawn can reuse both the UUID and the numeric entity ID.
+        return identities.computeIfAbsent(participant, ignored -> new Object());
+    }
+
+    void recordTaunt(UUID mob, EntityLivingBase participant) {
+        tauntIdentities.put(mob, recordIdentity(participant.getUniqueID()));
+    }
+
+    void clearTauntIdentity(UUID mob) {
+        tauntIdentities.remove(mob);
     }
 
     void clearMissingTaunt(WorldServer world, UUID mob, Encounter encounter) {
         UUID participant = encounter.getTaunter();
-        if (participant != null && !matchesTaunter(mob, world.getEntityFromUuid(participant))) {
+        if (participant == null) {
+            clearTauntIdentity(mob);
+        } else if (!matchesTaunter(mob, world.getEntityFromUuid(participant))) {
             encounter.clearTaunt();
-            tauntEntities.remove(mob);
+            clearTauntIdentity(mob);
         }
     }
 
@@ -198,6 +215,9 @@ final class WorldEncounters implements IWorldEventListener {
 
     @Override
     public void onEntityRemoved(Entity entity) {
+        if (entity instanceof EntityLivingBase) {
+            identities.remove(entity.getUniqueID());
+        }
         if (entity instanceof EntityPlayer) {
             playerAvailabilityChanged(entity.getUniqueID());
         } else {
@@ -207,6 +227,9 @@ final class WorldEncounters implements IWorldEventListener {
 
     @Override
     public void onEntityAdded(Entity entity) {
+        if (entity instanceof EntityLivingBase) {
+            identities.remove(entity.getUniqueID());
+        }
         if (entity instanceof EntityPlayer) {
             playerAvailabilityChanged(entity.getUniqueID());
         }

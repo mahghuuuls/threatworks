@@ -442,7 +442,7 @@ public final class EncounterCoordinator implements ThreatActions, ThreatQueries 
         UUID incumbent = previous == null || world.getEntityFromUuid(previous.getUniqueID()) != previous
                 ? null : previous.getUniqueID();
         UUID taunter = participant.getUniqueID();
-        WorldEncounters.ObservationFrame observations = new WorldEncounters.ObservationFrame(tick);
+        WorldEncounters.ObservationFrame observations = state.new ObservationFrame(tick);
         Encounter.Taunt pending = Encounter.prepareTaunt(encounter, taunter, incumbent, tick,
                 id -> observations.observe(world, id, candidate -> observe(world, mob, admission.type, candidate, null)),
                 tuning.rulesFor(admission.type));
@@ -458,7 +458,7 @@ public final class EncounterCoordinator implements ThreatActions, ThreatQueries 
         state.encounters.put(mobId, pending.apply());
         state.coverage.put(mobId, admission.type);
         state.observations.put(mobId, observations);
-        state.tauntEntities.put(mobId, participant.getEntityId());
+        state.recordTaunt(mobId, participant);
         state.yielded.remove(mobId);
         return Result.APPLIED;
     }
@@ -677,7 +677,7 @@ public final class EncounterCoordinator implements ThreatActions, ThreatQueries 
             return;
         }
         BlockPos podium = DragonTargeting.loadedPodium(world);
-        WorldEncounters.ObservationFrame observations = new WorldEncounters.ObservationFrame(tick);
+        WorldEncounters.ObservationFrame observations = state.new ObservationFrame(tick);
         for (UUID candidate : encounter.copyScores().keySet()) {
             observations.observe(world, candidate, entity -> dragonTargeting.eligiblePlayer(world, dragon, entity, podium)
                     != null ? TargetObservation.IN_REACH : TargetObservation.INELIGIBLE);
@@ -703,7 +703,7 @@ public final class EncounterCoordinator implements ThreatActions, ThreatQueries 
                 && !encounter.shouldReevaluate(serverTick, mob.getEntityId())) {
             return;
         }
-        WorldEncounters.ObservationFrame observations = new WorldEncounters.ObservationFrame(serverTick);
+        WorldEncounters.ObservationFrame observations = state.new ObservationFrame(serverTick);
         encounter.observeNativeAttack(serverTick, currentId, participant -> observations.observe(world, participant,
                 candidate -> observe(world, mob, type, candidate, sample)));
         state.observations.put(id, observations);
@@ -720,7 +720,7 @@ public final class EncounterCoordinator implements ThreatActions, ThreatQueries 
                 || !encounter.shouldReevaluate(serverTick, mob.getEntityId()))) {
             return;
         }
-        WorldEncounters.ObservationFrame observations = new WorldEncounters.ObservationFrame(serverTick);
+        WorldEncounters.ObservationFrame observations = state.new ObservationFrame(serverTick);
         Function<UUID, TargetObservation> observe = id -> observations.observe(world, id,
                 candidate -> observe(world, mob, type, candidate, sample));
         EntityLivingBase current = mob.getAttackTarget();
@@ -777,7 +777,7 @@ public final class EncounterCoordinator implements ThreatActions, ThreatQueries 
     private static void yieldToNative(WorldEncounters state, UUID id, Encounter encounter, int tick) {
         state.yielded.add(id);
         state.observations.remove(id);
-        state.tauntEntities.remove(id);
+        state.clearTauntIdentity(id);
         encounter.yieldToNative(tick);
     }
 

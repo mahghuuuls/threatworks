@@ -306,6 +306,7 @@ public final class ParticipantQueryFixture {
         EntityPlayerMP original = fake(world, "HitraOriginalEntity", player.posX + 2, player.posY, player.posZ + 1);
         EntityPlayerMP replacement = CoverageFixtureCommand.fixturePlayer(world, "", original.getName());
         replacement.setUniqueId(original.getUniqueID());
+        replacement.setEntityId(original.getEntityId());
         replacement.setPosition(original.posX, original.posY, original.posZ);
         try {
             require(ThreatworksMod.threatActions().taunt(mob, original) == ThreatActions.Result.APPLIED,

@@ -38,6 +38,9 @@ public final class ParticipantLifecycleProbe {
     }
 
     static void arm(EntityLivingBase mob, EntityPlayerMP player) throws CommandException {
+        if (!player.getServerWorld().isSpawnChunk(mob.chunkCoordX, mob.chunkCoordZ)) {
+            throw new CommandException("The lifecycle mob must be in a retained spawn chunk");
+        }
         EntityPlayerMP anchor = ParticipantQueryFixture.fake(player.getServerWorld(), "HitraHold",
                 mob.posX + 1, mob.posY, mob.posZ);
         if (ThreatworksMod.threatActions().grant(mob, anchor, 2) != ThreatActions.Result.APPLIED) {
@@ -68,9 +71,12 @@ public final class ParticipantLifecycleProbe {
             stop();
         } else if (logoutSeen && !logoutVerified && world.getEntityFromUuid(oldPlayer.getUniqueID()) != oldPlayer) {
             View departed = consumer.read(mob, oldPlayer);
+            View retained = consumer.read(mob, anchor);
             ThreatQueryCommand.report("disconnected", mob, oldPlayer, departed);
+            ThreatQueryCommand.report("retained_without_client", mob, anchor, retained);
             logoutVerified = departed.state() == State.INVALID_PARTICIPANT && !departed.tauntTicks().isPresent()
-                    && departed.aggro() == Confirmation.UNKNOWN && departed.eligibility() == Confirmation.UNKNOWN;
+                    && departed.aggro() == Confirmation.UNKNOWN && departed.eligibility() == Confirmation.UNKNOWN
+                    && retained.state() == State.TRACKED && retained.threat().orElse(0) == 2;
             if (logoutVerified) LOGGER.info("h1_lifecycle_logout oldEntityId={}", oldPlayer.getEntityId());
             else stop();
         } else if (logoutVerified && rejoined != null && world.getEntityFromUuid(rejoined.getUniqueID()) == rejoined) {
