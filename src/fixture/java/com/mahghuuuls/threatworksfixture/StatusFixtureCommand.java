@@ -33,8 +33,10 @@ import net.minecraft.server.management.PlayerInteractionManager;
 import net.minecraft.util.DamageSource;
 import net.minecraft.util.EnumHand;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.ChunkPos;
 import net.minecraft.world.GameType;
 import net.minecraft.world.WorldServer;
+import net.minecraftforge.common.ForgeChunkManager;
 import net.minecraftforge.event.entity.ProjectileImpactEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
@@ -53,6 +55,8 @@ final class StatusFixtureCommand extends CommandBase {
     private static final int Y = 70;
     private static final int LANES = 16;
 
+    private final ThreatworksFixture fixture;
+    private ForgeChunkManager.Ticket ticket;
     private EntityPlayerMP actor;
     private EntityZombie mob;
     private boolean syntheticActor;
@@ -62,6 +66,10 @@ final class StatusFixtureCommand extends CommandBase {
     private int loadTicks;
     private int loadHits;
     private double loadHealthLost;
+
+    StatusFixtureCommand(ThreatworksFixture fixture) {
+        this.fixture = fixture;
+    }
 
     void registerDefinitions() {
         require(StatusworksApi.registerStatus(definition(JAVA, POINTS, 50)));
@@ -128,6 +136,7 @@ final class StatusFixtureCommand extends CommandBase {
         WorldServer world = server.getWorld(0);
         if ("seed".equals(args[0])) {
             cleanup();
+            keepArenaLoaded(world);
             arena(world, 8, 8);
             syntheticActor = args.length != 2;
             actor = syntheticActor ? player(world, "StatusAttacker", 8, 8) : getPlayer(server, sender, args[1]);
@@ -147,6 +156,7 @@ final class StatusFixtureCommand extends CommandBase {
         }
         if ("load".equals(args[0]) && args.length == 2) {
             cleanup();
+            keepArenaLoaded(world);
             for (int lane = 0; lane < LANES; ++lane) {
                 int x = 8 + 8 * (lane % 4);
                 int z = 8 + 8 * (lane / 4);
@@ -273,21 +283,25 @@ final class StatusFixtureCommand extends CommandBase {
         ContributionGroup group = StatusworksApi.contributions().group(actor, POINTS);
         EncounterCoordinator.Inspection encounter = EncounterCoordinator.INSTANCE.inspect(mob, 8);
         StatusService statuses = StatusworksApi.statuses();
-        LOGGER.info("status_state phase={} actor={} mob={} hp={} tracked={} score={} group={} values={} "
+        LOGGER.info("status_state phase={} actor={} mob={} hp={} tracked={} target={} score={} group={} values={} "
                         + "fixed={} stacks={} negative={} java={} timed={}",
                 label, actor.getUniqueID(), mob.getUniqueID(), mob.getHealth(), encounter.tracked,
-                score(), group.availability(), group.values().values(), statuses.count(actor, "tw_u:fixed"),
+                ArrowFixtureCommand.identity(mob.getAttackTarget()), score(), group.availability(), group.values().values(),
+                statuses.count(actor, "tw_u:fixed"),
                 statuses.count(actor, "tw_u:stacked"), statuses.count(actor, "tw_u:negative"),
                 statuses.count(actor, JAVA), statuses.count(actor, "tw_u:timed"));
     }
 
     private void hit(String kind) {
         float before = mob.getHealth();
-        double prior = score();
+        EncounterCoordinator.Inspection encounter = EncounterCoordinator.INSTANCE.inspect(mob, 8);
+        double prior = score(encounter, actor);
+        String priorTarget = ArrowFixtureCommand.identity(mob.getAttackTarget());
         mob.hurtResistantTime = 0;
         boolean accepted = mob.attackEntityFrom(DamageSource.causePlayerDamage(actor), 4.0F);
-        LOGGER.info("status_hit kind={} actor={} mob={} accepted={} beforeHp={} afterHp={} beforeScore={} afterScore={}",
-                kind, actor.getUniqueID(), mob.getUniqueID(), accepted, before, mob.getHealth(), prior, score());
+        LOGGER.info("status_hit kind={} actor={} mob={} accepted={} beforeHp={} afterHp={} beforeScore={} "
+                        + "afterScore={} trackedBefore={} priorTarget={}", kind, actor.getUniqueID(), mob.getUniqueID(),
+                accepted, before, mob.getHealth(), prior, score(), encounter.tracked, priorTarget);
     }
 
     private double score() {
@@ -312,6 +326,19 @@ final class StatusFixtureCommand extends CommandBase {
     private static void arena(WorldServer world, int x, int z) {
         for (BlockPos pos : BlockPos.getAllInBox(new BlockPos(x - 2, Y - 1, z - 2), new BlockPos(x + 2, Y - 1, z + 4))) {
             world.setBlockState(pos, Blocks.STONE.getDefaultState(), 2);
+        }
+    }
+
+    private void keepArenaLoaded(WorldServer world) throws CommandException {
+        ticket = ForgeChunkManager.requestTicket(fixture, world, ForgeChunkManager.Type.NORMAL);
+        if (ticket == null) {
+            throw new CommandException("Could not keep the status arena loaded.");
+        }
+        for (int x = -2; x <= 2; ++x) {
+            for (int z = -2; z <= 2; ++z) {
+                world.getChunkProvider().provideChunk(x, z);
+                ForgeChunkManager.forceChunk(ticket, new ChunkPos(x, z));
+            }
         }
     }
 
@@ -364,5 +391,9 @@ final class StatusFixtureCommand extends CommandBase {
         loadTicks = 0;
         loadHits = 0;
         loadHealthLost = 0;
+        if (ticket != null) {
+            ForgeChunkManager.releaseTicket(ticket);
+            ticket = null;
+        }
     }
 }

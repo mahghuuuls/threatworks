@@ -107,7 +107,7 @@ public final class ThreatworksFixture {
         ForgeChunkManager.setForcedChunkLoadingCallback(this,
                 (tickets, world) -> tickets.forEach(ForgeChunkManager::releaseTicket));
         if (Boolean.getBoolean("threatworks.statusFixture")) {
-            statuses = new StatusFixtureCommand();
+            statuses = new StatusFixtureCommand(this);
             statuses.registerDefinitions();
         }
     }
