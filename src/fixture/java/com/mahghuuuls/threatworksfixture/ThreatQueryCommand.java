@@ -99,9 +99,10 @@ final class ThreatQueryCommand extends CommandBase {
     }
 
     static void report(String label, EntityLivingBase mob, EntityLivingBase participant, View view) {
-        LOGGER.info("h1_query case={} mob={} participant={} state={} ordinary={} threat={} eligibility={} focus={} "
+        LOGGER.info("h1_query case={} mob={} participant={} participantEntityId={} state={} ordinary={} threat={} eligibility={} focus={} "
                         + "aggro={} taunt={} forcing={} ticks={} takeover={}", label,
                 mob == null ? null : mob.getUniqueID(), participant == null ? null : participant.getUniqueID(),
+                participant == null ? null : participant.getEntityId(),
                 view.state(), view.ordinarySwitching(), view.threat(), view.eligibility(), view.focus(), view.aggro(),
                 view.tauntActive(), view.tauntForcingFocus(), view.tauntTicks(), view.takeover());
     }

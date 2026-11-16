@@ -55,7 +55,7 @@ final class WitherMobPolicy implements MobPolicy {
         }
         int watched = wither.getWatchedTargetId(0);
         return target == null ? watched == 0 && !goal.using
-                : watched == target.getEntityId() && goal.using && RangedGoal.aimsAt(goal, target);
+                : watched > 0 && watched == target.getEntityId() && goal.using && RangedGoal.aimsAt(goal, target);
     }
 
     private static boolean rangedAiEnabled(EntityWither wither) {

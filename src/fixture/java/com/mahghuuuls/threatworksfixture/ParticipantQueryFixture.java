@@ -110,8 +110,15 @@ public final class ParticipantQueryFixture {
                     "Could not replace active taunt");
             require(read("superseded_taunt", mob, player).aggro() == Confirmation.YES && mob.getAttackTarget() == player
                     && read("previous_taunter", mob, other).aggro() == Confirmation.NO, "Superseded taunt retained focus");
-            wither(player, other);
-            guardian(player, other);
+            EntityPlayerMP nativeTarget = fake(world, "HitraNative", player.posX, player.posY, player.posZ);
+            try {
+                require(nativeTarget.getEntityId() > 0 && other.getEntityId() > 0,
+                        "Native aim fixture needs two positive watched entity IDs");
+                wither(nativeTarget, other);
+                guardian(nativeTarget, other);
+            } finally {
+                world.removeEntityDangerously(nativeTarget);
+            }
             creeper(player);
             evoker(player);
             dragon(player);
@@ -197,7 +204,8 @@ public final class ParticipantQueryFixture {
             require(beam.shouldExecute(), "Native beam refused the player target");
             beam.startExecuting();
             for (int tick = 0; tick < 10; tick++) beam.updateTask();
-            require(((GuardianBeam) guardian).threatworks$beamTargetId() == player.getEntityId(), "Beam ID did not commit");
+            int watched = ((GuardianBeam) guardian).threatworks$beamTargetId();
+            require(watched != 0 && watched == player.getEntityId() && guardian.hasTargetedEntity(), "Beam ID did not commit");
             View during = read("guardian_beam", guardian, player);
             require(during.focus() == Focus.GUARDIAN_BEAM && during.aggro() == Confirmation.YES
                     && during.tauntActive() == Confirmation.YES && during.tauntForcingFocus() == Confirmation.NO,
