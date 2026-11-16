@@ -207,7 +207,7 @@ public final class EncounterCoordinator implements ThreatActions {
     }
 
     public void onHealthWritten(EntityLivingBase victim, DamageSource source, EntityLivingBase incumbent,
-                                float before, float after) {
+                                float before, float after, DamageAttribution observed) {
         MobAdmission admission = admission(victim);
         MobType type = admission.type;
         if (type == null) {
@@ -233,7 +233,7 @@ public final class EncounterCoordinator implements ThreatActions {
             }
         }
 
-        DamageAttribution hit = DamageAttribution.resolve(source, state.launchSession, summons);
+        DamageAttribution hit = observed == null ? DamageAttribution.resolve(source, state.launchSession, summons) : observed;
         if (hit == null || world.getEntityFromUuid(hit.attacker.getUniqueID()) != hit.attacker
                 || !validParticipant(mob, type, hit.attacker)) {
             return;
@@ -260,7 +260,7 @@ public final class EncounterCoordinator implements ThreatActions {
         if (!DragonTargeting.isActive(dragon)) {
             state.discard(dragon.getUniqueID());
         } else if (before > after && admission(dragon).usesStrafeChoice()) {
-            onHealthWritten(dragon, source, incumbent, before, after);
+            onHealthWritten(dragon, source, incumbent, before, after, null);
         }
     }
 

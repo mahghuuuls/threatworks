@@ -18,7 +18,6 @@ import net.minecraft.entity.projectile.EntityThrowable;
 import net.minecraft.util.DamageSource;
 import net.minecraft.util.EntityDamageSource;
 import net.minecraft.util.EntityDamageSourceIndirect;
-import net.minecraft.world.WorldServer;
 import org.apache.logging.log4j.Logger;
 
 import java.lang.reflect.Field;
@@ -27,8 +26,6 @@ import java.util.UUID;
 import java.util.function.Function;
 
 final class WizardrySummonSource implements DamageAttribution.SummonSource {
-    // Wizardry reads absent caster UUID tags as the all-zero UUID on NBT load.
-    private static final UUID UNSET_CASTER = new UUID(0, 0);
     private final Class<?> directWrapper = MinionDamage.class.asSubclass(EntityDamageSource.class);
     private final Class<?> indirectWrapper = IndirectMinionDamage.class.asSubclass(EntityDamageSourceIndirect.class);
     private final Class<?> summonedCreature = ISummonedCreature.class.asSubclass(IEntityOwnable.class);
@@ -72,7 +69,7 @@ final class WizardrySummonSource implements DamageAttribution.SummonSource {
 
     @Override
     public boolean handles(DamageSource source) {
-        if (directWrapper.isInstance(source) || indirectWrapper.isInstance(source)) {
+        if (directWrapper.isInstance(source) || indirectWrapper.isInstance(source) || SnowGolemOrigin.handles(source)) {
             return true;
         }
         Entity actor = source.getTrueSource();
@@ -88,6 +85,9 @@ final class WizardrySummonSource implements DamageAttribution.SummonSource {
 
     @Override
     public DamageAttribution resolve(DamageSource source, Object worldSession) {
+        if (SnowGolemOrigin.handles(source)) {
+            return SnowGolemOrigin.resolve(source, worldSession);
+        }
         Entity direct = source.getImmediateSource();
         Entity reported = source.getTrueSource();
         if (directWrapper.isInstance(source)) {
@@ -110,8 +110,7 @@ final class WizardrySummonSource implements DamageAttribution.SummonSource {
             return null;
         }
         EntityLivingBase actor = (EntityLivingBase) reported;
-        Entity owner = actor.world instanceof WorldServer ? ((WorldServer) actor.world).getEntityFromUuid(ownerId) : null;
-        EntityLivingBase caster = verifiedOwner(actor, owner) ? (EntityLivingBase) owner : null;
+        EntityLivingBase caster = WizardryCompatibility.liveCaster(actor, ownerId);
         if (source instanceof EntityDamageSourceIndirect) {
             return indirect(actor, caster, direct, worldSession);
         }
@@ -120,7 +119,7 @@ final class WizardrySummonSource implements DamageAttribution.SummonSource {
 
     private DamageAttribution legacyUnownedHit(DamageSource source, Entity actor, Entity immediate,
                                               Object worldSession) {
-        if (!UNSET_CASTER.equals(ownerId(actor))) {
+        if (!WizardryCompatibility.UNSET_CASTER.equals(ownerId(actor))) {
             return null;
         }
         // Keep the two released raw-source cases for saved minions with an empty caster tag.
@@ -193,6 +192,6 @@ final class WizardrySummonSource implements DamageAttribution.SummonSource {
 
     private UUID verifiedOwnerId(Entity actor) {
         UUID id = ownerId(actor);
-        return UNSET_CASTER.equals(id) ? null : id;
+        return WizardryCompatibility.hasCaster(id) ? id : null;
     }
 }

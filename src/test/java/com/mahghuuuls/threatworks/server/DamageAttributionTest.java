@@ -15,6 +15,7 @@ import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.item.EntityArmorStand;
 import net.minecraft.entity.item.EntityXPOrb;
 import net.minecraft.entity.monster.EntityZombie;
+import net.minecraft.entity.projectile.EntitySnowball;
 import net.minecraft.entity.projectile.EntitySmallFireball;
 import net.minecraft.entity.projectile.EntityTippedArrow;
 import net.minecraft.init.Bootstrap;
@@ -264,6 +265,23 @@ class DamageAttributionTest {
         TestArrow arrow = new TestArrow(skeleton);
         assertSame(skeleton, DamageAttribution.resolve(DamageSource.causeArrowDamage(arrow, skeleton), worldSession,
                 adapter).attacker);
+    }
+
+    @Test
+    void anOrdinaryWizardrySummonStillGetsSharedCreditForItsOwnNativeSnowball() {
+        EntityIceWraith actor = new EntityIceWraith(null);
+        actor.setOwnerId(shooter.getUniqueID());
+        EntitySnowball projectile = new EntitySnowball(null) {
+            @Override
+            public EntityLivingBase getThrower() {
+                return actor;
+            }
+        };
+        DamageAttribution hit = DamageAttribution.resolve(DamageSource.causeThrownDamage(projectile, actor),
+                worldSession, newWizardrySource());
+        assertNotNull(hit);
+        assertSame(actor, hit.attacker);
+        assertEquals(1, hit.multiplier(() -> fail("Snowball has no arrow snapshot")));
     }
 
     private static DamageAttribution.SummonSource newWizardrySource() {

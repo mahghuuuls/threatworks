@@ -7,6 +7,7 @@
   "mixins": [
     "EntityArrowMixin",
     "EntityLivingBaseMixin",
+    "SnowGolemOriginMixin",
     "EntityLivingMixin",
     "EntityDragonMixin",
     "PhaseHoldingPatternMixin",

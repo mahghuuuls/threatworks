@@ -148,7 +148,8 @@ public final class ThreatworksFixture {
 
     @Mod.EventHandler
     public void serverStarted(FMLServerStartedEvent event) {
-        if (!Boolean.getBoolean("threatworks.wizardrySourceSmoke")) {
+        boolean special = Boolean.getBoolean("threatworks.wizardrySpecialSmoke");
+        if (!special && !Boolean.getBoolean("threatworks.wizardrySourceSmoke")) {
             return;
         }
         net.minecraft.server.MinecraftServer server = FMLCommonHandler.instance().getMinecraftServerInstance();
@@ -156,7 +157,11 @@ public final class ThreatworksFixture {
             throw new IllegalStateException("Wizardry source smoke requires a disposable dedicated server with Wizardry");
         }
         try {
-            WizardryFixtureActions.smoke(server.getWorld(0));
+            if (special) {
+                WizardryFixtureActions.specialSmoke(server.getWorld(0));
+            } else {
+                WizardryFixtureActions.smoke(server.getWorld(0));
+            }
         } finally {
             server.initiateShutdown();
         }

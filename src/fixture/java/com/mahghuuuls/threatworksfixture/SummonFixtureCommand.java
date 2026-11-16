@@ -45,6 +45,18 @@ final class SummonFixtureCommand extends CommandBase {
 
     @Override
     public void execute(MinecraftServer server, ICommandSender sender, String[] args) throws CommandException {
+        if (args.length == 2 && ("special-slime".equals(args[0]) || "special-snow".equals(args[0]))) {
+            if (!Loader.isModLoaded("ebwizardry")) {
+                throw new CommandException("Wizardry is unavailable.");
+            }
+            EntityPlayerMP caster = getPlayer(server, sender, args[1]);
+            if ("special-slime".equals(args[0])) {
+                WizardrySpecialFixture.slime(caster);
+            } else {
+                WizardrySpecialFixture.snow(caster);
+            }
+            return;
+        }
         if (args.length == 3 && "activate".equals(args[0])) {
             EntityPlayerMP player = getPlayer(server, sender, args[1]);
             EntityLivingBase target = getEntity(server, sender, args[2], EntityLivingBase.class);

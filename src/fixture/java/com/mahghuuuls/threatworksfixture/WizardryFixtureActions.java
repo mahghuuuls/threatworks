@@ -12,6 +12,7 @@ import net.minecraft.entity.EntityLiving;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.SharedMonsterAttributes;
 import net.minecraft.entity.monster.EntityZombie;
+import net.minecraft.init.Blocks;
 import net.minecraft.util.DamageSource;
 import net.minecraft.util.EnumHand;
 import net.minecraft.util.math.BlockPos;
@@ -40,6 +41,39 @@ final class WizardryFixtureActions {
         SpellModifiers modifiers = caster instanceof ISpellCaster
                 ? ((ISpellCaster) caster).getModifiers() : new SpellModifiers();
         return spell.cast(caster.world, caster, EnumHand.MAIN_HAND, 0, target, modifiers);
+    }
+
+    static void specialSmoke(WorldServer world) {
+        BlockPos spawn = world.getSpawnPoint();
+        int floorY = Math.min(230, Math.max(120, world.getHeight(spawn).getY() + 8));
+        for (int x = -9; x <= 9; x++) {
+            for (int z = -9; z <= 12; z++) {
+                world.setBlockState(new BlockPos(spawn.getX() + x, floorY, spawn.getZ() + z),
+                        Blocks.STONE.getDefaultState());
+            }
+        }
+        FakePlayer caster = new FakePlayer(world, new GameProfile(UUID.randomUUID(), "SpecialSummonProbe")) {
+            @Override
+            public Vec3d getPositionVector() {
+                return new Vec3d(posX, posY, posZ);
+            }
+
+            @Override
+            public boolean isEntityInvulnerable(DamageSource source) {
+                return false;
+            }
+        };
+        caster.setHealth(caster.getMaxHealth());
+        caster.capabilities.disableDamage = false;
+        caster.setPosition(spawn.getX() + 0.5, floorY + 1, spawn.getZ() + 0.5);
+        require(world.spawnEntity(caster), "Could not insert special summon caster");
+        try {
+            WizardrySpecialFixture.slime(caster);
+            WizardrySpecialFixture.snow(caster);
+            LOGGER.info("w2_special_smoke_passed");
+        } finally {
+            world.removeEntityDangerously(caster);
+        }
     }
 
     static void smoke(WorldServer world) {
@@ -114,12 +148,12 @@ final class WizardryFixtureActions {
         }
     }
 
-    private static double score(EncounterCoordinator.Inspection view, EntityLivingBase participant) {
+    static double score(EncounterCoordinator.Inspection view, EntityLivingBase participant) {
         return view.participants.stream().filter(entry -> entry.id.equals(participant.getUniqueID()))
                 .mapToDouble(entry -> entry.score).findFirst().orElse(0);
     }
 
-    private static void require(boolean condition, String message) {
+    static void require(boolean condition, String message) {
         if (!condition) {
             throw new IllegalStateException(message);
         }
