@@ -26,10 +26,10 @@ public final class WizardryCompatibility {
             return null;
         }
         try {
-            DamageAttribution.SummonSource adapter = new WizardrySummonSource();
+            DamageAttribution.SummonSource adapter = WizardrySummonSource.load(logger);
             logger.info("Wizardry summon attribution enabled for {}", version);
             return adapter;
-        } catch (LinkageError | ReflectiveOperationException | RuntimeException failure) {
+        } catch (LinkageError | RuntimeException failure) {
             logger.warn("Skipping Wizardry summon attribution: required minion attribution capabilities unavailable",
                     failure);
             return null;

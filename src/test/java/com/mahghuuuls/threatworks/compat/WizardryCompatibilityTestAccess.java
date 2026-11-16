@@ -9,4 +9,8 @@ public final class WizardryCompatibilityTestAccess {
     public static DamageAttribution.SummonSource qualified() {
         return WizardryCompatibility.load("4.3.19", LogManager.getLogger(WizardryCompatibilityTestAccess.class));
     }
+
+    public static DamageAttribution.SummonSource withoutOriginalShooterField() {
+        return new WizardrySummonSource(null, projectile -> null);
+    }
 }

@@ -45,8 +45,11 @@ import net.minecraftforge.event.entity.ProjectileImpactEvent;
 import net.minecraftforge.event.world.ExplosionEvent;
 import net.minecraftforge.event.entity.living.PotionEvent;
 import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.fml.common.FMLCommonHandler;
+import net.minecraftforge.fml.common.Loader;
 import net.minecraftforge.fml.common.event.FMLInitializationEvent;
 import net.minecraftforge.fml.common.event.FMLServerStartingEvent;
+import net.minecraftforge.fml.common.event.FMLServerStartedEvent;
 import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
@@ -142,6 +145,22 @@ public final class ThreatworksFixture {
         MinecraftForge.EVENT_BUS.register(neutral);
     }
 
+    @Mod.EventHandler
+    public void serverStarted(FMLServerStartedEvent event) {
+        if (!Boolean.getBoolean("threatworks.wizardrySourceSmoke")) {
+            return;
+        }
+        net.minecraft.server.MinecraftServer server = FMLCommonHandler.instance().getMinecraftServerInstance();
+        if (!server.isDedicatedServer() || !Loader.isModLoaded("ebwizardry")) {
+            throw new IllegalStateException("Wizardry source smoke requires a disposable dedicated server with Wizardry");
+        }
+        try {
+            WizardryFixtureActions.smoke(server.getWorld(0));
+        } finally {
+            server.initiateShutdown();
+        }
+    }
+
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public void onLivingDamage(LivingDamageEvent event) {
         EntityLivingBase victim = event.getEntityLiving();
@@ -222,6 +241,15 @@ public final class ThreatworksFixture {
         }
         if (!victim.world.isRemote && victim.getTags().contains("tw_summon_probe")) {
             SummonFixtureCommand.reportImpact(victim, event.getSource(), event.getAmount());
+        }
+        if (!victim.world.isRemote && event.getAmount() > 0.0F
+                && victim.getTags().contains("tw_cancel_summon_reissue")
+                && SummonFixtureCommand.isWizardryReplacement(event.getSource())) {
+            victim.removeTag("tw_cancel_summon_reissue");
+            event.setCanceled(true);
+            LOGGER.info("canceled_summon_reissue victim={} wrapper={} health={} amount={} tick={}",
+                    victim.getUniqueID(), event.getSource().getClass().getName(), victim.getHealth(), event.getAmount(),
+                    victim.world.getTotalWorldTime());
         }
         if (!victim.world.isRemote && victim.getTags().contains("tw_arrow_probe")
                 && event.getSource().getImmediateSource() instanceof EntityArrow) {

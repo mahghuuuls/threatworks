@@ -1,14 +1,21 @@
 package com.mahghuuuls.threatworks.server;
 
 import com.mahghuuuls.threatworks.compat.WizardryCompatibilityTestAccess;
+import electroblob.wizardry.entity.living.EntityBlazeMinion;
+import electroblob.wizardry.entity.living.EntityIceWraith;
+import electroblob.wizardry.entity.living.EntityLightningWraith;
 import electroblob.wizardry.entity.living.EntitySkeletonMinion;
+import electroblob.wizardry.entity.living.EntitySpiritWolf;
 import electroblob.wizardry.entity.living.EntityZombieMinion;
+import electroblob.wizardry.entity.projectile.EntityIceShard;
 import electroblob.wizardry.util.IndirectMinionDamage;
 import electroblob.wizardry.util.MagicDamage;
 import electroblob.wizardry.util.MinionDamage;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.item.EntityArmorStand;
+import net.minecraft.entity.item.EntityXPOrb;
 import net.minecraft.entity.monster.EntityZombie;
+import net.minecraft.entity.projectile.EntitySmallFireball;
 import net.minecraft.entity.projectile.EntityTippedArrow;
 import net.minecraft.init.Bootstrap;
 import net.minecraft.util.DamageSource;
@@ -18,6 +25,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -83,6 +91,108 @@ class DamageAttributionTest {
         assertFalse(hit.mayOpenEncounter());
         zombie.setOwnerId(zombie.getUniqueID());
         assertNull(DamageAttribution.resolve(source, worldSession, newWizardrySource()));
+    }
+
+    @Test
+    void wizardryArcUsesTheActualLightningWraithAndImpactPoints() {
+        EntityLightningWraith wraith = new EntityLightningWraith(null);
+        wraith.setOwnerId(shooter.getUniqueID());
+        DamageSource arc = new MinionDamage("shock", wraith, shooter, MagicDamage.DamageType.SHOCK, false);
+        DamageAttribution hit = DamageAttribution.resolve(arc, worldSession, newWizardrySource());
+        assertNotNull(hit);
+        assertSame(wraith, hit.attacker);
+        assertSame(shooter, hit.summonOwner);
+        assertFalse(hit.mayOpenEncounter());
+        assertEquals(1.25, hit.multiplier(() -> 1.25));
+    }
+
+    @Test
+    void wizardryFireballUsesBaseThreatAndChecksTheOriginalShooter() {
+        EntityBlazeMinion blaze = new EntityBlazeMinion(null);
+        blaze.setOwnerId(shooter.getUniqueID());
+        EntitySmallFireball fireball = new EntitySmallFireball(null);
+        fireball.shootingEntity = blaze;
+        DamageSource impact = new IndirectMinionDamage("fireball", fireball, blaze, shooter,
+                MagicDamage.DamageType.MAGIC, false).setFireDamage().setProjectile();
+        DamageAttribution.SummonSource adapter = newWizardrySource();
+        DamageAttribution hit = DamageAttribution.resolve(impact, worldSession, adapter);
+        assertNotNull(hit);
+        assertSame(blaze, hit.attacker);
+        assertSame(shooter, hit.summonOwner);
+        assertFalse(hit.mayOpenEncounter());
+        assertEquals(1.0, hit.multiplier(() -> fail("Fireball has no snapshot")));
+        DamageSource raw = DamageSource.causeFireballDamage(fireball, blaze);
+        assertSame(blaze, DamageAttribution.resolve(raw, worldSession, adapter).attacker);
+
+        EntityBlazeMinion otherBlaze = new EntityBlazeMinion(null);
+        otherBlaze.setOwnerId(shooter.getUniqueID());
+        fireball.shootingEntity = otherBlaze;
+        assertNull(DamageAttribution.resolve(impact, worldSession, adapter));
+
+        fireball.shootingEntity = null;
+        assertNull(DamageAttribution.resolve(raw, worldSession, adapter));
+        assertNull(DamageAttribution.resolve(DamageSource.causeFireballDamage(fireball, null), worldSession, adapter));
+    }
+
+    @Test
+    void wizardryDoesNotTreatASecondSummonAsAProjectile() {
+        EntityZombieMinion originalActor = new EntityZombieMinion(null);
+        EntityZombieMinion intermediateCaster = new EntityZombieMinion(null);
+        originalActor.setOwnerId(intermediateCaster.getUniqueID());
+        intermediateCaster.setOwnerId(shooter.getUniqueID());
+        DamageSource rewrapped = new IndirectMinionDamage("mob", originalActor, intermediateCaster, shooter,
+                MagicDamage.DamageType.MAGIC, false);
+        DamageSource raw = new EntityDamageSourceIndirect("mob", originalActor, intermediateCaster);
+        assertNull(DamageAttribution.resolve(rewrapped, worldSession, newWizardrySource()));
+        assertNull(DamageAttribution.resolve(raw, worldSession, newWizardrySource()));
+        DamageSource unknownCarrier = new IndirectMinionDamage("wizardry_magic", new EntityXPOrb(null),
+                intermediateCaster, shooter, MagicDamage.DamageType.MAGIC, false);
+        assertNull(DamageAttribution.resolve(unknownCarrier, worldSession, newWizardrySource()));
+    }
+
+    @Test
+    void wizardryIceShardUsesItsNativeCasterEvenWithoutAPlayerWrapper() {
+        EntityIceWraith wraith = new EntityIceWraith(null);
+        wraith.setOwnerId(shooter.getUniqueID());
+        EntityIceShard shard = new EntityIceShard(null);
+        shard.setCaster(wraith);
+        DamageSource source = new EntityDamageSourceIndirect("wizardry_magic", shard, wraith);
+        DamageAttribution.SummonSource adapter = newWizardrySource();
+        DamageAttribution hit = DamageAttribution.resolve(source, worldSession, adapter);
+        assertNotNull(hit);
+        assertSame(wraith, hit.attacker);
+        assertEquals(1.0, hit.multiplier(() -> fail("Ice Shard has no vanilla arrow snapshot")));
+        shard.setCaster(shooter);
+        assertNull(DamageAttribution.resolve(source, worldSession, adapter));
+    }
+
+    @Test
+    void missingOriginalShooterFieldDoesNotDisableDirectOrRawSummonPaths() {
+        DamageAttribution.SummonSource adapter = WizardryCompatibilityTestAccess.withoutOriginalShooterField();
+        EntityZombieMinion zombie = new EntityZombieMinion(null);
+        zombie.setOwnerId(shooter.getUniqueID());
+        DamageSource direct = new MinionDamage("mob", zombie, shooter, MagicDamage.DamageType.MAGIC, false);
+        assertSame(zombie, DamageAttribution.resolve(direct, worldSession, adapter).attacker);
+
+        TestArrow arrow = new TestArrow(zombie);
+        DamageSource wrapped = new IndirectMinionDamage("arrow", arrow, zombie, shooter,
+                MagicDamage.DamageType.MAGIC, false).setProjectile();
+        assertNull(DamageAttribution.resolve(wrapped, worldSession, adapter));
+        assertSame(zombie, DamageAttribution.resolve(DamageSource.causeArrowDamage(arrow, zombie), worldSession,
+                adapter).attacker);
+    }
+
+    @Test
+    void spiritWolfUsesItsNativeTameableOwnerContract() {
+        EntitySpiritWolf wolf = new EntitySpiritWolf(null);
+        wolf.setOwnerId(shooter.getUniqueID());
+        wolf.setTamed(true);
+        DamageAttribution.SummonSource adapter = newWizardrySource();
+        DamageAttribution hit = DamageAttribution.resolve(DamageSource.causeMobDamage(wolf), worldSession, adapter);
+        assertNotNull(hit);
+        assertSame(wolf, hit.attacker);
+        assertFalse(hit.mayOpenEncounter());
+        assertNull(DamageAttribution.resolve(DamageSource.MAGIC, worldSession, adapter));
     }
 
     @Test

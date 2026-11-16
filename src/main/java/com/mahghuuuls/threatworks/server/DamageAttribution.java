@@ -14,13 +14,16 @@ import java.util.function.DoubleSupplier;
 public final class DamageAttribution {
     final EntityLivingBase attacker;
     final EntityLivingBase summonOwner;
-    // Only direct hits read equipment at impact. An arrow without a snapshot uses the base multiplier.
+    private final boolean summon;
+    // Only direct hits read equipment at impact. An attributable projectile without a snapshot uses base threat.
     private final Double launchMultiplier;
 
-    private DamageAttribution(EntityLivingBase attacker, EntityLivingBase summonOwner, Double launchMultiplier) {
+    private DamageAttribution(EntityLivingBase attacker, EntityLivingBase summonOwner, Double launchMultiplier,
+                              boolean summon) {
         this.attacker = attacker;
         this.summonOwner = summonOwner;
         this.launchMultiplier = launchMultiplier;
+        this.summon = summon;
     }
 
     static DamageAttribution resolve(DamageSource source, Object worldSession) {
@@ -37,12 +40,12 @@ public final class DamageAttribution {
         if ("player".equals(source.getDamageType())) {
             Entity actor = source.getTrueSource();
             return actor instanceof EntityPlayerMP && actor == source.getImmediateSource()
-                    ? new DamageAttribution((EntityPlayerMP) actor, null, null) : null;
+                    ? new DamageAttribution((EntityPlayerMP) actor, null, null, false) : null;
         }
         if ("mob".equals(source.getDamageType()) && source.getClass() == EntityDamageSource.class) {
             Entity actor = source.getTrueSource();
             return actor instanceof EntityLiving && actor == source.getImmediateSource()
-                    ? new DamageAttribution((EntityLiving) actor, null, null) : null;
+                    ? new DamageAttribution((EntityLiving) actor, null, null, false) : null;
         }
         if (!"arrow".equals(source.getDamageType()) || !source.isProjectile()) {
             return null;
@@ -52,7 +55,8 @@ public final class DamageAttribution {
         if (!(immediate instanceof EntityArrow) || !(actor instanceof EntityLivingBase)) {
             return null;
         }
-        return arrow((EntityArrow) immediate, (EntityLivingBase) actor, null, worldSession);
+        Double multiplier = arrowMultiplier((EntityArrow) immediate, (EntityLivingBase) actor, worldSession);
+        return multiplier == null ? null : new DamageAttribution((EntityLivingBase) actor, null, multiplier, false);
     }
 
     public interface SummonSource {
@@ -60,30 +64,31 @@ public final class DamageAttribution {
         DamageAttribution resolve(DamageSource source, Object worldSession);
     }
 
-    public static DamageAttribution summonMelee(EntityLivingBase summon, EntityLivingBase owner) {
-        return new DamageAttribution(summon, owner, null);
+    public static DamageAttribution summonDirect(EntityLivingBase summon, EntityLivingBase owner) {
+        return new DamageAttribution(summon, owner, null, true);
     }
 
-    public static DamageAttribution summonArrow(EntityLivingBase summon, EntityLivingBase owner, EntityArrow arrow,
-                                                Object worldSession) {
-        return arrow(arrow, summon, owner, worldSession);
+    public static DamageAttribution summonIndirect(EntityLivingBase summon, EntityLivingBase owner, Entity projectile,
+                                                    Object worldSession) {
+        Double multiplier = projectile instanceof EntityArrow
+                ? arrowMultiplier((EntityArrow) projectile, summon, worldSession) : Double.valueOf(1.0);
+        return multiplier == null ? null : new DamageAttribution(summon, owner, multiplier, true);
     }
 
-    private static DamageAttribution arrow(EntityArrow arrow, EntityLivingBase actor, EntityLivingBase owner,
-                                           Object worldSession) {
+    private static Double arrowMultiplier(EntityArrow arrow, EntityLivingBase actor, Object worldSession) {
         if (arrow.shootingEntity != actor || arrow.world != actor.world) {
             return null;
         }
         ArrowLaunch.Snapshot snapshot = ((ArrowLaunch) arrow).threatworks$getLaunch();
         if (snapshot == null || snapshot.worldSession != worldSession) {
-            return new DamageAttribution(actor, owner, 1.0);
+            return 1.0;
         }
         return snapshot.shooter.equals(actor.getUniqueID())
-                ? new DamageAttribution(actor, owner, snapshot.multiplier) : null;
+                ? snapshot.multiplier : null;
     }
 
     boolean mayOpenEncounter() {
-        return summonOwner == null && attacker instanceof EntityPlayerMP;
+        return !summon && attacker instanceof EntityPlayerMP;
     }
 
     double multiplier(DoubleSupplier currentMultiplier) {

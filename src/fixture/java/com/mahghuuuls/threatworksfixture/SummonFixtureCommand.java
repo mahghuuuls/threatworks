@@ -12,10 +12,13 @@ import net.minecraft.entity.IEntityOwnable;
 import net.minecraft.entity.IRangedAttackMob;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.entity.projectile.EntityArrow;
+import net.minecraft.entity.projectile.EntityFireball;
+import net.minecraft.entity.projectile.EntityThrowable;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.DamageSource;
 import net.minecraft.util.math.ChunkPos;
 import net.minecraftforge.common.ForgeChunkManager;
+import net.minecraftforge.fml.common.Loader;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -36,11 +39,44 @@ final class SummonFixtureCommand extends CommandBase {
 
     @Override
     public String getUsage(ICommandSender sender) {
-        return "/twsummon inspect <entity>, <melee|ranged> <minion> <target>, dimension <player> <-1|0>, hold <entity>, or release";
+        return "/twsummon inspect <entity>, <melee|ranged> <minion> <target>, "
+                + "spell <id> <caster> <target>, activate <player> <target>, dimension <player> <-1|0>, hold <entity>, or release";
     }
 
     @Override
     public void execute(MinecraftServer server, ICommandSender sender, String[] args) throws CommandException {
+        if (args.length == 3 && "activate".equals(args[0])) {
+            EntityPlayerMP player = getPlayer(server, sender, args[1]);
+            EntityLivingBase target = getEntity(server, sender, args[2], EntityLivingBase.class);
+            if (player.world != target.world) {
+                throw new CommandException("Expected a player in the target's world.");
+            }
+            float before = target.getHealth();
+            target.attackEntityFrom(DamageSource.causePlayerDamage(player), 2.0F);
+            LOGGER.info("summon_activation player={} victim={} before={} after={} tick={}", player.getUniqueID(),
+                    target.getUniqueID(), before, target.getHealth(), target.world.getTotalWorldTime());
+            if (target.getHealth() >= before) {
+                throw new CommandException("The activation hit did not remove health.");
+            }
+            return;
+        }
+        if (args.length == 4 && "spell".equals(args[0])) {
+            if (!Loader.isModLoaded("ebwizardry")) {
+                throw new CommandException("Wizardry is unavailable.");
+            }
+            EntityLiving caster = getEntity(server, sender, args[2], EntityLiving.class);
+            EntityLivingBase target = getEntity(server, sender, args[3], EntityLivingBase.class);
+            if (caster.world != target.world) {
+                throw new CommandException("Expected a spell target in the caster's world.");
+            }
+            boolean cast = WizardryFixtureActions.cast(args[1], caster, target);
+            LOGGER.info("summon_spell spell={} cast={} actor={} target={} tick={}", args[1], cast,
+                    ArrowFixtureCommand.identity(caster), target.getUniqueID(), caster.world.getTotalWorldTime());
+            if (!cast) {
+                throw new CommandException("Wizardry rejected the native spell invocation.");
+            }
+            return;
+        }
         if (args.length == 2 && "hold".equals(args[0])) {
             Entity anchor = getEntity(server, sender, args[1]);
             if (arenaTicket != null) {
@@ -108,10 +144,30 @@ final class SummonFixtureCommand extends CommandBase {
 
     static void reportImpact(EntityLivingBase target, DamageSource source, float amount) {
         Entity immediate = source.getImmediateSource();
-        Entity shooter = immediate instanceof EntityArrow ? ((EntityArrow) immediate).shootingEntity : null;
+        Entity shooter = projectileShooter(immediate);
         LOGGER.info("summon_impact target={} source={} wrapper={} immediate={} shooter={} trueSource={} amount={} tick={}",
                 target.getUniqueID(), source.getDamageType(), source.getClass().getName(),
                 ArrowFixtureCommand.identity(immediate), ArrowFixtureCommand.identity(shooter),
                 ArrowFixtureCommand.identity(source.getTrueSource()), amount, target.world.getTotalWorldTime());
+    }
+
+    private static Entity projectileShooter(Entity projectile) {
+        if (projectile instanceof EntityArrow) {
+            return ((EntityArrow) projectile).shootingEntity;
+        }
+        if (projectile instanceof EntityFireball) {
+            return ((EntityFireball) projectile).shootingEntity;
+        }
+        if (projectile instanceof EntityThrowable) {
+            return ((EntityThrowable) projectile).getThrower();
+        }
+        return projectile != null && Loader.isModLoaded("ebwizardry")
+                ? WizardryFixtureActions.magicArrowCaster(projectile) : null;
+    }
+
+    static boolean isWizardryReplacement(DamageSource source) {
+        String type = source.getClass().getName();
+        return "electroblob.wizardry.util.MinionDamage".equals(type)
+                || "electroblob.wizardry.util.IndirectMinionDamage".equals(type);
     }
 }
