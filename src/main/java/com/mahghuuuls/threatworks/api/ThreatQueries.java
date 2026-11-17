@@ -76,6 +76,7 @@ public interface ThreatQueries {
 
         public OptionalInt tauntTicks() { return tauntTicks == null ? OptionalInt.empty() : OptionalInt.of(tauntTicks); }
 
+        /** A reliable ordinary takeover score observed within the last 25 server ticks, when available. */
         public Optional<Takeover> takeover() { return Optional.ofNullable(takeover); }
     }
 

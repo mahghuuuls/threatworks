@@ -119,7 +119,10 @@ public final class ThreatworksFixture {
     @Mod.EventHandler
     public void serverStarting(FMLServerStartingEvent event) {
         event.registerServerCommand(new ThreatActionsCommand());
-        event.registerServerCommand(new ThreatQueryCommand());
+        if (!"1.0.0".equals(Loader.instance().getIndexedModList().get("threatworks").getVersion())) {
+            event.registerServerCommand(new ThreatQueryCommand());
+        }
+        event.registerServerCommand(new HudWorkloadCommand());
         event.registerServerCommand(new ArrowFixtureCommand());
         event.registerServerCommand(new SummonFixtureCommand(this));
         event.registerServerCommand(new EquipmentFixtureCommand());

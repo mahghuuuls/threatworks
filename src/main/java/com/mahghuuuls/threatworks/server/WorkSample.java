@@ -16,6 +16,10 @@ final class WorkSample {
     private int maxPathsPerTick;
     private int previousSelections;
     private int previousPaths;
+    private int supplements;
+    private int lastSupplementTick;
+    private int supplementsThisTick;
+    private int maxSupplementsPerTick;
 
     WorkSample(int duration) {
         if (duration < 1 || duration > 1000) {
@@ -40,6 +44,15 @@ final class WorkSample {
         paths++;
     }
 
+    void supplement(int tick) {
+        if (tick != lastSupplementTick) {
+            lastSupplementTick = tick;
+            supplementsThisTick = 0;
+        }
+        supplements++;
+        maxSupplementsPerTick = Math.max(maxSupplementsPerTick, ++supplementsThisTick);
+    }
+
     void endTick(int tick, int active) {
         if (ticks++ == 0) {
             firstTick = tick;
@@ -62,6 +75,7 @@ final class WorkSample {
                 + " activeMin=" + minActive + " activeMax=" + maxActive + " visited=" + visited
                 + " selections=" + selections + " observations=" + observations + " paths=" + paths
                 + " peakSelections=" + maxSelectionsPerTick + " peakPaths=" + maxPathsPerTick
+                + " supplements=" + supplements + " peakSupplements=" + maxSupplementsPerTick
                 + " cadence=" + com.mahghuuuls.threatworks.threat.Encounter.SELECTION_INTERVAL;
     }
 }

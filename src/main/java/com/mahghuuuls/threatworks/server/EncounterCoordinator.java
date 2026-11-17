@@ -37,6 +37,7 @@ import net.minecraftforge.fml.common.gameevent.TickEvent;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -57,6 +58,8 @@ public final class EncounterCoordinator implements ThreatActions, ThreatQueries 
     private DamageAttribution.SummonSource summons;
     private FoliaathCompatibility foliaath;
     private TargetWrite targetWrite;
+    private final TakeoverSamples.Budget takeoverBudget = new TakeoverSamples.Budget();
+    private final List<TakeoverSamples.Pending> pendingTakeovers = new ArrayList<>();
 
     private EncounterCoordinator() {
         for (MobType type : MobType.values()) {
@@ -129,6 +132,7 @@ public final class EncounterCoordinator implements ThreatActions, ThreatQueries 
         worlds.forEach(World::removeEventListener);
         worlds.clear();
         pendingPlayerDeaths.clear();
+        pendingTakeovers.clear();
         if (points != null) {
             points.clearSetBonuses();
         }
@@ -169,11 +173,12 @@ public final class EncounterCoordinator implements ThreatActions, ThreatQueries 
 
     @SubscribeEvent
     public void onServerTick(TickEvent.ServerTickEvent event) {
-        if (event.phase != TickEvent.Phase.END || pendingPlayerDeaths.isEmpty()) {
+        if (event.phase != TickEvent.Phase.END) {
             return;
         }
         pendingPlayerDeaths.forEach(this::confirmPlayerDeath);
         pendingPlayerDeaths.clear();
+        publishSupplementalTakeovers();
     }
 
     private void confirmPlayerDeath(EntityPlayerMP player, int previousDeaths) {
@@ -458,6 +463,7 @@ public final class EncounterCoordinator implements ThreatActions, ThreatQueries 
         state.encounters.put(mobId, pending.apply());
         state.coverage.put(mobId, admission.type);
         state.observations.put(mobId, observations);
+        state.takeovers.remove(mobId);
         state.recordTaunt(mobId, participant);
         state.yielded.remove(mobId);
         return Result.APPLIED;
@@ -650,6 +656,7 @@ public final class EncounterCoordinator implements ThreatActions, ThreatQueries 
                 return encounter.resetDue(serverTick);
             }
             if (admission.yieldsToNative()) {
+                state.takeovers.remove(id);
                 if (policies.get(admission.type).keepsEncounterDuringNativePhase()) {
                     observeNativeAttack(world, state, mob, admission.type, encounter, serverTick, sample);
                 } else {
@@ -668,6 +675,22 @@ public final class EncounterCoordinator implements ThreatActions, ThreatQueries 
         });
         // The vanilla setter notifies Forge listeners that can change encounter membership.
         targetUpdates.forEach(Runnable::run);
+    }
+
+    private void publishSupplementalTakeovers() {
+        if (pendingTakeovers.isEmpty()) return;
+        int tick = net.minecraftforge.fml.common.FMLCommonHandler.instance().getMinecraftServerInstance().getTickCounter();
+        pendingTakeovers.sort(Comparator.comparingInt(TakeoverSamples.Pending::lastSupplementTick));
+        try {
+            for (int pass = 0; pass < 2; pass++) {
+                for (TakeoverSamples.Pending pending : pendingTakeovers) {
+                    if (takeoverBudget.exhausted(tick)) return;
+                    pending.supplement(tick, takeoverBudget);
+                }
+            }
+        } finally {
+            pendingTakeovers.clear();
+        }
     }
 
     private void observeDragonAvailability(WorldServer world, WorldEncounters state, EntityLiving dragon,
@@ -720,15 +743,31 @@ public final class EncounterCoordinator implements ThreatActions, ThreatQueries 
                 || !encounter.shouldReevaluate(serverTick, mob.getEntityId()))) {
             return;
         }
-        WorldEncounters.ObservationFrame observations = state.new ObservationFrame(serverTick);
+        EntityLivingBase current = mob.getAttackTarget();
+        boolean canPublish = !returning && current != null && encounter.participantCount() > 1
+                && TakeoverSamples.supportsSampling(mob, type);
+        TakeoverSamples.Position selectionPosition = canPublish ? new TakeoverSamples.Position(mob) : null;
+        WorldEncounters.ObservationFrame observations = state.new ObservationFrame(serverTick, canPublish);
         Function<UUID, TargetObservation> observe = id -> observations.observe(world, id,
                 candidate -> observe(world, mob, type, candidate, sample));
-        EntityLivingBase current = mob.getAttackTarget();
         if (returning && current != null && world.getEntityFromUuid(current.getUniqueID()) == current) {
             encounter.resumeFromNative(current.getUniqueID(), observe);
         }
+        long versionBeforeSelection = encounter.decisionVersion();
         UUID selected = state.select(encounter, serverTick, sample, observe);
-        state.observations.put(mob.getUniqueID(), observations);
+        UUID mobId = mob.getUniqueID();
+        state.observations.put(mobId, observations);
+        if (canPublish && selected != null && selected.equals(previous)
+                && selected.equals(current.getUniqueID()) && world.getEntityFromUuid(selected) == current
+                && currentEncounter(world, state, mob, encounter) && mob.getAttackTarget() == current
+                && versionBeforeSelection == encounter.decisionVersion() && selectionPosition.matches(mob)
+                && observations.positionsUnchanged(world)) {
+            TakeoverSamples.Pending pending = TakeoverSamples.record(world, state, mob, type, encounter, current,
+                    observations, sample);
+            if (pending != null) pendingTakeovers.add(pending);
+        } else {
+            state.takeovers.remove(mobId);
+        }
         if (selected == null && (current == null || !current.getUniqueID().equals(previous)
                 || policies.get(type).preservesNativeTarget(world, mob, current))) {
             return;
@@ -777,6 +816,7 @@ public final class EncounterCoordinator implements ThreatActions, ThreatQueries 
     private static void yieldToNative(WorldEncounters state, UUID id, Encounter encounter, int tick) {
         state.yielded.add(id);
         state.observations.remove(id);
+        state.takeovers.remove(id);
         state.clearTauntIdentity(id);
         encounter.yieldToNative(tick);
     }

@@ -116,12 +116,40 @@ class EncounterTest {
             double distance = distances[i];
             double threshold = thresholds[i];
             Encounter exact = Encounter.recordHit(null, player, incumbent, 100, threshold, DEFAULT_RULES);
+            Encounter below = Encounter.recordHit(null, player, incumbent, 100, Math.nextDown(threshold), DEFAULT_RULES);
             Encounter above = Encounter.recordHit(null, player, incumbent, 100, Math.nextUp(threshold), DEFAULT_RULES);
             assertEquals(incumbent, exact.selectTarget(105, id -> id.equals(incumbent) ? IN_REACH : pursuit(distance)));
+            assertEquals(threshold, exact.takeoverAgainstRetainedTarget(player, IN_REACH, pursuit(distance)));
+            assertEquals(incumbent, below.selectTarget(105, id -> id.equals(incumbent) ? IN_REACH : pursuit(distance)));
             assertEquals(player, above.selectTarget(105, id -> id.equals(incumbent) ? IN_REACH : pursuit(distance)));
         }
         Encounter ordinary = Encounter.recordHit(null, player, incumbent, 100, 12.0, DEFAULT_RULES);
         assertEquals(incumbent, ordinary.selectTarget(105, id -> IN_REACH));
+        assertEquals(12.0, ordinary.takeoverAgainstRetainedTarget(player, IN_REACH, IN_REACH));
+    }
+
+    @Test
+    void retainedBoundaryExcludesAnIneligibleHigherRivalAndAnUnattainableCap() {
+        Encounter retained = Encounter.recordHit(null, player, incumbent, 100, 4, DEFAULT_RULES);
+        retained.grant(secondPlayer, 100);
+        assertEquals(incumbent, retained.selectTarget(105, id -> id.equals(secondPlayer) ? INELIGIBLE : IN_REACH));
+        assertEquals(12.0, retained.takeoverAgainstRetainedTarget(player, IN_REACH, IN_REACH));
+        assertTrue(Double.isNaN(retained.takeoverAgainstRetainedTarget(secondPlayer, IN_REACH, INELIGIBLE)));
+
+        Encounter.Rules capped = new Encounter.Rules(Encounter.Rules.MAX_SCORE, 0.2, 0.4, 8, 16, 60, 200, 40);
+        Encounter full = Encounter.recordHit(null, player, incumbent, 100, Encounter.Rules.MAX_SCORE, capped);
+        assertEquals(incumbent, full.selectTarget(105, id -> IN_REACH));
+        assertTrue(Double.isNaN(full.takeoverAgainstRetainedTarget(player, IN_REACH, IN_REACH)));
+    }
+
+    @Test
+    void zeroBoundaryIsAttainableOnlyAboveZero() {
+        Encounter.Rules zero = new Encounter.Rules(0, 0.2, 0.4, 8, 16, 60, 200, 40);
+        Encounter encounter = Encounter.tryTaunt(null, player, incumbent, 100, id -> IN_REACH, zero);
+        assertEquals(player, encounter.selectTarget(160, id -> IN_REACH));
+        assertEquals(0.0, encounter.takeoverAgainstRetainedTarget(incumbent, IN_REACH, IN_REACH));
+        assertEquals(Encounter.GrantResult.APPLIED, encounter.grant(incumbent, Math.nextUp(0.0)));
+        assertEquals(incumbent, encounter.selectTarget(161, id -> IN_REACH));
     }
 
     @Test

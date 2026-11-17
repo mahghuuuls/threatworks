@@ -3,6 +3,7 @@ package com.mahghuuuls.threatworks.server;
 import com.mahghuuuls.threatworks.api.ThreatQueries.Confirmation;
 import com.mahghuuuls.threatworks.api.ThreatQueries.Focus;
 import com.mahghuuuls.threatworks.api.ThreatQueries.State;
+import com.mahghuuuls.threatworks.api.ThreatQueries.Takeover;
 import com.mahghuuuls.threatworks.api.ThreatQueries.View;
 import com.mahghuuuls.threatworks.config.ServerTuning.MobType;
 import com.mahghuuuls.threatworks.threat.Encounter;
@@ -81,9 +82,15 @@ final class ParticipantQuery {
         Confirmation forcing = tauntActive && ordinary != NO
                 ? focus.scope != Focus.UNKNOWN && ordinary == YES ? confirmation(focus.target == taunter) : UNKNOWN
                 : NO;
-        return new View(State.TRACKED, ordinary, score, eligibility, focus.scope,
+        TakeoverSamples samples = state.takeovers.get(mobId);
+        Takeover takeover = samples != null && focus.scope == Focus.ORDINARY && focus.target != null
+                && ordinary == YES && remaining == 0 && !encounter.holdsOpeningTarget(mob.ticksExisted)
+                && eligibility != NO && focus.target != participant
+                ? samples.read(state, mob, (EntityLivingBase) focus.target, encounter, participant, now) : null;
+        boolean recentTakeover = takeover != null && now - takeover.observationTick() <= Encounter.SELECTION_INTERVAL;
+        return new View(State.TRACKED, ordinary, score, recentTakeover ? YES : eligibility, focus.scope,
                 focus.scope == Focus.UNKNOWN ? UNKNOWN : confirmation(focus.target == participant),
-                confirmation(tauntActive), forcing, tauntActive ? remaining : 0, null);
+                confirmation(tauntActive), forcing, tauntActive ? remaining : 0, takeover);
     }
 
     static boolean live(WorldServer world, EntityLivingBase entity) {

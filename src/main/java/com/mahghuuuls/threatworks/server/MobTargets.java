@@ -513,6 +513,15 @@ final class MobTargets {
     }
 
     static TargetObservation observe(WorldServer world, EntityCreature mob, Entity entity, WorkSample sample, MobType type) {
+        return observe(world, mob, entity, sample, type, true);
+    }
+
+    static TargetObservation observeForTakeover(WorldServer world, EntityCreature mob, Entity entity, MobType type) {
+        return observe(world, mob, entity, null, type, false);
+    }
+
+    private static TargetObservation observe(WorldServer world, EntityCreature mob, Entity entity, WorkSample sample,
+                                             MobType type, boolean permitsPursuit) {
         EntityLivingBase target = resolve(world, mob, entity, type);
         if (target == null) {
             return TargetObservation.INELIGIBLE;
@@ -589,8 +598,13 @@ final class MobTargets {
             return observeProjectile(terrain, mob, target, sightLost);
         }
         boolean attackGeometry = canAttackFrom(terrain, mob, target, position, bow, type);
-        if (!attackGeometry && !canPursue(world, terrain, mob, target, bow, sample, type)) {
-            return TargetObservation.INELIGIBLE;
+        if (!attackGeometry) {
+            if (!permitsPursuit) {
+                return null;
+            }
+            if (!canPursue(world, terrain, mob, target, bow, sample, type)) {
+                return TargetObservation.INELIGIBLE;
+            }
         }
         if (sightLost) {
             return TargetObservation.obscured(!bow && !IceAndFireCompatibility.usesAnimatedMelee(type) && attackGeometry);
@@ -729,6 +743,7 @@ final class MobTargets {
         }
         return false;
     }
+
 
     // Match PathNavigateGround's target height normalization using only the loaded terrain view.
     private static BlockPos groundDestination(LoadedPathTerrain terrain, BlockPos pos, int worldHeight) {

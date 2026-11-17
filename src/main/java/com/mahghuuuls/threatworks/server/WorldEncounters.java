@@ -32,6 +32,7 @@ final class WorldEncounters implements IWorldEventListener {
     final Map<UUID, Encounter> encounters = new HashMap<>();
     final Map<UUID, MobType> coverage = new HashMap<>();
     final Map<UUID, ObservationFrame> observations = new HashMap<>();
+    final Map<UUID, TakeoverSamples> takeovers = new HashMap<>();
     private final Map<UUID, Object> identities = new HashMap<>();
     private final Map<UUID, Object> tauntIdentities = new HashMap<>();
     final Set<UUID> yielded = new HashSet<>();
@@ -82,9 +83,15 @@ final class WorldEncounters implements IWorldEventListener {
     final class ObservationFrame {
         final int tick;
         private final Map<UUID, ObservedParticipant> byParticipant = new HashMap<>();
+        private final boolean capturePositions;
 
         ObservationFrame(int tick) {
+            this(tick, false);
+        }
+
+        ObservationFrame(int tick, boolean capturePositions) {
             this.tick = tick;
+            this.capturePositions = capturePositions;
         }
 
         Encounter.TargetObservation observe(WorldServer world, UUID participant,
@@ -93,8 +100,10 @@ final class WorldEncounters implements IWorldEventListener {
             if (current != null) return current.value;
             Entity candidate = world.getEntityFromUuid(participant);
             Object identity = candidate instanceof EntityLivingBase ? recordIdentity(participant) : null;
+            TakeoverSamples.Position position = capturePositions && identity != null
+                    ? new TakeoverSamples.Position((EntityLivingBase) candidate) : null;
             Encounter.TargetObservation value = inspect.apply(candidate);
-            byParticipant.put(participant, new ObservedParticipant(identity, value));
+            byParticipant.put(participant, new ObservedParticipant(identity, value, position));
             return value;
         }
 
@@ -108,21 +117,35 @@ final class WorldEncounters implements IWorldEventListener {
             return observation == null || observation.identity == null
                     || observation.identity != identities.get(participant.getUniqueID()) ? null : observation.value;
         }
+
+        boolean positionsUnchanged(WorldServer world) {
+            for (Map.Entry<UUID, ObservedParticipant> entry : byParticipant.entrySet()) {
+                Entity entity = world.getEntityFromUuid(entry.getKey());
+                TakeoverSamples.Position recorded = entry.getValue().position;
+                if (recorded == null ? entity instanceof EntityLivingBase
+                        : !(entity instanceof EntityLivingBase) || get((EntityLivingBase) entity) == null
+                        || !recorded.matches((EntityLivingBase) entity)) return false;
+            }
+            return true;
+        }
     }
 
     private static final class ObservedParticipant {
         final Object identity;
         final Encounter.TargetObservation value;
+        final TakeoverSamples.Position position;
 
-        ObservedParticipant(Object identity, Encounter.TargetObservation value) {
+        ObservedParticipant(Object identity, Encounter.TargetObservation value, TakeoverSamples.Position position) {
             this.identity = identity;
             this.value = value;
+            this.position = position;
         }
     }
 
     private void forgetControl(UUID id) {
         coverage.remove(id);
         observations.remove(id);
+        takeovers.remove(id);
         clearTauntIdentity(id);
         yielded.remove(id);
     }
@@ -132,7 +155,11 @@ final class WorldEncounters implements IWorldEventListener {
         return identity != null && tauntIdentities.get(mob) == identity;
     }
 
-    private Object recordIdentity(UUID participant) {
+    Object identity(UUID participant) {
+        return identities.get(participant);
+    }
+
+    Object recordIdentity(UUID participant) {
         // Respawn can reuse both the UUID and the numeric entity ID.
         return identities.computeIfAbsent(participant, ignored -> new Object());
     }

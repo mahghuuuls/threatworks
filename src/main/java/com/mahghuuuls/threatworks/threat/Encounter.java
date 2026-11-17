@@ -14,6 +14,8 @@ public final class Encounter {
     public static final int SELECTION_INTERVAL = 5;
     private final Rules rules;
     private final Map<UUID, Double> scores = new LinkedHashMap<>();
+    private final Iterable<UUID> participants = Collections.unmodifiableSet(scores.keySet());
+    private long decisionVersion;
     private int openedAtMobTick;
     private UUID target;
     private boolean opening;
@@ -44,6 +46,7 @@ public final class Encounter {
         }
         updated.scores.merge(attacker, Math.min(gain, Rules.MAX_SCORE),
                 (score, amount) -> Math.min(score + amount, Rules.MAX_SCORE));
+        updated.decisionVersion++;
         updated.selectionPending = true;
         return updated;
     }
@@ -58,6 +61,7 @@ public final class Encounter {
             return GrantResult.SCORE_LIMIT;
         }
         scores.put(participant, updated);
+        decisionVersion++;
         selectionPending = true;
         return GrantResult.APPLIED;
     }
@@ -108,6 +112,7 @@ public final class Encounter {
 
         public Encounter apply() {
             encounter.scores.merge(participant, matchedScore, Math::max);
+            encounter.decisionVersion++;
             encounter.opening = false;
             encounter.setTarget(participant);
             encounter.taunter = participant;
@@ -186,6 +191,7 @@ public final class Encounter {
     public void clearTaunt() {
         if (taunter != null) {
             taunter = null;
+            decisionVersion++;
             selectionPending = true;
         }
     }
@@ -200,6 +206,7 @@ public final class Encounter {
     }
 
     private void markParticipantChanged(UUID participant) {
+        decisionVersion++;
         selectionPending = true;
         if (participant.equals(target)) {
             opening = false;
@@ -258,13 +265,32 @@ public final class Encounter {
             }
             TargetObservation candidate = observe.apply(challenger);
             if (candidate.isEligible() && (!incumbentEligible
-                    || score > (incumbent.canAttackImmediately && !candidate.canAttackImmediately
-                    ? threshold(incumbentScore, chaseLead(candidate.distance)) : ordinaryThreshold))) {
+                    || score > cutoff(incumbentScore, ordinaryThreshold, incumbent, candidate))) {
                 selected = challenger;
                 bestScore = score;
             }
         }
         return selected;
+    }
+
+    /** A retained incumbent proves that no other challenger cleared its own lead in this decision. */
+    public double takeoverAgainstRetainedTarget(UUID participant, TargetObservation incumbent,
+                                                TargetObservation challenger) {
+        if (target == null || target.equals(participant) || !scores.containsKey(participant)
+                || !challenger.isEligible()) {
+            return Double.NaN;
+        }
+        double incumbentScore = score(target);
+        double boundary = cutoff(incumbentScore, threshold(incumbentScore, rules.ordinaryLead), incumbent, challenger);
+        return boundary < Rules.MAX_SCORE ? boundary : Double.NaN;
+    }
+
+    public long decisionVersion() {
+        return decisionVersion;
+    }
+
+    public Iterable<UUID> scoredParticipants() {
+        return participants;
     }
 
     private void updateReset(int tick, boolean eligible) {
@@ -297,19 +323,30 @@ public final class Encounter {
     }
 
     private boolean retainsIncumbent(int tick, TargetObservation observation) {
+        Integer previous = sightLostAt;
         if (!observation.sightLost) {
             sightLostAt = null;
         } else if (sightLostAt == null) {
             sightLostAt = tick;
         }
+        if (!Objects.equals(previous, sightLostAt)) {
+            decisionVersion++;
+        }
         return target != null && scores.containsKey(target) && isEligible(target, tick, observation);
     }
 
     private void setTarget(UUID selected) {
-        if (target == null || !target.equals(selected)) {
+        if (!Objects.equals(target, selected)) {
             sightLostAt = null;
+            decisionVersion++;
         }
         target = selected;
+    }
+
+    private double cutoff(double incumbentScore, double ordinaryThreshold, TargetObservation incumbent,
+                          TargetObservation candidate) {
+        return incumbent.canAttackImmediately && !candidate.canAttackImmediately
+                ? threshold(incumbentScore, chaseLead(candidate.distance)) : ordinaryThreshold;
     }
 
     private static double threshold(double score, double lead) {
@@ -399,6 +436,11 @@ public final class Encounter {
 
         public boolean hasLostSight() {
             return sightLost;
+        }
+
+        public boolean sameReach(TargetObservation other) {
+            return other != null && isEligible() == other.isEligible() && sightLost == other.sightLost
+                    && canAttackImmediately == other.canAttackImmediately && Double.compare(distance, other.distance) == 0;
         }
     }
 }
