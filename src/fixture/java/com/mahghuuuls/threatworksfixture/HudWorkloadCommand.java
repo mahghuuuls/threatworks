@@ -342,8 +342,9 @@ public final class HudWorkloadCommand extends CommandBase {
             LOGGER.info("h2_window scenario={} window={} mode={} ticks={} batches={} queries={} minBatch={} maxBatch={} "
                             + "numeric={} missing={} minCoverage={} maxAge={} p50Ns={} p95Ns={} controlP95Ns={} allocP95Bytes={} "
                             + "tickP50Ns={} tickP95Ns={} meleeNumeric={} bowNumeric={} work={} sink={}", scenario, window, mode, duration, batchCount, queries,
-                    queries == 0 ? 0 : minBatch, maxBatch, numeric, missing, minCoverage, maxAge, percentile(batches, batchCount, 0.50),
-                    percentile(batches, batchCount, 0.95), percentile(controls, batchCount, 0.95),
+                    queries == 0 ? 0 : minBatch, maxBatch, numeric, missing, minCoverage, maxAge,
+                    queries > 0 ? percentile(batches, batchCount, 0.50) : 0,
+                    queries > 0 ? percentile(batches, batchCount, 0.95) : 0, percentile(controls, batchCount, 0.95),
                     queries > 0 ? percentile(allocations, batchCount, 0.95) : -1, percentile(ticks, duration, 0.50),
                     percentile(ticks, duration, 0.95), meleeReads, bowReads, work, sink);
             if (mode != Mode.NONE) {
