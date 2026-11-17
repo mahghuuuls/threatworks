@@ -2,7 +2,7 @@ Threatworks gives supported hostile mobs a threat system inspired by classic Wor
 
 <span style="color:#d6a100">**AI usage disclaimer.** This mod was developed with AI-agent assistance using [this agent workflow](https://github.com/mahghuuuls/minecraft-1.12.2-mod-agent-workflow). The project owner reviewed the work during development.</span>
 
-**Installation.** Install Threatworks on the server for multiplayer or in your game for single-player. Compatible multiplayer clients can join without Threatworks. Requires Cleanroom 1.12.2 with built-in MixinBooter 12.1 or later. [Cleanroom](https://cleanroommc.com/)
+**Installation.** Install Threatworks on the dedicated server for multiplayer or in your game for single-player. Use Cleanroom with built-in MixinBooter 12.1 or later wherever you install Threatworks. Multiplayer clients can join without Threatworks if they meet the server's other requirements. [Cleanroom](https://cleanroommc.com/)
 
 ## What are threat and aggro?
 
@@ -67,7 +67,7 @@ Fresh configurations enable threat for 217 supported mob types when their mods a
 
 ## Optional integrations for gear, effects, and summons
 
-- **Electroblob's Wizardry.** Summoned zombies earn their own threat from melee and summoned skeletons from arrows once the mob is tracking. [Electroblob's Wizardry](https://www.curseforge.com/minecraft/mc-mods/electroblobs-wizardry)
+- **Electroblob's Wizardry.** By default, supported attacks earn threat for the built-in combat summon when they remove health from a mob that's already tracking threat. Summons can draw aggro under the usual targeting rules. [Electroblob's Wizardry](https://www.curseforge.com/minecraft/mc-mods/electroblobs-wizardry) [Summon and attack roster](https://github.com/mahghuuuls/threatworks/blob/main/COMPATIBILITY.md#wizardry-combat-summons)
 - **Baubles.** Pack authors can assign threat bonuses or reductions to accessories, which apply while equipped. [Baubles](https://www.curseforge.com/minecraft/mc-mods/baubles)
 - **Quality Tools.** Pack authors can configure reforges that raise or lower threat. [Quality Tools](https://www.curseforge.com/minecraft/mc-mods/quality-tools)
 - **Just Another Food System.** Pack authors can add a threat modifier to a food's effects. It applies while the effect lasts. [Just Another Food System](https://www.curseforge.com/minecraft/mc-mods/just-another-food-system)
@@ -84,4 +84,4 @@ Pack authors can also configure gear. Adding `minecraft:iron_chestplate=100` to 
 
 ## For mod developers
 
-Other mods can grant threat in an active encounter, add item bonuses, redirect summon credit, and build player abilities that trigger taunts. Mob-targeting adapters are internal to Threatworks. [Server-side Java API](https://github.com/mahghuuuls/threatworks#integration-api)
+Other mods can grant threat in an active encounter, add item bonuses, credit supported summon hits to an eligible owner, and build player abilities that trigger taunts. HUD addons can read a fighter's threat, confirmed aggro, taunt status, and takeover score on the server when available. Addons handle sending that data to their clients. [Server-side Java API](https://github.com/mahghuuuls/threatworks#integration-api) [Reading threat](https://github.com/mahghuuuls/threatworks#reading-threat)

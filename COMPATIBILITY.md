@@ -1,4 +1,4 @@
-# Threatworks 1.0.0 compatibility
+# Threatworks 1.1.0 compatibility
 
 Find the verified combat states by entity ID and the supported uses for optional integrations.
 Supported targets still depend on each mob's movement, sight, weapon and native combat phase.
@@ -43,7 +43,7 @@ Neutral mobs, including Zombie Pigmen and Endermen, follow vanilla targeting.
 
 | Mod | Verified version | Supported use |
 | --- | --- | --- |
-| [Electroblob's Wizardry](https://www.curseforge.com/minecraft/mc-mods/electroblobs-wizardry) | 4.3.19 | Summoned zombies earn threat from melee and summoned skeletons from arrows once the mob is tracking. |
+| [Electroblob's Wizardry](https://www.curseforge.com/minecraft/mc-mods/electroblobs-wizardry) | 4.3.19 | Built-in combat summons participate in active encounters through the [attacks below](#wizardry-combat-summons). |
 | [Baubles](https://www.curseforge.com/minecraft/mc-mods/baubles) | 1.5.2 | Configured item threat points apply to equipped accessories. |
 | [Quality Tools](https://www.curseforge.com/minecraft/mc-mods/quality-tools) | 1.0.7 | Configured qualities and reforges increase or decrease threat generation. |
 | [Just Another Food System](https://www.curseforge.com/minecraft/mc-mods/just-another-food-system) | 1.2.0 | Configured food effects contribute threat points while active. |
@@ -51,6 +51,29 @@ Neutral mobs, including Zombie Pigmen and Endermen, follow vanilla targeting.
 | [Statusworks](https://www.curseforge.com/minecraft/mc-mods/statusworks) | 1.3.0 | Configured statuses contribute signed threat points as a fixed value or per active stack. |
 
 The Statusworks integration requires API-compatible Statusworks 1.3.0 or later. In multiplayer, use matching Statusworks versions on the server and clients. The integration works with Java-defined statuses. Use CraftTweaker to define statuses in scripts. [CraftTweaker](https://www.curseforge.com/minecraft/mc-mods/crafttweaker) [Setup and examples](README.md#statusworks-setup)
+
+### Wizardry combat summons
+
+An identifiable summon earns its own threat when one of these attacks removes health in an active encounter. A player opens the encounter with a hit that removes health or a valid taunt. A supported enemy can switch to an eligible summon under the usual targeting rules.
+
+| Summon | Credited attacks |
+| --- | --- |
+| Zombie and Husk | Melee, including the Talisman of Transformation variant. |
+| Skeleton and Stray | Bow and tipped-arrow impacts, including the Talisman variant. Skeleton Legion sword melee also earns threat. |
+| Wither Skeleton and Spider | Melee. |
+| Silverfish | Melee by the summoned silverfish or its identifiable offspring. |
+| Vex | Contact damage on its native charge or melee path. |
+| Blaze | Melee and small-fireball impacts. |
+| Ice Wraith | Melee and Ice Shard impacts. |
+| Lightning Wraith | Melee and Arc hits. |
+| Phoenix | Flame Ray hits. |
+| Ice Giant, Spectral Golem, and Spirit Wolf | Melee. |
+| Shadow Wraith | Darkness Orb impacts. |
+| Storm Elemental | Lightning Disc impacts. |
+| Magic Slime | Damage to the host while the slime is attached. |
+| Spell-created Snow Golem | Snowball hits that damage eligible Blazes while the spell origin and thrower can still be established. A world reload clears the spell-origin record. |
+
+Later fire, poison, and wither damage earn threat only when the source can still identify the summon. Absorbed hits and canceled hits that remove no health earn zero threat. Addons can redirect a verified summon hit through the [server API](README.md#integration-api).
 
 ## Modded mobs
 
