@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.0
+
+- Added an optional server API for awareness and targeting protection in stock zombie melee and stock skeleton bow combat. Addons can clear a player's current aggro and taunt while preserving their threat for the encounter. A successful taunt can reveal an undiscovered player. Hard protection such as active vanish blocks the taunt and stays in effect.
+- The awareness integration preserves earned threat through a brief logout or dimension trip while the same encounter stays active. A normal encounter reset or actual player death clears the score.
+
 ## 1.1.0
 
 - Expanded support for built-in [Electroblob's Wizardry](https://www.curseforge.com/minecraft/mc-mods/electroblobs-wizardry) combat summons, including Magic Slime host damage and spell-created Snow Golem hits against Blazes. Attributable damage that removes health earns threat for the summon in an active encounter.

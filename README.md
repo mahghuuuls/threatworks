@@ -64,11 +64,20 @@ Use `"fixed"` for one value regardless of stack count. Negative values reduce th
 
 ## Integration API
 
-Use the Threatworks release JAR as a compile-time dependency for the APIs below. For Statusworks Java definitions, use the [Statusworks setup](#statusworks-setup).
+Use the Threatworks release JAR as a compile-time dependency for the APIs below. An optional integration can check Forge's mod list and load its Threatworks API adapter when Threatworks is present. For Statusworks Java definitions, use the [Statusworks setup](#statusworks-setup).
+
+### Target awareness
+
+Threatworks 1.2.0 exposes an optional server-side [target awareness API](src/main/java/com/mahghuuuls/threatworks/api/TargetAwareness.java) for vanilla zombie ground melee and vanilla skeleton bow combat. An addon can provide each supported mob's awareness of a player and flag protection that blocks targeting.
+
+- Register one provider with `ThreatworksMod.registerTargetAwareness(provider)` during Forge initialization or post-initialization. Check the return value. Keep `decide` a fast, read-only lookup on the server. Return `ALLOW` for unmanaged pairs or pairs that pass the addon's awareness and protection checks, leaving ordinary eligibility to Threatworks. `UNAWARE` blocks ordinary selection until discovery. `BLOCKED` also rejects taunts, including under active vanish.
+- Call `ThreatworksMod.targetAwarenessChanged(mob, player)` on the logical server after a live pair's decision changes, including before an encounter exists. Use `targetAwarenessCleared(mob, player)` for explicit loss of awareness so that existing focus and taunts are retired without sight-loss grace. Earned threat can be considered once the player becomes eligible again. Committed attacks and already-fired projectiles can still resolve.
+- Reveal an otherwise eligible unaware player from `tauntCommitted`, after Threatworks accepts the target assignment and commits the taunt. Rejected taunts leave awareness, protection, threat, and any still-valid focus and taunt intact. The addon observes damage and applies its own revelation rules. Threatworks awards damage threat for health lost.
+- Use `encounterChanged` for committed encounter transitions and `playerDied` for confirmed death. A quick logout or dimension trip preserves a player's score if the same encounter survives. A normal encounter reset or actual death clears that score. The addon owns its awareness and protection state and can use those lifecycle signals to restore or retire its own records.
 
 ### Reading threat
 
-Call `ThreatworksMod.threatQueries().query(mob, participant)` from the logical server thread with two live entities in the same loaded world. The returned `ThreatQueries.View` is a read-only snapshot for that pair. An optional integration can check Forge's mod list and load its Threatworks API adapter when Threatworks is present. The integration controls its own client delivery.
+Call `ThreatworksMod.threatQueries().query(mob, participant)` from the logical server thread with two live entities in the same loaded world. The returned `ThreatQueries.View` is a read-only snapshot for that pair. The integration controls its own client delivery.
 
 - `INACTIVE` means a recognized vanilla type has no active encounter. Live AI availability is separate. A configured modded entity whose combat policy has yet to be observed can report `SUPPORT_UNKNOWN`. Unloaded, invalid and off-thread requests have specific unavailable states.
 - For a valid live participant in a tracked encounter, `threat()` can return a known zero. Honor an empty value separately. Eligibility is the last usable observation, up to five server ticks old. Unknown means the query cannot confirm it from the currently observed combat path.

@@ -2,7 +2,7 @@ Threatworks gives supported hostile mobs a threat system inspired by classic Wor
 
 <span style="color:#d6a100">**AI usage disclaimer.** This mod was developed with AI-agent assistance using [this agent workflow](https://github.com/mahghuuuls/minecraft-1.12.2-mod-agent-workflow). The project owner reviewed the work during development.</span>
 
-**Installation.** Install Threatworks on the dedicated server for multiplayer or in your game for single-player. Use Cleanroom with built-in MixinBooter 12.1 or later wherever you install Threatworks. Multiplayer clients can join without Threatworks if they meet the server's other requirements. [Cleanroom](https://cleanroommc.com/)
+**Installation.** Threatworks ships as a Forge mod and requires Cleanroom with built-in MixinBooter 12.1 or later wherever it runs. Install it on the dedicated server for multiplayer or in your game for single-player. Multiplayer clients can join without Threatworks if they meet the server's other requirements. [Cleanroom](https://cleanroommc.com/)
 
 ## What are threat and aggro?
 
@@ -30,7 +30,7 @@ The ordinary 20% lead also applies if the mob would have to chase both fighters.
 
 ## Which mobs use threat?
 
-Fresh configurations enable threat for 22 ordinary vanilla hostile types. A Creeper can switch targets until its fuse commits. Guardians keep their target through a committed beam. Evokers and independent Vexes can switch between attacks, and summoned Vexes can still follow their Evoker. Zombie Pigmen and Endermen keep vanilla targeting.
+Fresh configurations enable threat for 22 ordinary vanilla hostile types. A Creeper can switch targets until its fuse commits. Guardians keep their target through a committed beam. Evokers and independent Vexes can switch between attacks, and summoned Vexes can still follow their Evoker. Zombie Pigmen and Endermen keep vanilla targeting. [Vanilla mob roster](https://github.com/mahghuuuls/threatworks/blob/main/COMPATIBILITY.md#vanilla-defaults)
 
 - **Wither.** The center head follows threat and can be taunted. The side heads pick their own targets.
 - **Ender Dragon.** Threat helps choose the target of a new ordinary strafing run. During the Dragon's circling phase, breaking an End Crystal can draw its native retaliation. The Dragon ignores taunts.
@@ -39,7 +39,7 @@ Fresh configurations enable threat for 22 ordinary vanilla hostile types. A Cree
 
 Threatworks helps these mobs choose who to attack. The mobs' own AI handles movement, attacks, and special moves. Defiled Slimes share targeting rules with vanilla slimes, with a check for more room overhead along their route. The Foliaath uses dedicated checks for when it can bite and which targets it can reach.
 
-Fresh configurations enable threat for 217 supported mob types when their mods are installed. Each entry covers specific creatures and combat states. The linked roster lists exact entity IDs, tested versions, and limits. [Compatibility roster](https://github.com/mahghuuuls/threatworks/blob/main/COMPATIBILITY.md)
+Fresh configurations enable threat for 217 supported mob types when their mods are installed. Threatworks 1.2.0 carries forward the verified roster, which lists exact entity IDs, combat states, tested versions, and limits. [Compatibility roster](https://github.com/mahghuuuls/threatworks/blob/main/COMPATIBILITY.md)
 
 - **Ancient Warfare 2: Tweaked.** Hostile faction archers, soldiers, and leaders use threat within their native weapon and home limits. [Ancient Warfare 2: Tweaked](https://www.curseforge.com/minecraft/mc-mods/ancient-warfare-2-tweaked)
 - **BetterEndForge Backport.** End Slime hopping and contact attacks. [BetterEndForge Backport](https://www.curseforge.com/minecraft/mc-mods/betterendforge-backport)
@@ -84,4 +84,6 @@ Pack authors can also configure gear. Adding `minecraft:iron_chestplate=100` to 
 
 ## For mod developers
 
-Other mods can grant threat in an active encounter, add item bonuses, credit supported summon hits to an eligible owner, and build player abilities that trigger taunts. HUD addons can read a fighter's threat, confirmed aggro, taunt status, and takeover score on the server when available. Addons handle sending that data to their clients. [Server-side Java API](https://github.com/mahghuuuls/threatworks#integration-api) [Reading threat](https://github.com/mahghuuuls/threatworks#reading-threat)
+Other mods can grant threat in an active encounter, add item bonuses, credit supported summon hits to an eligible owner, and build player abilities that trigger taunts. HUD addons can read a fighter's threat, confirmed aggro, and taunt status on the server. They can also read a takeover score when available in a settled ordinary zombie or skeleton encounter. Addons handle sending that data to their clients. [Server-side Java API](https://github.com/mahghuuuls/threatworks#integration-api) [Reading threat](https://github.com/mahghuuuls/threatworks#reading-threat)
+
+An optional server API lets addons tell Threatworks which players a mob has discovered and which players it cannot target. It applies to vanilla zombies in ground melee and vanilla skeletons using bows. An addon can reveal an undiscovered player after a successful taunt. If an addon reports hard targeting protection such as active vanish, Threatworks rejects the taunt and the protection stays active. [Target awareness API](https://github.com/mahghuuuls/threatworks#target-awareness)
