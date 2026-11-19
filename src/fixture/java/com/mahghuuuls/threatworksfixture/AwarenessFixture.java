@@ -11,12 +11,15 @@ import net.minecraft.entity.EntityCreature;
 import net.minecraft.entity.EntityLiving;
 import net.minecraft.entity.SharedMonsterAttributes;
 import net.minecraft.entity.ai.EntityAIHurtByTarget;
+import net.minecraft.entity.ai.EntityAIAttackRangedBow;
 import net.minecraft.entity.ai.EntityAINearestAttackableTarget;
 import net.minecraft.entity.ai.EntityAITasks.EntityAITaskEntry;
 import net.minecraft.entity.monster.EntitySkeleton;
 import net.minecraft.entity.monster.EntityZombie;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
+import net.minecraft.entity.projectile.EntityArrow;
+import net.minecraft.entity.projectile.EntityTippedArrow;
 import net.minecraft.init.Blocks;
 import net.minecraft.init.Items;
 import net.minecraft.inventory.EntityEquipmentSlot;
@@ -24,9 +27,12 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.DamageSource;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.MathHelper;
 import net.minecraft.world.WorldServer;
 import net.minecraftforge.event.entity.living.LivingDamageEvent;
 import net.minecraftforge.event.entity.living.LivingSetAttackTargetEvent;
+import net.minecraftforge.event.entity.living.ZombieEvent.SummonAidEvent;
+import net.minecraftforge.fml.common.eventhandler.Event;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.apache.logging.log4j.LogManager;
@@ -34,6 +40,8 @@ import org.apache.logging.log4j.Logger;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
+import java.util.UUID;
 
 /** Independent consumer of the optional public contract in disposable servers. */
 public final class AwarenessFixture extends CommandBase implements TargetAwareness {
@@ -45,10 +53,15 @@ public final class AwarenessFixture extends CommandBase implements TargetAwarene
     private EntityLiving mob;
     private EntityPlayerMP closer;
     private EntityPlayerMP farther;
+    private EntityPlayerMP reserve;
+    private EntityZombie reinforcementCaller;
+    private EntityZombie reinforcement;
+    private BlockPos reinforcementPosition;
     private boolean closerAware;
     private boolean closerRemembered;
     private boolean fartherAware;
     private boolean fartherBlocked;
+    private boolean reserveAware;
     private boolean failNextReveal;
     private boolean measuring;
     private EntityPlayerMP pendingTaunter;
@@ -66,9 +79,11 @@ public final class AwarenessFixture extends CommandBase implements TargetAwarene
     private Phase phase;
     private boolean cancelDamage;
     private boolean damageCanceled;
+    private float healthBeforeArrow;
+    private float mobHealthBeforeArrow;
 
     private enum Phase {
-        ENTER_BOW, NATIVE, REVENGE, CLEARED, RELEASE, OVERLAP, EXPIRED, REDISCOVERED, RESET, REOPENED
+        ENTER_BOW, NATIVE, REVENGE, CLEARED, DRAW, RELEASE, OVERLAP, EXPIRED, REDISCOVERED, FALLBACK, RESET, IMPACT, REOPENED
     }
 
     private enum WriteChange {
@@ -82,7 +97,7 @@ public final class AwarenessFixture extends CommandBase implements TargetAwarene
 
     @Override
     public String getUsage(ICommandSender sender) {
-        return "twawareness <zombie|skeleton>";
+        return "twawareness <zombie|skeleton|disabled-zombie|blacklisted-skeleton>";
     }
 
     @Override
@@ -92,7 +107,8 @@ public final class AwarenessFixture extends CommandBase implements TargetAwarene
 
     @Override
     public void execute(MinecraftServer server, ICommandSender sender, String[] args) throws CommandException {
-        if (mob != null || args.length != 1 || !("zombie".equals(args[0]) || "skeleton".equals(args[0]))) {
+        if (mob != null || args.length != 1 || !("zombie".equals(args[0]) || "skeleton".equals(args[0])
+                || "disabled-zombie".equals(args[0]) || "blacklisted-skeleton".equals(args[0]))) {
             throw new CommandException(getUsage(sender));
         }
         scenario = args[0];
@@ -108,17 +124,22 @@ public final class AwarenessFixture extends CommandBase implements TargetAwarene
         world.getGameRules().setOrCreateGameRule("doMobSpawning", "false");
         closer = player(world, "AwarenessNear", spawn, 1.5);
         farther = player(world, "AwarenessFar", spawn, -3);
+        reserve = player(world, "AwarenessReserve", spawn, 4);
         closerAware = closerRemembered = false;
         fartherAware = true;
-        fartherBlocked = failNextReveal = measuring = false;
+        fartherBlocked = reserveAware = failNextReveal = measuring = false;
         pendingTaunter = null;
         writeChange = null;
         closerProtection = 0;
         decisions = damageReveals = tauntReveals = focusClears = forbiddenAssignments = ticks = 0;
         cancelDamage = damageCanceled = false;
         changes.clear();
-        spawnMob("zombie".equals(scenario) ? new EntityZombie(world) : new EntitySkeleton(world),
+        spawnMob(scenario.endsWith("zombie") ? new EntityZombie(world) : new EntitySkeleton(world),
                 spawn.getX() + 0.5, spawn.getY() + 1, spawn.getZ() + 0.5);
+        if (scenario.startsWith("disabled-") || scenario.startsWith("blacklisted-")) {
+            outsideCoverage();
+            return;
+        }
         if ("skeleton".equals(scenario)) {
             fartherAware = false;
             mob.setItemStackToSlot(EntityEquipmentSlot.MAINHAND, new ItemStack(Items.IRON_SWORD));
@@ -133,6 +154,17 @@ public final class AwarenessFixture extends CommandBase implements TargetAwarene
         }
         measuring = true;
         LOGGER.info("tw_awareness_started scenario={}", scenario);
+    }
+
+    private void outsideCoverage() {
+        if (mob instanceof EntitySkeleton) {
+            mob.setItemStackToSlot(EntityEquipmentSlot.MAINHAND, new ItemStack(Items.BOW));
+        }
+        require(!ThreatworksMod.targetAwarenessChanged(mob, closer), "excluded mob accepted a pair update");
+        mob.setAttackTarget(closer);
+        require(mob.getAttackTarget() == closer && decisions == 0, "excluded mob lost native targeting");
+        LOGGER.info("tw_awareness_result scenario={} status=PASS decisions={}", scenario, decisions);
+        cleanup();
     }
 
     private void spawnMob(EntityLiving entity, double x, double y, double z) {
@@ -151,6 +183,8 @@ public final class AwarenessFixture extends CommandBase implements TargetAwarene
         EntityPlayerMP player = CoverageFixtureCommand.fixturePlayer(world, scenario, name);
         player.setPosition(spawn.getX() + 0.5 + x, spawn.getY() + 1, spawn.getZ() + 0.5);
         player.setNoGravity(true);
+        player.getEntityAttribute(SharedMonsterAttributes.MAX_HEALTH).setBaseValue(80);
+        player.setHealth(80);
         if (!world.spawnEntity(player)) {
             throw new IllegalStateException("Could not spawn fixture participant " + name);
         }
@@ -159,13 +193,17 @@ public final class AwarenessFixture extends CommandBase implements TargetAwarene
 
     @Override
     public Decision decide(EntityLiving host, EntityPlayerMP participant) {
+        if (host == reinforcement && participant == closer) {
+            return Decision.UNAWARE;
+        }
         if (host != mob) {
             return Decision.ALLOW;
         }
         decisions++;
         return participant == closer ? closerDecision()
                 : participant == farther ? fartherBlocked ? Decision.BLOCKED
-                : fartherAware ? Decision.ALLOW : Decision.UNAWARE : Decision.ALLOW;
+                : fartherAware ? Decision.ALLOW : Decision.UNAWARE
+                : participant == reserve && !reserveAware ? Decision.UNAWARE : Decision.ALLOW;
     }
 
     private Decision closerDecision() {
@@ -194,9 +232,16 @@ public final class AwarenessFixture extends CommandBase implements TargetAwarene
 
     @Override
     public void encounterChanged(EncounterChange change) {
+        LOGGER.info("tw_awareness_lifecycle encounter={} mob={} dimension={} action={}", change.encounterId(),
+                change.mobId(), change.dimension(), change.transition());
         if (mob != null && mob.getUniqueID().equals(change.mobId())) {
             changes.add(change);
         }
+    }
+
+    @Override
+    public void playerDied(UUID playerId) {
+        LOGGER.info("tw_awareness_player_died uuid={}", playerId);
     }
 
     @SubscribeEvent
@@ -205,6 +250,28 @@ public final class AwarenessFixture extends CommandBase implements TargetAwarene
             event.setCanceled(true);
             damageCanceled = true;
         }
+    }
+
+    @SubscribeEvent
+    public void arrangeReinforcement(SummonAidEvent event) {
+        if (event.getEntity() != reinforcementCaller) {
+            return;
+        }
+        long seed = 23;
+        Random positions = new Random(seed);
+        reinforcementPosition = new BlockPos(event.getX() + offset(positions), event.getY() + offset(positions),
+                event.getZ() + offset(positions));
+        WorldServer world = (WorldServer) reinforcementCaller.world;
+        world.setBlockState(reinforcementPosition.down(), Blocks.STONE.getDefaultState());
+        world.setBlockToAir(reinforcementPosition);
+        world.setBlockToAir(reinforcementPosition.up());
+        reinforcementCaller.getRNG().setSeed(seed);
+        event.setResult(Event.Result.ALLOW);
+        event.setCustomSummonedAid(reinforcement);
+    }
+
+    private static int offset(Random random) {
+        return MathHelper.getInt(random, 7, 40) * MathHelper.getInt(random, -1, 1);
     }
 
     @SubscribeEvent
@@ -267,12 +334,24 @@ public final class AwarenessFixture extends CommandBase implements TargetAwarene
                 case CLEARED:
                     vanishAfterClear();
                     break;
+                case DRAW:
+                    if (mob.isHandActive() && mob.tasks.taskEntries.stream()
+                            .anyMatch(entry -> entry.using && entry.action instanceof EntityAIAttackRangedBow)) {
+                        LOGGER.info("tw_awareness_bow_draw target={} hand={}", closer.getUniqueID(),
+                                mob.getActiveHand());
+                        startVanish();
+                    }
+                    break;
                 case RELEASE:
                     release();
                     break;
                 case OVERLAP:
                     holdExclusion();
                     if (ticks == limit) {
+                        if (mob instanceof EntitySkeleton) {
+                            require(closer.getHealth() < healthBeforeArrow, "in-flight arrow never reached vanished player");
+                            LOGGER.info("tw_awareness_committed_arrow before={} health={}", healthBeforeArrow, closer.getHealth());
+                        }
                         closerProtection = 0;
                         changed(closer);
                         enter(Phase.EXPIRED, 15);
@@ -300,11 +379,26 @@ public final class AwarenessFixture extends CommandBase implements TargetAwarene
                         closerAware = fartherAware = false;
                         changed(closer);
                         changed(farther);
+                        reserveAware = true;
+                        changed(reserve);
+                        enter(Phase.FALLBACK, 120);
+                    }
+                    break;
+                case FALLBACK:
+                    if (mob.getAttackTarget() == reserve) {
+                        require(view(reserve).state() == ThreatQueries.State.TRACKED && score(reserve) == 0,
+                                "native fallback required a score or ended the continuing encounter");
+                        LOGGER.info("tw_awareness_native_fallback scenario={} score={}", scenario, score(reserve));
+                        reserveAware = false;
+                        cleared(reserve);
                         enter(Phase.RESET, 260);
                     }
                     break;
                 case RESET:
                     reopen();
+                    break;
+                case IMPACT:
+                    observeOpeningArrow();
                     break;
                 case REOPENED:
                     finish();
@@ -328,6 +422,9 @@ public final class AwarenessFixture extends CommandBase implements TargetAwarene
         EntityPlayerMP unloaded = CoverageFixtureCommand.fixturePlayer((WorldServer) mob.world, scenario, "Unloaded");
         mob.setAttackTarget(unloaded);
         require(mob.getAttackTarget() == farther, "native write accepted an unloaded player");
+        if (mob instanceof EntityZombie) {
+            checkZombieAid();
+        }
         absorptionControls();
         hit();
         require(damageReveals == 2 && closerAware && score(closer) > 0, "damage did not reveal and score");
@@ -345,6 +442,44 @@ public final class AwarenessFixture extends CommandBase implements TargetAwarene
         fartherBlocked = false;
         changed(farther);
         enter(Phase.REVENGE, 15);
+    }
+
+    private void checkZombieAid() {
+        WorldServer world = (WorldServer) mob.world;
+        EntityZombie caller = new EntityZombie(world);
+        caller.setPosition(mob.posX, mob.posY, mob.posZ + 2);
+        require(world.spawnEntity(caller), "could not spawn the zombie calling for help");
+        try {
+            caller.setRevengeTarget(closer);
+            EntityAIHurtByTarget revenge = (EntityAIHurtByTarget) caller.targetTasks.taskEntries.stream()
+                    .filter(entry -> entry.action instanceof EntityAIHurtByTarget).findFirst().get().action;
+            mob.setAttackTarget(null);
+            revenge.startExecuting();
+            require(caller.getAttackTarget() == closer && mob.getAttackTarget() == null,
+                    "receiving zombie accepted an unseen ally target");
+            closerAware = true;
+            changed(closer);
+            revenge.startExecuting();
+            require(mob.getAttackTarget() == closer, "ally targeting positive control did not assign the player");
+            closerAware = false;
+            changed(closer);
+            mob.setAttackTarget(farther);
+
+            reinforcementCaller = caller;
+            reinforcement = new EntityZombie(world);
+            require(caller.attackEntityFrom(DamageSource.causePlayerDamage(closer), 2)
+                    && world.getEntityFromUuid(reinforcement.getUniqueID()) == reinforcement
+                    && reinforcement.getAttackTarget() == null,
+                    "native reinforcement failed to spawn without inheriting its caller's unseen target");
+            LOGGER.info("tw_awareness_zombie_aid reinforcement={} position={}", reinforcement.getUniqueID(), reinforcementPosition);
+        } finally {
+            caller.setDead();
+            reinforcementCaller = null;
+            if (reinforcement != null) {
+                reinforcement.setDead();
+                reinforcement = null;
+            }
+        }
     }
 
     private boolean revengeRunning() {
@@ -370,6 +505,22 @@ public final class AwarenessFixture extends CommandBase implements TargetAwarene
         require(focusClears > 0, "same-tick rediscovery kept the old target assignment");
         require(!revengeRunning(), "same-tick rediscovery retained the old cached revenge goal");
         require(taunt(closer) == Result.APPLIED && tauntReveals == 2, "rediscovered player could not taunt again");
+        if (mob instanceof EntitySkeleton) {
+            enter(Phase.DRAW, 54);
+        } else {
+            startVanish();
+        }
+    }
+
+    private void startVanish() {
+        if (mob instanceof EntitySkeleton) {
+            require(mob.getAttackTarget() == closer, "bow draw lost the taunt before vanish");
+            closer.hurtResistantTime = 0;
+            healthBeforeArrow = closer.getHealth();
+            ((EntitySkeleton) mob).attackEntityWithRangedAttack(closer, 1.0F);
+            require(!mob.world.getEntities(EntityArrow.class, arrow -> arrow.shootingEntity == mob).isEmpty(),
+                    "skeleton did not launch an arrow before vanish");
+        }
         closerAware = false;
         closerProtection = VANISH | OTHER;
         cleared(closer);
@@ -409,12 +560,30 @@ public final class AwarenessFixture extends CommandBase implements TargetAwarene
                 "tracked lifetime did not end with a reset");
         require(changes.get(0).encounterId() == changes.get(1).encounterId(), "reset identity differs");
         require(mob.getAttackTarget() == null, "native target returned while both players stayed unaware");
-        closerProtection = VANISH | OTHER;
+        closerAware = true;
         changed(closer);
-        hit();
+        EntityTippedArrow arrow = new EntityTippedArrow(mob.world, closer);
+        arrow.setPosition(closer.posX, mob.posY + mob.height / 2, closer.posZ);
+        arrow.shoot(mob.posX - arrow.posX, 0, mob.posZ - arrow.posZ, 1.8F, 0.0F);
+        mobHealthBeforeArrow = mob.getHealth();
+        mob.hurtResistantTime = 0;
+        require(mob.world.spawnEntity(arrow), "could not launch the player arrow before vanish");
+        closerAware = false;
+        closerProtection = VANISH | OTHER;
+        cleared(closer);
+        enter(Phase.IMPACT, 25);
+    }
+
+    private void observeOpeningArrow() {
+        if (mob.getHealth() >= mobHealthBeforeArrow) {
+            return;
+        }
+        recordImpact();
         require(damageReveals == 3 && closerRemembered && !closerAware && closerProtection == OTHER,
                 "fixture impact bypassed surviving protection");
         require(score(closer) > 0 && score(closer) < retained, "new lifetime inherited the prior score");
+        LOGGER.info("tw_awareness_late_arrow scenario={} before={} health={} score={}", scenario,
+                mobHealthBeforeArrow, mob.getHealth(), score(closer));
         require(taunt(farther) == Result.APPLIED, "unaware player could not taunt");
         require(fartherAware && tauntReveals == 4 && mob.getAttackTarget() == farther,
                 "taunt did not reveal the unaware player");
@@ -543,6 +712,7 @@ public final class AwarenessFixture extends CommandBase implements TargetAwarene
         }
         closer.setDead();
         farther.setDead();
+        reserve.setDead();
     }
 
     private static void require(boolean valid, String message) {

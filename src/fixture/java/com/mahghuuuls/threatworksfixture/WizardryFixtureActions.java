@@ -141,6 +141,18 @@ final class WizardryFixtureActions {
                     score(applied, wraith), casterScore, victim.getUniqueID());
             require(lost > 0 && score(applied, wraith) == lost && score(applied, caster) == casterScore,
                     "Applied Arc did not credit exactly the summon health delta");
+
+            victim.hurtResistantTime = 0;
+            victim.addTag("tw_redirect_next");
+            float healthBeforeRedirect = victim.getHealth();
+            cast("ebwizardry:arc", wraith, victim);
+            EncounterCoordinator.Inspection redirected = EncounterCoordinator.INSTANCE.inspect(victim, 8);
+            double redirectedLoss = healthBeforeRedirect - victim.getHealth();
+            require(redirectedLoss > 0 && !victim.getTags().contains("tw_redirect_next")
+                            && score(redirected, wraith) == lost && score(redirected, caster) == casterScore + redirectedLoss,
+                    "Explicit Arc credit did not redirect exactly one hit to the owner");
+            LOGGER.info("wizardry_arc_redirected lost={} actorScore={} casterScore={}", redirectedLoss,
+                    score(redirected, wraith), score(redirected, caster));
         } finally {
             victim.setDead();
             wraith.setDead();
