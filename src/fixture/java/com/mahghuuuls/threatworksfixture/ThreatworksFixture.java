@@ -99,6 +99,7 @@ public final class ThreatworksFixture {
     private String joltPhase;
     private static final String JOLT_LIGHTNING = "tw_l_jolt_lightning";
     private StatusFixtureCommand statuses;
+    private AwarenessFixture awareness;
 
     @Mod.EventHandler
     public void init(FMLInitializationEvent event) {
@@ -114,10 +115,20 @@ public final class ThreatworksFixture {
             statuses = new StatusFixtureCommand(this);
             statuses.registerDefinitions();
         }
+        if (Boolean.getBoolean("threatworks.awarenessFixture")) {
+            awareness = new AwarenessFixture();
+            if (!ThreatworksMod.registerTargetAwareness(awareness)) {
+                throw new IllegalStateException("Could not register awareness fixture");
+            }
+            MinecraftForge.EVENT_BUS.register(awareness);
+        }
     }
 
     @Mod.EventHandler
     public void serverStarting(FMLServerStartingEvent event) {
+        if (awareness != null) {
+            event.registerServerCommand(awareness);
+        }
         event.registerServerCommand(new ThreatActionsCommand());
         if (!"1.0.0".equals(Loader.instance().getIndexedModList().get("threatworks").getVersion())) {
             event.registerServerCommand(new ThreatQueryCommand());

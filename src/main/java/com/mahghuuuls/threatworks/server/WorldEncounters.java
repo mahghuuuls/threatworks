@@ -1,5 +1,6 @@
 package com.mahghuuuls.threatworks.server;
 
+import com.mahghuuuls.threatworks.api.TargetAwareness.Transition;
 import com.mahghuuuls.threatworks.points.ThreatPoints;
 import com.mahghuuuls.threatworks.config.ServerTuning.MobType;
 import com.mahghuuuls.threatworks.threat.Encounter;
@@ -21,7 +22,7 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.function.BiPredicate;
+import java.util.function.BiFunction;
 import java.util.function.BooleanSupplier;
 import java.util.function.DoubleSupplier;
 import java.util.function.Function;
@@ -37,15 +38,31 @@ final class WorldEncounters implements IWorldEventListener {
     private final Map<UUID, Object> tauntIdentities = new HashMap<>();
     final Set<UUID> yielded = new HashSet<>();
     final Set<UUID> rejectedWrites = new HashSet<>();
+    final Map<UUID, AwarenessQualification> awarenessQualification = new HashMap<>();
+    private final Map<UUID, Set<UUID>> failedAwareness = new HashMap<>();
+    private final Map<UUID, Long> encounterIds = new HashMap<>();
+    private final int dimension;
+    private final AwarenessIntegration awareness;
+    private final Predicate<UUID> observeEncounter;
     // A snapshot can compare world sessions without retaining a world or its encounter table.
     final Object launchSession = new Object();
     WorkSample workSample;
+
+    WorldEncounters() {
+        this(0, null, null);
+    }
+
+    WorldEncounters(int dimension, AwarenessIntegration awareness, Predicate<UUID> observeEncounter) {
+        this.dimension = dimension;
+        this.awareness = awareness;
+        this.observeEncounter = observeEncounter;
+    }
 
     WorkSample activeSample() {
         return workSample == null || workSample.complete() ? null : workSample;
     }
 
-    void tick(int serverTick, BiPredicate<UUID, Encounter> remove) {
+    void tick(int serverTick, BiFunction<UUID, Encounter, Transition> remove) {
         WorkSample sample = activeSample();
         if (!encounters.isEmpty()) {
             Iterator<Map.Entry<UUID, Encounter>> entries = encounters.entrySet().iterator();
@@ -54,9 +71,12 @@ final class WorldEncounters implements IWorldEventListener {
                 if (sample != null) {
                     sample.visit();
                 }
-                if (remove.test(entry.getKey(), entry.getValue())) {
-                    forgetControl(entry.getKey());
+                Transition reason = remove.apply(entry.getKey(), entry.getValue());
+                if (reason != null) {
+                    UUID id = entry.getKey();
                     entries.remove();
+                    forgetControl(id);
+                    ended(id, reason);
                 }
             }
         }
@@ -68,8 +88,7 @@ final class WorldEncounters implements IWorldEventListener {
     Encounter encounterForAction(UUID id, int tick) {
         Encounter encounter = encounters.get(id);
         if (encounter != null && encounter.resetDue(tick)) {
-            encounters.remove(id);
-            forgetControl(id);
+            reset(id);
             return null;
         }
         return encounter;
@@ -150,6 +169,39 @@ final class WorldEncounters implements IWorldEventListener {
         yielded.remove(id);
     }
 
+    void putEncounter(UUID id, Encounter encounter) {
+        if (encounters.put(id, encounter) == null && awareness != null && observeEncounter.test(id)) {
+            encounterIds.put(id, awareness.started(dimension, id));
+        }
+    }
+
+    private void ended(UUID mob, Transition reason) {
+        Long encounter = encounterIds.remove(mob);
+        if (encounter != null) {
+            awareness.ended(encounter, dimension, mob, reason);
+        }
+    }
+
+    void endWorld(Transition reason) {
+        encounterIds.forEach((mob, id) -> awareness.ended(id, dimension, mob, reason));
+        encounterIds.clear();
+    }
+
+    static final class AwarenessQualification {
+        int tick = Integer.MIN_VALUE;
+        boolean qualifies;
+        UUID focusToRelease;
+    }
+
+    boolean awarenessFailed(UUID mob, UUID player) {
+        Set<UUID> failedMobs = failedAwareness.get(player);
+        return failedMobs != null && failedMobs.contains(mob);
+    }
+
+    void failAwareness(UUID mob, UUID player) {
+        failedAwareness.computeIfAbsent(player, ignored -> new HashSet<>()).add(mob);
+    }
+
     boolean matchesTaunter(UUID mob, Entity entity) {
         Object identity = entity == null ? null : identities.get(entity.getUniqueID());
         return identity != null && tauntIdentities.get(mob) == identity;
@@ -186,6 +238,15 @@ final class WorldEncounters implements IWorldEventListener {
         encounters.remove(id);
         forgetControl(id);
         rejectedWrites.remove(id);
+        awarenessQualification.remove(id);
+        failedAwareness.values().removeIf(mobs -> mobs.remove(id) && mobs.isEmpty());
+        ended(id, Transition.MOB_REMOVED);
+    }
+
+    void reset(UUID id) {
+        encounters.remove(id);
+        forgetControl(id);
+        ended(id, Transition.RESET);
     }
 
     UUID select(Encounter encounter, int serverTick, WorkSample sample,
@@ -230,7 +291,7 @@ final class WorldEncounters implements IWorldEventListener {
         previous = encounters.get(mob);
         Encounter updated = Encounter.recordHit(previous, credit, incumbent, mobTick, gain, rules);
         if (updated != null) {
-            encounters.put(mob, updated);
+            putEncounter(mob, updated);
         }
     }
 
@@ -256,6 +317,7 @@ final class WorldEncounters implements IWorldEventListener {
     public void onEntityAdded(Entity entity) {
         if (entity instanceof EntityLivingBase) {
             identities.remove(entity.getUniqueID());
+            awarenessQualification.remove(entity.getUniqueID());
         }
         if (entity instanceof EntityPlayer) {
             playerAvailabilityChanged(entity.getUniqueID());
@@ -263,6 +325,7 @@ final class WorldEncounters implements IWorldEventListener {
     }
 
     private void playerAvailabilityChanged(UUID player) {
+        failedAwareness.remove(player);
         encounters.values().forEach(encounter -> encounter.participantChanged(player));
     }
 

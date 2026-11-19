@@ -1,6 +1,7 @@
 package com.mahghuuuls.threatworks;
 
 import com.mahghuuuls.threatworks.api.ItemThreatPointProvider;
+import com.mahghuuuls.threatworks.api.TargetAwareness;
 import com.mahghuuuls.threatworks.api.ThreatActions;
 import com.mahghuuuls.threatworks.api.ThreatQueries;
 import com.mahghuuuls.threatworks.command.ThreatworksCommand;
@@ -26,6 +27,8 @@ import com.mahghuuuls.threatworks.config.ServerTuning;
 import com.mahghuuuls.threatworks.points.ThreatPoints;
 import com.mahghuuuls.threatworks.server.EncounterCoordinator;
 import net.minecraft.item.Item;
+import net.minecraft.entity.EntityLiving;
+import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.Mod;
@@ -65,6 +68,32 @@ public final class ThreatworksMod {
     }
 
     /**
+     * Registers the optional awareness provider during Forge initialization or post-initialization.
+     * Returns false for a conflicting or invalid registration, or after load completion.
+     */
+    public static boolean registerTargetAwareness(TargetAwareness provider) {
+        return EncounterCoordinator.INSTANCE.registerAwareness(provider);
+    }
+
+    /**
+     * Reports a changed decision for a live pair. Call on the logical server after changing
+     * awareness or protection, including before an encounter exists. Returns whether the
+     * integration can handle this pair. A committed taunt already refreshes its pair.
+     */
+    public static boolean targetAwarenessChanged(EntityLiving mob, EntityPlayerMP player) {
+        return EncounterCoordinator.INSTANCE.awarenessChanged(mob, player, false);
+    }
+
+    /**
+     * Reports an explicit loss of awareness, such as vanish, on the logical server.
+     * Retires the old focus and taunt even if the pair is rediscovered before the next
+     * target choice. Report later rediscovery with {@link #targetAwarenessChanged}.
+     */
+    public static boolean targetAwarenessCleared(EntityLiving mob, EntityPlayerMP player) {
+        return EncounterCoordinator.INSTANCE.awarenessChanged(mob, player, true);
+    }
+
+    /**
      * Registers one base points provider for a registered item during Forge initialization or
      * post-initialization. Registration closes at load completion.
      * Returns false if the registration is invalid, conflicts, or arrives after registration closes.
@@ -90,6 +119,7 @@ public final class ThreatworksMod {
     public void loadComplete(FMLLoadCompleteEvent event) {
         POINTS.installEquipmentSources(BaublesCompatibility.load(LOGGER), QualityToolsCompatibility.load(LOGGER));
         POINTS.freezeRegistrations();
+        EncounterCoordinator.INSTANCE.closeAwarenessRegistration();
         EncounterCoordinator.INSTANCE.setSummonSource(WizardryCompatibility.load(LOGGER));
         EncounterCoordinator.INSTANCE.setFoliaathCompatibility(FoliaathCompatibility.load(LOGGER));
         SpecialAiCompatibility.reportVersion(LOGGER);

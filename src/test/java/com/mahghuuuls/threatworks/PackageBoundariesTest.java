@@ -34,6 +34,7 @@ class PackageBoundariesTest {
                 String name = declaration.substring("import ".length()).replaceFirst("^static ", "");
                 assertFalse(name.startsWith("net.minecraft.client.") || name.startsWith("net.minecraftforge.client."),
                         relative + ": " + line);
+                assertFalse(name.startsWith("com.mahghuuuls.stealthworks."), relative + ": " + line);
                 if ("threat".equals(area)) {
                     assertTrue(name.startsWith("java.") || name.startsWith("com.mahghuuuls.threatworks.threat."),
                             relative + ": " + line);
@@ -58,13 +59,18 @@ class PackageBoundariesTest {
 
     @Test
     void participantQueryConsumerImportsOnlyThePublicThreatworksSurface() throws IOException {
+        assertPublicConsumer("ParticipantQueryConsumer");
+        assertPublicConsumer("AwarenessFixture");
+    }
+
+    private void assertPublicConsumer(String name) throws IOException {
         Path main = Paths.get(System.getProperty("threatworks.sourceDirectory"));
-        Path consumer = main.getParent().getParent().resolve("fixture/java/com/mahghuuuls/threatworksfixture/ParticipantQueryConsumer.java");
+        Path consumer = main.getParent().getParent().resolve("fixture/java/com/mahghuuuls/threatworksfixture/" + name + ".java");
         for (String line : Files.readAllLines(consumer, StandardCharsets.UTF_8)) {
-            String name = line.trim().replaceFirst("^import (static )?", "");
-            if (name.startsWith("com.mahghuuuls.threatworks.")) {
-                assertTrue(name.startsWith("com.mahghuuuls.threatworks.api.")
-                                || name.equals("com.mahghuuuls.threatworks.ThreatworksMod;"), line);
+            String imported = line.trim().replaceFirst("^import (static )?", "");
+            if (imported.startsWith("com.mahghuuuls.threatworks.")) {
+                assertTrue(imported.startsWith("com.mahghuuuls.threatworks.api.")
+                                || imported.equals("com.mahghuuuls.threatworks.ThreatworksMod;"), line);
             }
         }
     }

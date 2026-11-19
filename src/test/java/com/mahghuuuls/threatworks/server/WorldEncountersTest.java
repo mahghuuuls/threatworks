@@ -1,13 +1,21 @@
 package com.mahghuuuls.threatworks.server;
 
+import com.mahghuuuls.threatworks.api.TargetAwareness;
+import com.mahghuuuls.threatworks.api.TargetAwareness.EncounterChange;
+import com.mahghuuuls.threatworks.api.TargetAwareness.Transition;
 import com.mahghuuuls.threatworks.threat.Encounter;
 import com.mahghuuuls.threatworks.threat.Encounter.TargetObservation;
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.EntityLiving;
+import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.init.Bootstrap;
 import net.minecraft.nbt.NBTTagCompound;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 import java.util.UUID;
 
 import static com.mahghuuuls.threatworks.TestRules.DEFAULT_RULES;
@@ -63,23 +71,75 @@ class WorldEncountersTest {
     private final WorldEncounters world = new WorldEncounters();
 
     @Test
+    void publishesCommittedLifetimesWithoutDependingOnParticipantReads() {
+        List<EncounterChange> delivered = new ArrayList<>();
+        List<UUID> deaths = new ArrayList<>();
+        AwarenessIntegration bridge = new AwarenessIntegration();
+        assertTrue(bridge.register(new TargetAwareness() {
+            @Override
+            public Decision decide(EntityLiving mob, EntityPlayerMP player) {
+                throw new AssertionError("Lifecycle delivery must not read awareness");
+            }
+
+            @Override
+            public void encounterChanged(EncounterChange change) {
+                if (change.transition() == Transition.RESET) {
+                    assertEquals(Collections.singletonList(player), deaths);
+                }
+                delivered.add(change);
+            }
+
+            @Override
+            public void playerDied(UUID playerId) {
+                assertEquals(1, delivered.size());
+                deaths.add(playerId);
+            }
+        }));
+        bridge.closeRegistration();
+        assertFalse(bridge.register((host, target) -> TargetAwareness.Decision.ALLOW));
+
+        WorldEncounters tracked = new WorldEncounters(-1, bridge, mob::equals);
+        tracked.recordHit(mob, () -> player, 20, true, 20, 19, DEFAULT_RULES, () -> 1, () -> null);
+        Encounter first = tracked.encounterForAction(mob, 40);
+        tracked.putEncounter(mob, first);
+        first.selectTarget(40, ignored -> TargetObservation.INELIGIBLE);
+        bridge.playerDied(player);
+        assertNull(tracked.encounterForRead(mob, 240));
+        assertTrue(delivered.isEmpty());
+        assertNull(tracked.encounterForAction(mob, 240));
+        tracked.recordHit(mob, () -> player, 241, true, 19, 18, DEFAULT_RULES, () -> 1, () -> null);
+        tracked.endWorld(Transition.WORLD_UNLOADED);
+
+        bridge.deliverChanges();
+        assertEquals(4, delivered.size());
+        assertEquals(Transition.STARTED, delivered.get(0).transition());
+        assertEquals(Transition.RESET, delivered.get(1).transition());
+        assertEquals(Transition.STARTED, delivered.get(2).transition());
+        assertEquals(Transition.WORLD_UNLOADED, delivered.get(3).transition());
+        assertEquals(delivered.get(0).encounterId(), delivered.get(1).encounterId());
+        assertTrue(delivered.get(0).encounterId() < delivered.get(2).encounterId());
+        assertEquals(delivered.get(2).encounterId(), delivered.get(3).encounterId());
+        assertTrue(delivered.stream().allMatch(change -> change.dimension() == -1 && mob.equals(change.mobId())));
+    }
+
+    @Test
     void samplesOnlyTrackedEntriesInTheWorldTickLoop() {
         WorkSample sample = new WorkSample(2);
         world.workSample = sample;
         world.tick(40, (id, encounter) -> {
             fail("Idle world must not visit a mob");
-            return false;
+            return null;
         });
         world.recordHit(mob, () -> player, 20, true, 20, 19, DEFAULT_RULES, () -> 1, () -> null);
         world.tick(41, (id, encounter) -> {
             assertEquals(mob, id);
-            return true;
+            return Transition.RESET;
         });
         assertTrue(sample.complete());
         assertTrue(sample.report().contains("ticks=2 activeMin=0 activeMax=0 visited=1"));
         world.tick(42, (id, encounter) -> {
             fail("Removed encounter must not be visited again");
-            return false;
+            return null;
         });
         assertTrue(sample.report().contains("lastTick=41"));
     }

@@ -3,6 +3,9 @@ package com.mahghuuuls.threatworks.server;
 import com.mahghuuuls.threatworks.api.ThreatActions;
 import com.mahghuuuls.threatworks.api.ThreatQueries;
 import com.mahghuuuls.threatworks.api.SummonThreatCreditEvent;
+import com.mahghuuuls.threatworks.api.TargetAwareness;
+import com.mahghuuuls.threatworks.api.TargetAwareness.Decision;
+import com.mahghuuuls.threatworks.api.TargetAwareness.Transition;
 import com.mahghuuuls.threatworks.config.ServerTuning;
 import com.mahghuuuls.threatworks.config.ServerTuning.MobType;
 import com.mahghuuuls.threatworks.compat.FoliaathCompatibility;
@@ -10,16 +13,25 @@ import com.mahghuuuls.threatworks.points.ThreatPoints;
 import com.mahghuuuls.threatworks.threat.Encounter;
 import com.mahghuuuls.threatworks.threat.Encounter.TargetObservation;
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.EntityCreature;
 import net.minecraft.entity.EntityList;
 import net.minecraft.entity.EntityLiving;
 import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.entity.ai.EntityAIHurtByTarget;
+import net.minecraft.entity.ai.EntityAINearestAttackableTarget;
+import net.minecraft.entity.ai.EntityAITasks.EntityAITaskEntry;
 import net.minecraft.entity.boss.EntityDragon;
 import net.minecraft.entity.boss.dragon.phase.IPhase;
 import net.minecraft.entity.boss.dragon.phase.PhaseList;
 import net.minecraft.entity.monster.EntityGuardian;
+import net.minecraft.entity.monster.EntityIronGolem;
+import net.minecraft.entity.monster.EntitySkeleton;
+import net.minecraft.entity.monster.EntityZombie;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
+import net.minecraft.entity.passive.EntityVillager;
 import net.minecraft.entity.projectile.EntityArrow;
+import net.minecraft.init.Items;
 import net.minecraft.stats.StatList;
 import net.minecraft.util.DamageSource;
 import net.minecraft.util.ResourceLocation;
@@ -44,6 +56,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.function.BiPredicate;
 import java.util.function.Function;
 
 public final class EncounterCoordinator implements ThreatActions, ThreatQueries {
@@ -53,6 +66,8 @@ public final class EncounterCoordinator implements ThreatActions, ThreatQueries 
     private final Map<EntityPlayerMP, Integer> pendingPlayerDeaths = new IdentityHashMap<>();
     private final Map<MobType, MobPolicy> policies = new EnumMap<>(MobType.class);
     private final DragonTargeting dragonTargeting = new DragonTargeting();
+    private final AwarenessIntegration awareness = new AwarenessIntegration();
+    private final BiPredicate<EntityLiving, EntityLivingBase> excludedFromTakeover = this::isAwarenessExcluded;
     private ServerTuning tuning;
     private ThreatPoints points;
     private DamageAttribution.SummonSource summons;
@@ -74,6 +89,201 @@ public final class EncounterCoordinator implements ThreatActions, ThreatQueries 
     public static boolean supports(EntityLivingBase mob) {
         return mob.world instanceof WorldServer && ((WorldServer) mob.world).getMinecraftServer().isCallingFromMinecraftThread()
                 && INSTANCE.canCredit(mob);
+    }
+
+    public boolean registerAwareness(TargetAwareness provider) {
+        return awareness.register(provider);
+    }
+
+    public void closeAwarenessRegistration() {
+        awareness.closeRegistration();
+    }
+
+    public boolean hasAwarenessProvider() {
+        return awareness.active();
+    }
+
+    private WorldEncounters awarenessState(EntityLiving mob) {
+        return awarenessState(mob, false);
+    }
+
+    private WorldEncounters awarenessState(EntityLiving mob, boolean refresh) {
+        if (!awareness.active() || mob == null) {
+            return null;
+        }
+        boolean zombie = mob.getClass() == EntityZombie.class;
+        if ((!zombie && (mob.getClass() != EntitySkeleton.class || mob.getHeldItemMainhand().getItem() != Items.BOW))
+                || !(mob.world instanceof WorldServer) || mob.isAIDisabled() || mob.isRiding() || mob.isBeingRidden()
+                || mob.targetTasks.isControlFlagDisabled(1)
+                || !((NativeTargetGoals) mob).threatworks$hasOriginalTargetGoals()) {
+            return null;
+        }
+        WorldServer world = (WorldServer) mob.world;
+        if (!world.getMinecraftServer().isCallingFromMinecraftThread() || !ParticipantQuery.live(world, mob)) {
+            return null;
+        }
+        WorldEncounters state = worlds.get(world);
+        if (state == null) {
+            return null;
+        }
+        UUID id = mob.getUniqueID();
+        int tick = world.getMinecraftServer().getTickCounter();
+        WorldEncounters.AwarenessQualification check = state.awarenessQualification.get(id);
+        if (check == null) {
+            check = new WorldEncounters.AwarenessQualification();
+            state.awarenessQualification.put(id, check);
+        }
+        if (refresh || check.tick != tick) {
+            check.tick = tick;
+            MobType type = zombie ? MobType.ZOMBIE : MobType.SKELETON;
+            check.qualifies = MobAdmission.configuredType(tuning, mob) == type
+                    && MobTargets.matchesBehavior((EntityCreature) mob, type) && hasStockTargetGoals(mob, zombie);
+        }
+        return check.qualifies ? state : null;
+    }
+
+    private static boolean hasStockTargetGoals(EntityLiving mob, boolean zombie) {
+        if (mob.targetTasks.taskEntries.size() != (zombie ? 4 : 3)) {
+            return false;
+        }
+        boolean revenge = false;
+        boolean player = false;
+        boolean golem = false;
+        boolean villager = false;
+        for (EntityAITaskEntry entry : mob.targetTasks.taskEntries) {
+            if (entry.priority == 1 && entry.action.getClass() == EntityAIHurtByTarget.class) {
+                revenge = true;
+                continue;
+            }
+            if (entry.action.getClass() != EntityAINearestAttackableTarget.class) {
+                return false;
+            }
+            Class<?> target = ((NativeTargetGoals.Nearest) entry.action).threatworks$targetClass();
+            player |= entry.priority == 2 && target == EntityPlayer.class;
+            golem |= entry.priority == 3 && target == EntityIronGolem.class;
+            villager |= entry.priority == 3 && target == EntityVillager.class;
+        }
+        return revenge && player && golem && (!zombie || villager);
+    }
+
+    private Decision awarenessDecision(EntityLiving mob, Entity candidate) {
+        if (!(candidate instanceof EntityPlayerMP)) {
+            return Decision.ALLOW;
+        }
+        WorldEncounters state = awarenessState(mob);
+        EntityPlayerMP player = (EntityPlayerMP) candidate;
+        if (state == null) {
+            return Decision.ALLOW;
+        }
+        if (!ParticipantQuery.live((WorldServer) mob.world, player)) {
+            return Decision.BLOCKED;
+        }
+        if (state.awarenessFailed(mob.getUniqueID(), player.getUniqueID())) {
+            return Decision.ALLOW;
+        }
+        Decision decision = awareness.decide(mob, player);
+        if (decision == null) {
+            state.failAwareness(mob.getUniqueID(), player.getUniqueID());
+            invalidateAwareness(state, mob.getUniqueID(), player.getUniqueID());
+            return Decision.ALLOW;
+        }
+        return decision == Decision.ALLOW && player.getUniqueID().equals(
+                state.awarenessQualification.get(mob.getUniqueID()).focusToRelease) ? Decision.UNAWARE : decision;
+    }
+
+    public boolean isAwarenessExcluded(EntityLiving mob, EntityLivingBase candidate) {
+        return awarenessDecision(mob, candidate) != Decision.ALLOW;
+    }
+
+    public boolean awarenessChanged(EntityLiving mob, EntityPlayerMP player, boolean cleared) {
+        WorldEncounters state = awarenessState(mob, true);
+        if (state == null || player == null || !ParticipantQuery.live((WorldServer) mob.world, player)) {
+            return false;
+        }
+        UUID mobId = mob.getUniqueID();
+        UUID playerId = player.getUniqueID();
+        if (state.awarenessFailed(mobId, playerId)) {
+            return false;
+        }
+        Encounter encounter = invalidateAwareness(state, mobId, playerId);
+        if (cleared) {
+            forgetCachedTargets(mob, playerId);
+            if (mob.getAttackTarget() == player) {
+                state.awarenessQualification.get(mobId).focusToRelease = playerId;
+            }
+        }
+        if (encounter != null) {
+            if (cleared && playerId.equals(encounter.getTarget())) {
+                encounter.confirmNativeTarget(null);
+            }
+            if (playerId.equals(encounter.getTaunter()) && (cleared || isAwarenessExcluded(mob, player))) {
+                clearTaunt(state, mobId, encounter);
+            }
+        }
+        return !state.awarenessFailed(mobId, playerId);
+    }
+
+    private Encounter invalidateAwareness(WorldEncounters state, UUID mob, UUID player) {
+        state.observations.remove(mob);
+        state.takeovers.remove(mob);
+        Encounter encounter = state.encounters.get(mob);
+        if (encounter != null) {
+            encounter.participantChanged(player);
+        }
+        return encounter;
+    }
+
+    private static void forgetCachedTargets(EntityLiving mob, UUID playerId) {
+        for (EntityAITaskEntry entry : mob.targetTasks.taskEntries) {
+            if (entry.action instanceof NativeTargetGoals.CachedTarget) {
+                ((NativeTargetGoals.CachedTarget) entry.action).threatworks$forgetTarget(playerId);
+            }
+        }
+    }
+
+    public void releaseClearedFocus(EntityLiving mob) {
+        if (!awareness.active()) {
+            return;
+        }
+        WorldEncounters state = worlds.get(mob.world);
+        WorldEncounters.AwarenessQualification check = state == null ? null
+                : state.awarenessQualification.get(mob.getUniqueID());
+        if (check == null || check.focusToRelease == null || activeWrite(mob) != null) {
+            return;
+        }
+        UUID playerId = check.focusToRelease;
+        check.focusToRelease = null;
+        EntityLivingBase current = mob.getAttackTarget();
+        if (awarenessState(mob) != null) {
+            // A synchronous setter listener may have requested the clear before a goal cached its target.
+            forgetCachedTargets(mob, playerId);
+            if (current != null && playerId.equals(current.getUniqueID())) {
+                performTargetWrite(mob, null);
+            }
+        }
+    }
+
+    public void releaseExcludedFocus(EntityLiving mob) {
+        if (!awareness.active() || activeWrite(mob) != null) {
+            return;
+        }
+        releaseClearedFocus(mob);
+        EntityLivingBase target = mob.getAttackTarget();
+        if (isAwarenessExcluded(mob, target)) {
+            WorldEncounters state = worlds.get(mob.world);
+            UUID mobId = mob.getUniqueID();
+            UUID playerId = target.getUniqueID();
+            Encounter encounter = invalidateAwareness(state, mobId, playerId);
+            if (encounter != null && playerId.equals(encounter.getTaunter())) {
+                clearTaunt(state, mobId, encounter);
+            }
+            performTargetWrite(mob, null);
+        }
+    }
+
+    private static void clearTaunt(WorldEncounters state, UUID mob, Encounter encounter) {
+        encounter.clearTaunt();
+        state.clearTauntIdentity(mob);
     }
 
     private boolean canCredit(EntityLivingBase mob) {
@@ -111,8 +321,16 @@ public final class EncounterCoordinator implements ThreatActions, ThreatQueries 
     public void onWorldLoad(WorldEvent.Load event) {
         World world = event.getWorld();
         if (world instanceof WorldServer && !worlds.containsKey(world)) {
-            WorldEncounters state = new WorldEncounters();
-            worlds.put((WorldServer) world, state);
+            WorldServer serverWorld = (WorldServer) world;
+            WorldEncounters state = awareness.active()
+                    ? new WorldEncounters(world.provider.getDimension(), awareness, id -> {
+                        Entity mob = serverWorld.getEntityFromUuid(id);
+                        return mob instanceof EntityLiving && (mob.getClass() == EntityZombie.class
+                                || mob.getClass() == EntitySkeleton.class)
+                                && MobAdmission.configuredType(tuning, (EntityLiving) mob) != null;
+                    })
+                    : new WorldEncounters();
+            worlds.put(serverWorld, state);
             world.addEventListener(state);
         }
     }
@@ -124,12 +342,16 @@ public final class EncounterCoordinator implements ThreatActions, ThreatQueries 
             WorldEncounters state = worlds.remove(world);
             if (state != null) {
                 world.removeEventListener(state);
+                state.endWorld(Transition.WORLD_UNLOADED);
             }
         }
     }
 
     public void serverStopped() {
-        worlds.forEach(World::removeEventListener);
+        worlds.forEach((world, state) -> {
+            world.removeEventListener(state);
+            state.endWorld(Transition.SERVER_STOPPED);
+        });
         worlds.clear();
         pendingPlayerDeaths.clear();
         pendingTakeovers.clear();
@@ -138,6 +360,7 @@ public final class EncounterCoordinator implements ThreatActions, ThreatQueries 
         }
         tuning = null;
         points = null;
+        awareness.serverStopped();
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST, receiveCanceled = true)
@@ -179,6 +402,7 @@ public final class EncounterCoordinator implements ThreatActions, ThreatQueries 
         pendingPlayerDeaths.forEach(this::confirmPlayerDeath);
         pendingPlayerDeaths.clear();
         publishSupplementalTakeovers();
+        awareness.deliverChanges();
     }
 
     private void confirmPlayerDeath(EntityPlayerMP player, int previousDeaths) {
@@ -188,6 +412,7 @@ public final class EncounterCoordinator implements ThreatActions, ThreatQueries 
                 points.discardSetBonuses(player);
             }
             WorldEncounters.removePlayerScores(worlds.values(), player.getUniqueID());
+            awareness.playerDied(player.getUniqueID());
         }
     }
 
@@ -223,8 +448,10 @@ public final class EncounterCoordinator implements ThreatActions, ThreatQueries 
         WorldServer world = (WorldServer) mob.world;
         WorldEncounters state = worlds.get(world);
         UUID mobId = mob.getUniqueID();
-        if (state == null || world.getEntityFromUuid(mobId) != mob || activeWrite(mob) != null
-                || state.rejectedWrites.contains(mobId)) {
+        if (state == null || world.getEntityFromUuid(mobId) != mob) {
+            return;
+        }
+        if (activeWrite(mob) != null || state.rejectedWrites.contains(mobId)) {
             return;
         }
         int tick = world.getMinecraftServer().getTickCounter();
@@ -253,6 +480,19 @@ public final class EncounterCoordinator implements ThreatActions, ThreatQueries 
                         && admission(mob).usesStrafeChoice()));
         if (!admission.usesStrafeChoice() && state.encounters.containsKey(mobId)) {
             state.coverage.putIfAbsent(mobId, type);
+        }
+    }
+
+    private void notifyTauntCommitted(EntityLiving mob, EntityPlayerMP player) {
+        WorldEncounters state = awarenessState(mob);
+        UUID mobId = mob.getUniqueID();
+        UUID playerId = player.getUniqueID();
+        if (state != null && !state.awarenessFailed(mobId, playerId)) {
+            if (awareness.tauntCommitted(mob, player)) {
+                awarenessChanged(mob, player, false);
+            } else if (ParticipantQuery.live((WorldServer) mob.world, player)) {
+                state.failAwareness(mobId, playerId);
+            }
         }
     }
 
@@ -341,12 +581,13 @@ public final class EncounterCoordinator implements ThreatActions, ThreatQueries 
     }
 
     private EntityLivingBase resolve(WorldServer world, EntityLiving mob, MobType type, Entity candidate) {
-        return policies.get(type).resolve(world, mob, candidate);
+        return awarenessDecision(mob, candidate) == Decision.ALLOW ? policies.get(type).resolve(world, mob, candidate) : null;
     }
 
     private TargetObservation observe(WorldServer world, EntityLiving mob, MobType type, Entity candidate,
                                       WorkSample sample) {
-        return policies.get(type).observe(world, mob, candidate, sample);
+        return awarenessDecision(mob, candidate) == Decision.ALLOW
+                ? policies.get(type).observe(world, mob, candidate, sample) : TargetObservation.INELIGIBLE;
     }
 
     public boolean blocksTargetWrite(EntityLiving mob, EntityLivingBase requestedTarget) {
@@ -356,6 +597,9 @@ public final class EncounterCoordinator implements ThreatActions, ThreatQueries 
         TargetWrite write = activeWrite(mob);
         if (write != null) {
             return !write.consume(requestedTarget);
+        }
+        if (isAwarenessExcluded(mob, requestedTarget)) {
+            return true;
         }
         if (mob.getAttackTarget() == requestedTarget) {
             return false;
@@ -447,26 +691,85 @@ public final class EncounterCoordinator implements ThreatActions, ThreatQueries 
         UUID incumbent = previous == null || world.getEntityFromUuid(previous.getUniqueID()) != previous
                 ? null : previous.getUniqueID();
         UUID taunter = participant.getUniqueID();
+        boolean awarenessApplies = awarenessState(mob, true) != null;
+        boolean revealing = awarenessApplies && participant instanceof EntityPlayerMP;
+        if (revealing && awarenessDecision(mob, participant) == Decision.BLOCKED) {
+            return Result.INELIGIBLE_TAUNTER;
+        }
+        WorldEncounters.AwarenessQualification qualified = awarenessApplies
+                ? state.awarenessQualification.get(mobId) : null;
         WorldEncounters.ObservationFrame observations = state.new ObservationFrame(tick);
-        Encounter.Taunt pending = Encounter.prepareTaunt(encounter, taunter, incumbent, tick,
-                id -> observations.observe(world, id, candidate -> observe(world, mob, admission.type, candidate, null)),
-                tuning.rulesFor(admission.type));
+        Encounter.Taunt pending = prepareTaunt(world, mob, admission.type, encounter, taunter, incumbent,
+                revealing, observations);
         if (pending == null) {
             return Result.INELIGIBLE_TAUNTER;
         }
-        if (!writeTarget(mob, participant) || !currentEncounter(world, state, mob, encounter)
-                || world.getEntityFromUuid(taunter) != participant
-                || !admission(mob).controls() || resolve(world, mob, admission.type, participant) == null) {
-            rejectWrite(world, state, mob, encounter);
+        if (!writeTarget(mob, participant) || !currentEncounter(world, state, mob, encounter)) {
+            if (!awarenessApplies) {
+                rejectWrite(world, state, mob, encounter);
+            }
             return Result.TARGET_ASSIGNMENT_REJECTED;
         }
-        state.encounters.put(mobId, pending.apply());
+        boolean awarenessAppliesNow = awarenessState(mob, true) != null;
+        if (!ParticipantQuery.live(world, participant) || !admission(mob).controls()
+                || policies.get(admission.type).resolve(world, mob, participant) == null
+                || awarenessApplies != awarenessAppliesNow
+                || (revealing && awarenessDecision(mob, participant) == Decision.BLOCKED)) {
+            if (awarenessApplies || awarenessAppliesNow) {
+                restoreBeforeTaunt(world, mob, admission.type, previous, participant);
+            } else {
+                rejectWrite(world, state, mob, encounter);
+            }
+            return Result.TARGET_ASSIGNMENT_REJECTED;
+        }
+        if (qualified != null) {
+            // Target notifications are synchronous and can change eligibility without changing awareness.
+            observations = state.new ObservationFrame(tick);
+            pending = prepareTaunt(world, mob, admission.type, encounter, taunter, incumbent,
+                    revealing, observations);
+            if (pending == null || !currentEncounter(world, state, mob, encounter)
+                    || mob.getAttackTarget() != participant
+                    || (revealing && awarenessDecision(mob, participant) == Decision.BLOCKED)) {
+                if (currentEncounter(world, state, mob, encounter)) {
+                    restoreBeforeTaunt(world, mob, admission.type, previous, participant);
+                }
+                return Result.TARGET_ASSIGNMENT_REJECTED;
+            }
+        }
+        state.putEncounter(mobId, pending.apply());
         state.coverage.put(mobId, admission.type);
-        state.observations.put(mobId, observations);
+        if (qualified == null) {
+            state.observations.put(mobId, observations);
+        } else {
+            state.observations.remove(mobId);
+            if (taunter.equals(qualified.focusToRelease)) {
+                qualified.focusToRelease = null;
+            }
+        }
         state.takeovers.remove(mobId);
         state.recordTaunt(mobId, participant);
         state.yielded.remove(mobId);
+        if (revealing) {
+            notifyTauntCommitted(mob, (EntityPlayerMP) participant);
+        }
         return Result.APPLIED;
+    }
+
+    private Encounter.Taunt prepareTaunt(WorldServer world, EntityLiving mob, MobType type, Encounter encounter,
+                                         UUID taunter, UUID incumbent, boolean revealing,
+                                         WorldEncounters.ObservationFrame observations) {
+        return Encounter.prepareTaunt(encounter, taunter, incumbent, observations.tick,
+                id -> observations.observe(world, id, candidate -> revealing && id.equals(taunter)
+                        ? policies.get(type).observe(world, mob, candidate, null)
+                        : observe(world, mob, type, candidate, null)),
+                tuning.rulesFor(type));
+    }
+
+    private void restoreBeforeTaunt(WorldServer world, EntityLiving mob, MobType type,
+                                    EntityLivingBase previous, EntityLivingBase attempted) {
+        if (mob.getAttackTarget() == attempted && ParticipantQuery.live(world, mob)) {
+            writeTarget(mob, resolve(world, mob, type, previous));
+        }
     }
 
     private Result checkActionContext(EntityLivingBase mob) {
@@ -640,7 +943,7 @@ public final class EncounterCoordinator implements ThreatActions, ThreatQueries 
         state.tick(serverTick, (id, encounter) -> {
             Entity entity = world.getEntityFromUuid(id);
             if (!(entity instanceof EntityLiving) || !entity.isEntityAlive()) {
-                return true;
+                return Transition.MOB_REMOVED;
             }
             EntityLiving mob = (EntityLiving) entity;
             state.clearMissingTaunt(world, id, encounter);
@@ -649,11 +952,11 @@ public final class EncounterCoordinator implements ThreatActions, ThreatQueries 
                 if (encounter.resetDue(serverTick) || encounter.shouldReevaluate(serverTick, mob.getEntityId())) {
                     targetUpdates.add(() -> observeDragonAvailability(world, state, mob, encounter, serverTick));
                 }
-                return false;
+                return null;
             }
             if (state.rejectedWrites.contains(id)) {
                 yieldToNative(state, id, encounter, serverTick);
-                return encounter.resetDue(serverTick);
+                return encounter.resetDue(serverTick) ? Transition.RESET : null;
             }
             if (admission.yieldsToNative()) {
                 state.takeovers.remove(id);
@@ -662,16 +965,16 @@ public final class EncounterCoordinator implements ThreatActions, ThreatQueries 
                 } else {
                     yieldToNative(state, id, encounter, serverTick);
                 }
-                return encounter.resetDue(serverTick);
+                return encounter.resetDue(serverTick) ? Transition.RESET : null;
             }
             if (!admission.controls()) {
-                return true;
+                return Transition.UNSUPPORTED;
             }
             if (state.yielded.contains(id) && encounter.resetDue(serverTick)) {
-                return true;
+                return Transition.RESET;
             }
             reconcileTarget(world, state, mob, admission.type, encounter, serverTick, targetUpdates, sample);
-            return encounter.resetDue(serverTick);
+            return encounter.resetDue(serverTick) ? Transition.RESET : null;
         });
         // The vanilla setter notifies Forge listeners that can change encounter membership.
         targetUpdates.forEach(Runnable::run);
@@ -685,7 +988,7 @@ public final class EncounterCoordinator implements ThreatActions, ThreatQueries 
             for (int pass = 0; pass < 2; pass++) {
                 for (TakeoverSamples.Pending pending : pendingTakeovers) {
                     if (takeoverBudget.exhausted(tick)) return;
-                    pending.supplement(tick, takeoverBudget);
+                    pending.supplement(tick, takeoverBudget, excludedFromTakeover);
                 }
             }
         } finally {
@@ -710,7 +1013,7 @@ public final class EncounterCoordinator implements ThreatActions, ThreatQueries 
         }
         encounter.observeParticipantAvailability(tick, candidate -> observations.get(candidate) == TargetObservation.IN_REACH);
         if (encounter.resetDue(tick)) {
-            state.discard(id);
+            state.reset(id);
         } else {
             state.observations.put(id, observations);
         }

@@ -21,6 +21,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.BiPredicate;
 
 import static com.mahghuuuls.threatworks.api.ThreatQueries.Confirmation.YES;
 
@@ -183,7 +184,7 @@ final class TakeoverSamples {
             return history.lastSupplementTick;
         }
 
-        void supplement(int now, Budget budget) {
+        void supplement(int now, Budget budget, BiPredicate<EntityLiving, EntityLivingBase> excluded) {
             int count = unobserved.size();
             if (now != observations.tick || served >= Math.min(count, OBSERVATIONS_PER_DECISION) || !stillMatches()
                     || !budget.observation(now, work)) return;
@@ -192,6 +193,10 @@ final class TakeoverSamples {
             EntityLivingBase participant = unobserved.get(history.cursor % count);
             history.cursor = (history.cursor + 1) % count;
             if (!ParticipantQuery.live(world, participant)) return;
+            if (excluded.test(mob, participant)) {
+                history.candidates.remove(participant.getUniqueID());
+                return;
+            }
             Object identity = state.recordIdentity(participant.getUniqueID());
             Position position = new Position(participant);
             TargetObservation result = MobTargets.observeForTakeover(world, (EntityCreature) mob, participant, type);
