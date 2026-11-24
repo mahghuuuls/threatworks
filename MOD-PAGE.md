@@ -35,35 +35,35 @@ Fresh configurations enable threat for 22 ordinary vanilla hostile types. A Cree
 - **Wither.** The center head follows threat and can be taunted. The side heads pick their own targets.
 - **Ender Dragon.** Threat helps choose the target of a new ordinary strafing run. During the Dragon's circling phase, breaking an End Crystal can draw its native retaliation. The Dragon ignores taunts.
 
-## Modded mob compatibility
+## Mods with supported mobs
 
 Threatworks helps these mobs choose who to attack. The mobs' own AI handles movement, attacks, and special moves. Defiled Slimes share targeting rules with vanilla slimes, with a check for more room overhead along their route. The Foliaath uses dedicated checks for when it can bite and which targets it can reach.
 
-Fresh configurations enable threat for 217 supported mob types when their mods are installed. Threatworks 1.2.0 carries forward the verified roster, which lists exact entity IDs, combat states, tested versions, and limits. [Compatibility roster](https://github.com/mahghuuuls/threatworks/blob/main/COMPATIBILITY.md)
+A fresh configuration automatically enables Threatworks targeting for the 217 verified mob types from the mods below when those mods are installed. Existing configurations keep their selections. The roster lists exact entity IDs, supported combat states, and tested mod versions. [Compatibility roster](https://github.com/mahghuuuls/threatworks/blob/main/COMPATIBILITY.md#modded-mobs)
 
-- **Ancient Warfare 2: Tweaked.** Hostile faction archers, soldiers, and leaders use threat within their native weapon and home limits. [Ancient Warfare 2: Tweaked](https://www.curseforge.com/minecraft/mc-mods/ancient-warfare-2-tweaked)
-- **BetterEndForge Backport.** End Slime hopping and contact attacks. [BetterEndForge Backport](https://www.curseforge.com/minecraft/mc-mods/betterendforge-backport)
-- **Charm.** Spectre pursuit and melee in the dark. [Charm](https://www.curseforge.com/minecraft/mc-mods/charm)
-- **Chocolate Quest Repoured.** Close melee for selected hostile mobs when unmounted and without a leader. [Chocolate Quest Repoured](https://www.curseforge.com/minecraft/mc-mods/cqrepoured)
-- **Deeper Depths.** Bogged bow attacks, including poison arrows. [Deeper Depths](https://www.curseforge.com/minecraft/mc-mods/deeper-depths)
-- **Defiled Lands.** Host, Scuttler, and Shambler melee, including Twisted Shamblers, plus Defiled Slime contact attacks. [Defiled Lands](https://www.curseforge.com/minecraft/mc-mods/defiled-lands)
-- **Dungeon Mobs Reborn.** Selected melee mobs, including Ghouls, Ghosts, Revenants, Hook Horrors, and Umber Hulks. Use an enchanted weapon for ordinary melee against Ghosts. [Dungeon Mobs Reborn](https://www.curseforge.com/minecraft/mc-mods/dungeon-mobs-reborn)
-- **Eerie Entities.** Cursed Armor and Nether Knight ground melee. [Eerie Entities](https://www.curseforge.com/minecraft/mc-mods/eerie-entities)
-- **Fish's Undead Rising.** Selected ground melee and aerial charges. Committed charges and casts follow their native targeting. [Fish's Undead Rising](https://www.curseforge.com/minecraft/mc-mods/fishs-undead-rising)
-- **Grimoire of Gaia 3.** Selected ground melee, bows, fireballs, magic projectiles, and poison splash attacks. [Grimoire of Gaia 3](https://www.curseforge.com/minecraft/mc-mods/grimoire-of-gaia)
-- **Ice and Fire: RotN Edition.** Dread Beast, Ghoul, Knight, Scuttler, and Thrall attacks after emergence. [Ice and Fire: RotN Edition](https://www.curseforge.com/minecraft/mc-mods/ice-and-fire-rotn-edition)
-- **Illagers+.** Archer bow attacks and Furantur nighttime melee. [Illagers+](https://www.curseforge.com/minecraft/mc-mods/illagers)
-- **Magma Monsters.** Magma Monster and Grunt melee while cooled. Their molten phase uses native targeting. [Magma Monsters](https://www.curseforge.com/minecraft/mc-mods/magma-monsters)
-- **Mo' Creatures Extended.** Selected scorpions, Silver Skeleton melee, and one wild hostile ground form of the HorseMob. [Mo' Creatures Extended](https://www.curseforge.com/minecraft/mc-mods/mo-creatures-extended)
-- **Mowzie's Mobs.** Foliaath bites while the plant is active and its target is within reach. [Mowzie's Mobs](https://www.curseforge.com/minecraft/mc-mods/mowzies-mobs)
-- **Natura Legacy.** Heatscar Spider melee on the ground and Nitro Creeper pursuit before its fuse commits. [Natura Legacy](https://www.curseforge.com/minecraft/mc-mods/natura-legacy)
-- **Project: Vibrant Journeys.** Banshee and Shade ground melee at night. [Project: Vibrant Journeys](https://www.curseforge.com/minecraft/mc-mods/project-vibrant-journeys)
-- **Quark: RotN Edition.** Ashen archery, Forgotten bow and sword combat, and Dweller, Pirate, and Wraith melee. [Quark: RotN Edition](https://www.curseforge.com/minecraft/mc-mods/quark-rotn-edition)
-- **Special Mobs.** Selected zombie, skeleton, spider, silverfish, creeper, slime, blaze, ghast, and witch variants. Supported attacks include melee, arrows, contact damage, fireballs, and splash potions. [Special Mobs](https://www.curseforge.com/minecraft/mc-mods/special-mobs)
-- **Stygian End Re-Continuation.** Selected ground melee and End Skeleton bow combat. [Stygian End Re-Continuation](https://www.curseforge.com/minecraft/mc-mods/stygian-end-recontinuation)
-- **ToroQuest Revamped.** Zombie and Zombie Villager Raider melee after their raid movement. [ToroQuest Revamped](https://www.curseforge.com/minecraft/mc-mods/toroquest-revamped)
-- **Unseen's Dungeon Additions.** Ancient Knight and rapier variant close melee outside scripted phases. [Unseen's Dungeon Additions](https://www.curseforge.com/minecraft/mc-mods/unseens-dungeon-additions)
-- **Veilings.** Ground melee for the unowned adult Wicked Veiling Custodian and Deft. [Veilings](https://www.curseforge.com/minecraft/mc-mods/veilings)
+- **[Ancient Warfare 2: Tweaked](https://www.curseforge.com/minecraft/mc-mods/ancient-warfare-2-tweaked)**. Hostile faction archers, soldiers, and leaders use threat within their native weapon and home limits.
+- **[BetterEndForge Backport](https://www.curseforge.com/minecraft/mc-mods/betterendforge-backport)**. End Slime hopping and contact attacks.
+- **[Charm](https://www.curseforge.com/minecraft/mc-mods/charm)**. Spectre pursuit and melee in the dark.
+- **[Chocolate Quest Repoured](https://www.curseforge.com/minecraft/mc-mods/cqrepoured)**. Close melee for selected hostile mobs when unmounted and without a leader.
+- **[Deeper Depths](https://www.curseforge.com/minecraft/mc-mods/deeper-depths)**. Bogged bow attacks, including poison arrows.
+- **[Defiled Lands](https://www.curseforge.com/minecraft/mc-mods/defiled-lands)**. Host, Scuttler, and Shambler melee, including Twisted Shamblers, plus Defiled Slime contact attacks.
+- **[Dungeon Mobs Reborn](https://www.curseforge.com/minecraft/mc-mods/dungeon-mobs-reborn)**. Selected melee mobs, including Ghouls, Ghosts, Revenants, Hook Horrors, and Umber Hulks. Use an enchanted weapon for ordinary melee against Ghosts.
+- **[Eerie Entities](https://www.curseforge.com/minecraft/mc-mods/eerie-entities)**. Cursed Armor and Nether Knight ground melee.
+- **[Fish's Undead Rising](https://www.curseforge.com/minecraft/mc-mods/fishs-undead-rising)**. Selected ground melee and aerial charges. Committed charges and casts follow their native targeting.
+- **[Grimoire of Gaia 3](https://www.curseforge.com/minecraft/mc-mods/grimoire-of-gaia)**. Selected ground melee, bows, fireballs, magic projectiles, and poison splash attacks.
+- **[Ice and Fire: RotN Edition](https://www.curseforge.com/minecraft/mc-mods/ice-and-fire-rotn-edition)**. Dread Beast, Ghoul, Knight, Scuttler, and Thrall attacks after emergence.
+- **[Illagers+](https://www.curseforge.com/minecraft/mc-mods/illagers)**. Archer bow attacks and Furantur nighttime melee.
+- **[Magma Monsters](https://www.curseforge.com/minecraft/mc-mods/magma-monsters)**. Magma Monster and Grunt melee while cooled. Their molten phase uses native targeting.
+- **[Mo' Creatures Extended](https://www.curseforge.com/minecraft/mc-mods/mo-creatures-extended)**. Selected scorpions, Silver Skeleton melee, and one wild hostile ground form of the HorseMob.
+- **[Mowzie's Mobs](https://www.curseforge.com/minecraft/mc-mods/mowzies-mobs)**. Foliaath bites while the plant is active and its target is within reach.
+- **[Natura Legacy](https://www.curseforge.com/minecraft/mc-mods/natura-legacy)**. Heatscar Spider melee on the ground and Nitro Creeper pursuit before its fuse commits.
+- **[Project: Vibrant Journeys](https://www.curseforge.com/minecraft/mc-mods/project-vibrant-journeys)**. Banshee and Shade ground melee at night.
+- **[Quark: RotN Edition](https://www.curseforge.com/minecraft/mc-mods/quark-rotn-edition)**. Ashen archery, Forgotten bow and sword combat, and Dweller, Pirate, and Wraith melee.
+- **[Special Mobs](https://www.curseforge.com/minecraft/mc-mods/special-mobs)**. Selected zombie, skeleton, spider, silverfish, creeper, slime, blaze, ghast, and witch variants. Supported attacks include melee, arrows, contact damage, fireballs, and splash potions.
+- **[Stygian End Re-Continuation](https://www.curseforge.com/minecraft/mc-mods/stygian-end-recontinuation)**. Selected ground melee and End Skeleton bow combat.
+- **[ToroQuest Revamped](https://www.curseforge.com/minecraft/mc-mods/toroquest-revamped)**. Zombie and Zombie Villager Raider melee after their raid movement.
+- **[Unseen's Dungeon Additions](https://www.curseforge.com/minecraft/mc-mods/unseens-dungeon-additions)**. Ancient Knight and rapier variant close melee outside scripted phases.
+- **[Veilings](https://www.curseforge.com/minecraft/mc-mods/veilings)**. Ground melee for the unowned adult Wicked Veiling Custodian and Deft.
 
 ## Optional integrations for gear, effects, and summons
 
